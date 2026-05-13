@@ -42,7 +42,7 @@ export function SignUpForm() {
     setLoading(false);
 
     if (error) {
-      setMessage("We could not create your account. Try a different email or sign in if the account already exists.");
+      setMessage(`We could not create your account. Setup detail: ${error.message}`);
       return;
     }
 
