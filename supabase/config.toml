@@ -1,0 +1,5 @@
+[functions.send-renewal-reminders]
+verify_jwt = true
+
+[functions.send-birthday-messages]
+verify_jwt = true

@@ -1,0 +1,581 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>PolicyHQ Logo Concepts</title>
+    <style>
+      :root {
+        --navy: #0f172a;
+        --ink: #101828;
+        --deep: #0d1b3e;
+        --orange: #f97316;
+        --gold: #c9a84c;
+        --green: #22c55e;
+        --cyan: #0891b2;
+        --red: #ef4444;
+        --muted: #64748b;
+        --line: #e2e8f0;
+        --paper: #ffffff;
+        --page: #f8fafc;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        background: var(--page);
+        color: var(--navy);
+        font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
+      }
+
+      main {
+        margin: 0 auto;
+        max-width: 1280px;
+        padding: 36px 18px 64px;
+      }
+
+      .hero {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        gap: 24px;
+        align-items: end;
+        margin-bottom: 28px;
+      }
+
+      h1,
+      h2,
+      p {
+        margin: 0;
+      }
+
+      h1 {
+        max-width: 760px;
+        color: var(--ink);
+        font-size: clamp(32px, 5vw, 58px);
+        line-height: 1;
+        letter-spacing: 0;
+      }
+
+      .intro {
+        margin-top: 14px;
+        max-width: 760px;
+        color: var(--muted);
+        font-size: 16px;
+        line-height: 1.65;
+      }
+
+      .stamp {
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        background: white;
+        padding: 12px 14px;
+        color: var(--muted);
+        font-size: 13px;
+        font-weight: 800;
+        letter-spacing: 1.7px;
+        text-transform: uppercase;
+      }
+
+      .grid {
+        display: grid;
+        gap: 18px;
+      }
+
+      .concept {
+        overflow: hidden;
+        border: 1px solid var(--line);
+        border-radius: 18px;
+        background: var(--paper);
+        box-shadow: 0 18px 48px rgba(15, 23, 42, 0.08);
+      }
+
+      .concept.featured {
+        border-color: rgba(249, 115, 22, 0.35);
+        box-shadow: 0 24px 70px rgba(249, 115, 22, 0.16);
+      }
+
+      .concept-head {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        gap: 16px;
+        align-items: start;
+        border-bottom: 1px solid var(--line);
+        padding: 18px;
+      }
+
+      .eyebrow {
+        color: var(--orange);
+        font-size: 12px;
+        font-weight: 900;
+        letter-spacing: 1.8px;
+        text-transform: uppercase;
+      }
+
+      .concept-head h2 {
+        margin-top: 6px;
+        font-size: 22px;
+        line-height: 1.1;
+        letter-spacing: 0;
+      }
+
+      .concept-head p {
+        margin-top: 8px;
+        max-width: 760px;
+        color: var(--muted);
+        line-height: 1.55;
+      }
+
+      .score {
+        white-space: nowrap;
+        border-radius: 999px;
+        background: #fff7ed;
+        padding: 8px 12px;
+        color: #c2410c;
+        font-size: 12px;
+        font-weight: 900;
+      }
+
+      .stage {
+        display: grid;
+        grid-template-columns: minmax(0, 1.15fr) minmax(320px, 0.85fr);
+        min-height: 330px;
+      }
+
+      .logo-display {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 300px;
+        padding: 34px;
+      }
+
+      .dark-display {
+        background:
+          linear-gradient(rgba(255, 255, 255, 0.045) 1px, transparent 1px),
+          linear-gradient(90deg, rgba(255, 255, 255, 0.045) 1px, transparent 1px),
+          var(--navy);
+        background-size: 22px 22px;
+      }
+
+      .app-preview {
+        width: min(100%, 360px);
+        overflow: hidden;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 22px;
+        background: #0b1224;
+        box-shadow: 0 22px 60px rgba(2, 6, 23, 0.38);
+      }
+
+      .app-brand {
+        display: flex;
+        min-height: 76px;
+        align-items: center;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        padding: 18px;
+      }
+
+      .mini-nav {
+        padding: 10px;
+      }
+
+      .nav-row {
+        margin: 6px 0;
+        border-left: 4px solid transparent;
+        border-radius: 11px;
+        padding: 12px 14px;
+        color: #cbd5e1;
+        font-size: 14px;
+        font-weight: 760;
+      }
+
+      .nav-row.active {
+        border-left-color: var(--orange);
+        background: rgba(255, 255, 255, 0.1);
+        color: white;
+      }
+
+      .micro-grid {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 10px;
+        border-top: 1px solid var(--line);
+        padding: 16px;
+      }
+
+      .micro {
+        display: flex;
+        min-height: 88px;
+        align-items: center;
+        justify-content: center;
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        background: #fff;
+      }
+
+      .micro.dark {
+        border-color: #111827;
+        background: var(--navy);
+      }
+
+      .current {
+        display: grid;
+        grid-template-columns: 260px minmax(0, 1fr);
+        gap: 18px;
+        align-items: center;
+        margin-bottom: 18px;
+        border: 1px dashed #cbd5e1;
+        border-radius: 16px;
+        background: white;
+        padding: 18px;
+      }
+
+      .current p {
+        color: var(--muted);
+        line-height: 1.55;
+      }
+
+      .takeaway {
+        border-left: 5px solid var(--orange);
+        border-radius: 14px;
+        background: #fff7ed;
+        padding: 18px;
+        color: #7c2d12;
+        line-height: 1.6;
+      }
+
+      svg,
+      img {
+        display: block;
+        max-width: 100%;
+      }
+
+      @media (max-width: 900px) {
+        .hero,
+        .concept-head,
+        .stage,
+        .current {
+          grid-template-columns: 1fr;
+        }
+
+        .micro-grid {
+          grid-template-columns: repeat(2, 1fr);
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <section class="hero">
+        <div>
+          <h1>Less office badge. More category-defining InsurTech brand.</h1>
+          <p class="intro">
+            You were right to push back. PolicyHQ should feel like the command centre for an agent’s book of business,
+            not just another admin tool. Here are five stronger creative territories.
+          </p>
+        </div>
+        <div class="stamp">Creative round 02</div>
+      </section>
+
+      <section class="current">
+        <img src="./policyhq-logo-v4.svg" alt="Current uploaded PolicyHQ logo" />
+        <p>
+          The current logo has trust and seriousness, but the mark is too dependent on explanation. The strongest version
+          should read fast, own a distinctive symbol, and still look credible when it is only 32 pixels tall.
+        </p>
+      </section>
+
+      <section class="grid">
+        <article class="concept featured">
+          <div class="concept-head">
+            <div>
+              <div class="eyebrow">Recommended territory</div>
+              <h2>01. Renewal Command</h2>
+              <p>
+                A sharp HQ monogram built from a headquarters doorway and a renewal signal. It feels SaaS, operational,
+                premium, and directly connected to the biggest promise: never miss a renewal.
+              </p>
+            </div>
+            <div class="score">Strongest pick</div>
+          </div>
+          <div class="stage">
+            <div class="logo-display">
+              <svg width="660" height="180" viewBox="0 0 660 180" role="img" aria-label="PolicyHQ Renewal Command logo">
+                <defs>
+                  <linearGradient id="rc-flame" x1="0" x2="1" y1="0" y2="1">
+                    <stop offset="0" stop-color="#F97316" />
+                    <stop offset="1" stop-color="#C2410C" />
+                  </linearGradient>
+                </defs>
+                <rect x="18" y="28" width="124" height="124" rx="30" fill="#0F172A" />
+                <path d="M48 118V62h15v23h34V62h15v76H97v-28H63v28H48Z" fill="#FFFFFF" />
+                <path d="M92 105c16-2 34 8 43 25" fill="none" stroke="url(#rc-flame)" stroke-width="11" stroke-linecap="round" />
+                <path d="M126 129l10 1-3-10" fill="none" stroke="url(#rc-flame)" stroke-width="7" stroke-linecap="round" stroke-linejoin="round" />
+                <path d="M38 49h84" stroke="#C9A84C" stroke-width="8" stroke-linecap="round" />
+                <circle cx="122" cy="52" r="6" fill="#22C55E" />
+                <text x="172" y="105" fill="#0F172A" font-size="62" font-weight="820" letter-spacing="0">Policy</text>
+                <text x="370" y="105" fill="#F97316" font-size="62" font-weight="900" letter-spacing="0">HQ</text>
+                <text x="176" y="135" fill="#64748B" font-size="14" font-weight="760" letter-spacing="2.8">RENEWAL OPERATIONS PLATFORM</text>
+              </svg>
+            </div>
+            <div class="logo-display dark-display">
+              <div class="app-preview">
+                <div class="app-brand">
+                  <svg width="260" height="64" viewBox="0 0 320 78" role="img" aria-label="Renewal Command sidebar logo">
+                    <rect x="0" y="8" width="62" height="62" rx="16" fill="#FFFFFF" />
+                    <path d="M18 51V24h8v12h17V24h8v38h-8V49H26v13h-8V51Z" fill="#0F172A" />
+                    <path d="M43 49c9 0 18 6 23 16" fill="none" stroke="#F97316" stroke-width="6" stroke-linecap="round" />
+                    <path d="M11 17h43" stroke="#C9A84C" stroke-width="5" stroke-linecap="round" />
+                    <circle cx="56" cy="18" r="4" fill="#22C55E" />
+                    <text x="78" y="52" fill="#FFFFFF" font-size="34" font-weight="820">Policy</text>
+                    <text x="184" y="52" fill="#F97316" font-size="34" font-weight="900">HQ</text>
+                  </svg>
+                </div>
+                <div class="mini-nav">
+                  <div class="nav-row active">Dashboard</div>
+                  <div class="nav-row">Clients</div>
+                  <div class="nav-row">Policies</div>
+                  <div class="nav-row">Commissions</div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="micro-grid">
+            <div class="micro">
+              <svg width="58" height="58" viewBox="0 0 70 70" aria-label="Renewal Command favicon">
+                <rect width="70" height="70" rx="18" fill="#0F172A" />
+                <path d="M20 45V20h8v10h14V20h8v31h-8V39H28v12h-8V45Z" fill="#FFFFFF" />
+                <path d="M42 45c8 0 15 5 20 13" fill="none" stroke="#F97316" stroke-width="6" stroke-linecap="round" />
+                <path d="M14 14h42" stroke="#C9A84C" stroke-width="5" stroke-linecap="round" />
+              </svg>
+            </div>
+            <div class="micro dark">
+              <svg width="58" height="58" viewBox="0 0 70 70" aria-label="Renewal Command dark favicon">
+                <rect width="70" height="70" rx="18" fill="#FFFFFF" />
+                <path d="M20 45V20h8v10h14V20h8v31h-8V39H28v12h-8V45Z" fill="#0F172A" />
+                <path d="M42 45c8 0 15 5 20 13" fill="none" stroke="#F97316" stroke-width="6" stroke-linecap="round" />
+                <path d="M14 14h42" stroke="#C9A84C" stroke-width="5" stroke-linecap="round" />
+              </svg>
+            </div>
+            <div class="micro">
+              <svg width="170" height="42" viewBox="0 0 220 54" aria-label="Renewal Command mini wordmark">
+                <text x="0" y="38" fill="#0F172A" font-size="34" font-weight="820">Policy</text>
+                <text x="106" y="38" fill="#F97316" font-size="34" font-weight="900">HQ</text>
+              </svg>
+            </div>
+            <div class="micro">
+              <svg width="170" height="42" viewBox="0 0 220 54" aria-label="Renewal Command outline wordmark">
+                <path d="M5 42V13h8v11h17V13h8v34h-8V33H13v14H5Z" fill="#0F172A" />
+                <path d="M31 42c9 0 18 5 24 14" fill="none" stroke="#F97316" stroke-width="6" stroke-linecap="round" />
+                <text x="68" y="38" fill="#0F172A" font-size="29" font-weight="820">PolicyHQ</text>
+              </svg>
+            </div>
+          </div>
+        </article>
+
+        <article class="concept">
+          <div class="concept-head">
+            <div>
+              <div class="eyebrow">Distinctive Ghana-market cue</div>
+              <h2>02. The Trust Loom</h2>
+              <p>
+                A refined woven mark. It hints at local craft, connected clients, and policies crossing insurers, without
+                becoming decorative or folkloric. This one has the most regional character.
+              </p>
+            </div>
+            <div class="score">Most ownable</div>
+          </div>
+          <div class="stage">
+            <div class="logo-display">
+              <svg width="660" height="180" viewBox="0 0 660 180" role="img" aria-label="PolicyHQ Trust Loom logo">
+                <rect x="24" y="34" width="112" height="112" rx="26" fill="#0D1B3E" />
+                <path d="M50 62h60M50 86h60M50 110h60" stroke="#FFFFFF" stroke-width="11" stroke-linecap="round" />
+                <path d="M62 50v72M86 50v72M110 50v72" stroke="#C9A84C" stroke-width="10" stroke-linecap="round" />
+                <path d="M50 86h60" stroke="#F97316" stroke-width="11" stroke-linecap="round" />
+                <text x="168" y="106" fill="#0F172A" font-size="61" font-weight="820">Policy</text>
+                <text x="365" y="106" fill="#C9A84C" font-size="61" font-weight="900">HQ</text>
+                <text x="172" y="136" fill="#64748B" font-size="14" font-weight="760" letter-spacing="2.8">CLIENTS • POLICIES • RENEWALS</text>
+              </svg>
+            </div>
+            <div class="logo-display dark-display">
+              <div class="app-preview">
+                <div class="app-brand">
+                  <svg width="260" height="64" viewBox="0 0 320 78" role="img" aria-label="Trust Loom sidebar logo">
+                    <rect x="0" y="8" width="62" height="62" rx="16" fill="#FFFFFF" />
+                    <path d="M16 25h31M16 39h31M16 53h31" stroke="#0F172A" stroke-width="7" stroke-linecap="round" />
+                    <path d="M24 18v42M38 18v42M52 18v42" stroke="#C9A84C" stroke-width="6" stroke-linecap="round" />
+                    <path d="M16 39h31" stroke="#F97316" stroke-width="7" stroke-linecap="round" />
+                    <text x="80" y="52" fill="#FFFFFF" font-size="34" font-weight="820">Policy</text>
+                    <text x="186" y="52" fill="#C9A84C" font-size="34" font-weight="900">HQ</text>
+                  </svg>
+                </div>
+                <div class="mini-nav">
+                  <div class="nav-row active">Dashboard</div>
+                  <div class="nav-row">Clients</div>
+                  <div class="nav-row">Policies</div>
+                  <div class="nav-row">Commissions</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </article>
+
+        <article class="concept">
+          <div class="concept-head">
+            <div>
+              <div class="eyebrow">Boldest SaaS mark</div>
+              <h2>03. Signal Shield</h2>
+              <p>
+                A protection shield combined with three alert pulses: 30, 14, and 7 days. Strong for the core product
+                story, especially if renewal reminders become the headline feature.
+              </p>
+            </div>
+            <div class="score">Best product story</div>
+          </div>
+          <div class="stage">
+            <div class="logo-display">
+              <svg width="660" height="180" viewBox="0 0 660 180" role="img" aria-label="PolicyHQ Signal Shield logo">
+                <path d="M83 24l56 22v44c0 35-22 58-56 72-34-14-56-37-56-72V46l56-22Z" fill="#0F172A" />
+                <path d="M62 88h20l10-22 15 48 11-26h20" fill="none" stroke="#FFFFFF" stroke-width="8" stroke-linecap="round" stroke-linejoin="round" />
+                <circle cx="48" cy="55" r="7" fill="#F97316" />
+                <circle cx="83" cy="43" r="7" fill="#C9A84C" />
+                <circle cx="118" cy="55" r="7" fill="#22C55E" />
+                <text x="174" y="105" fill="#0F172A" font-size="62" font-weight="820">Policy</text>
+                <text x="372" y="105" fill="#0F172A" font-size="62" font-weight="820">H</text>
+                <text x="417" y="105" fill="#F97316" font-size="62" font-weight="900">Q</text>
+                <path d="M450 107l22 22" stroke="#F97316" stroke-width="8" stroke-linecap="round" />
+                <text x="178" y="135" fill="#64748B" font-size="14" font-weight="760" letter-spacing="2.8">AUTOMATED RENEWAL PROTECTION</text>
+              </svg>
+            </div>
+            <div class="logo-display dark-display">
+              <div class="app-preview">
+                <div class="app-brand">
+                  <svg width="260" height="64" viewBox="0 0 320 78" role="img" aria-label="Signal Shield sidebar logo">
+                    <path d="M31 7l31 12v24c0 19-12 32-31 40C12 75 0 62 0 43V19L31 7Z" fill="#FFFFFF" />
+                    <path d="M18 42h11l5-13 8 27 6-14h11" fill="none" stroke="#0F172A" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" />
+                    <circle cx="13" cy="23" r="4" fill="#F97316" />
+                    <circle cx="31" cy="17" r="4" fill="#C9A84C" />
+                    <circle cx="49" cy="23" r="4" fill="#22C55E" />
+                    <text x="78" y="52" fill="#FFFFFF" font-size="34" font-weight="820">Policy</text>
+                    <text x="184" y="52" fill="#F97316" font-size="34" font-weight="900">HQ</text>
+                  </svg>
+                </div>
+                <div class="mini-nav">
+                  <div class="nav-row active">Dashboard</div>
+                  <div class="nav-row">Clients</div>
+                  <div class="nav-row">Policies</div>
+                  <div class="nav-row">Commissions</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </article>
+
+        <article class="concept">
+          <div class="concept-head">
+            <div>
+              <div class="eyebrow">Premium enterprise route</div>
+              <h2>04. Ledger Crown</h2>
+              <p>
+                More executive and financial. A policy document, commission ledger, and crown-like headquarters roof
+                merge into one mark. This feels most like a serious B2B platform.
+              </p>
+            </div>
+            <div class="score">Most premium</div>
+          </div>
+          <div class="stage">
+            <div class="logo-display">
+              <svg width="660" height="180" viewBox="0 0 660 180" role="img" aria-label="PolicyHQ Ledger Crown logo">
+                <rect x="28" y="32" width="110" height="120" rx="18" fill="#0F172A" />
+                <path d="M49 58h68M49 82h68M49 106h42" stroke="#FFFFFF" stroke-width="8" stroke-linecap="round" />
+                <path d="M48 38l35-21 36 21" fill="none" stroke="#C9A84C" stroke-width="9" stroke-linecap="round" stroke-linejoin="round" />
+                <path d="M102 105l16 16 31-39" fill="none" stroke="#F97316" stroke-width="10" stroke-linecap="round" stroke-linejoin="round" />
+                <text x="174" y="106" fill="#0F172A" font-size="62" font-weight="820">Policy</text>
+                <text x="371" y="106" fill="#C9A84C" font-size="62" font-weight="900">HQ</text>
+                <text x="178" y="136" fill="#64748B" font-size="14" font-weight="760" letter-spacing="2.8">POLICIES • PREMIUMS • COMMISSIONS</text>
+              </svg>
+            </div>
+            <div class="logo-display dark-display">
+              <div class="app-preview">
+                <div class="app-brand">
+                  <svg width="260" height="64" viewBox="0 0 320 78" role="img" aria-label="Ledger Crown sidebar logo">
+                    <rect x="0" y="9" width="58" height="60" rx="12" fill="#FFFFFF" />
+                    <path d="M13 25h31M13 38h31M13 51h19" stroke="#0F172A" stroke-width="5" stroke-linecap="round" />
+                    <path d="M10 11l20-11 20 11" fill="none" stroke="#C9A84C" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" />
+                    <path d="M38 52l8 8 16-22" fill="none" stroke="#F97316" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" />
+                    <text x="76" y="52" fill="#FFFFFF" font-size="34" font-weight="820">Policy</text>
+                    <text x="182" y="52" fill="#C9A84C" font-size="34" font-weight="900">HQ</text>
+                  </svg>
+                </div>
+                <div class="mini-nav">
+                  <div class="nav-row active">Dashboard</div>
+                  <div class="nav-row">Clients</div>
+                  <div class="nav-row">Policies</div>
+                  <div class="nav-row">Commissions</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </article>
+
+        <article class="concept">
+          <div class="concept-head">
+            <div>
+              <div class="eyebrow">Most modern and app-like</div>
+              <h2>05. The Policy Grid</h2>
+              <p>
+                A modular dashboard mark: every tile is a client, policy, notification, or commission. It is more tech-forward
+                and would scale well into product icons and loading states.
+              </p>
+            </div>
+            <div class="score">Best system</div>
+          </div>
+          <div class="stage">
+            <div class="logo-display">
+              <svg width="660" height="180" viewBox="0 0 660 180" role="img" aria-label="PolicyHQ Policy Grid logo">
+                <rect x="24" y="32" width="116" height="116" rx="28" fill="#0F172A" />
+                <rect x="50" y="58" width="26" height="26" rx="8" fill="#FFFFFF" />
+                <rect x="88" y="58" width="26" height="26" rx="8" fill="#F97316" />
+                <rect x="50" y="96" width="26" height="26" rx="8" fill="#22C55E" />
+                <rect x="88" y="96" width="26" height="26" rx="8" fill="#C9A84C" />
+                <path d="M63 71h38M63 109h38M63 71v38M101 71v38" stroke="#0F172A" stroke-width="4" stroke-linecap="round" />
+                <text x="174" y="106" fill="#0F172A" font-size="62" font-weight="820">Policy</text>
+                <text x="371" y="106" fill="#F97316" font-size="62" font-weight="900">HQ</text>
+                <text x="178" y="136" fill="#64748B" font-size="14" font-weight="760" letter-spacing="2.8">YOUR BOOK OF BUSINESS IN ONE PLACE</text>
+              </svg>
+            </div>
+            <div class="logo-display dark-display">
+              <div class="app-preview">
+                <div class="app-brand">
+                  <svg width="260" height="64" viewBox="0 0 320 78" role="img" aria-label="Policy Grid sidebar logo">
+                    <rect x="0" y="8" width="62" height="62" rx="16" fill="#FFFFFF" />
+                    <rect x="14" y="22" width="13" height="13" rx="4" fill="#0F172A" />
+                    <rect x="35" y="22" width="13" height="13" rx="4" fill="#F97316" />
+                    <rect x="14" y="43" width="13" height="13" rx="4" fill="#22C55E" />
+                    <rect x="35" y="43" width="13" height="13" rx="4" fill="#C9A84C" />
+                    <text x="78" y="52" fill="#FFFFFF" font-size="34" font-weight="820">Policy</text>
+                    <text x="184" y="52" fill="#F97316" font-size="34" font-weight="900">HQ</text>
+                  </svg>
+                </div>
+                <div class="mini-nav">
+                  <div class="nav-row active">Dashboard</div>
+                  <div class="nav-row">Clients</div>
+                  <div class="nav-row">Policies</div>
+                  <div class="nav-row">Commissions</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </article>
+
+        <section class="takeaway">
+          My honest creative recommendation: build the final brand from <strong>Renewal Command</strong>. It has the clearest
+          story, the best app icon, and the strongest link to what agents actually fear: missed renewals. If you want a more
+          Ghana-specific feel, blend in the woven logic from <strong>Trust Loom</strong>, but keep the readable PolicyHQ wordmark.
+        </section>
+      </section>
+    </main>
+  </body>
+</html>
