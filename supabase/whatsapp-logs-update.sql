@@ -24,6 +24,7 @@ on public.whatsapp_logs (agent_id, sent_at desc);
 alter table public.whatsapp_logs enable row level security;
 
 grant select on public.whatsapp_logs to authenticated;
+grant select, insert on public.whatsapp_logs to service_role;
 
 drop policy if exists "whatsapp_logs_select_own" on public.whatsapp_logs;
 drop policy if exists "whatsapp_logs_admin_select_all" on public.whatsapp_logs;

@@ -7,6 +7,7 @@ type ClientRecord = {
   phone_number: string;
   date_of_birth: string | null;
   profiles: {
+    id: string;
     full_name: string;
     company_name: string | null;
     whatsapp_enabled: boolean;
@@ -18,11 +19,38 @@ type RawClientRecord = Omit<ClientRecord, "profiles"> & {
   profiles: ClientRecord["profiles"] | ClientRecord["profiles"][] | null;
 };
 
+type WhatsAppTemplateParameter = { type: "text"; text: string };
+
+type WhatsAppTemplateBody = {
+  messaging_product: "whatsapp";
+  to: string;
+  type: "template";
+  template: {
+    name: string;
+    language: { code: string };
+    components: [{ type: "body"; parameters: WhatsAppTemplateParameter[] }];
+  };
+};
+
+type WhatsAppTextBody = {
+  messaging_product: "whatsapp";
+  to: string;
+  type: "text";
+  text: { body: string };
+};
+
+type WhatsAppBody = WhatsAppTemplateBody | WhatsAppTextBody;
+
+type MetaSendResponse = {
+  messages?: Array<{ id?: string }>;
+};
+
 const corsHeaders = {
   "Access-Control-Allow-Origin": "https://policyhq.vercel.app",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
   "Access-Control-Allow-Methods": "POST, OPTIONS"
 };
+const approvedTemplateNames = new Set(["renewal_reminder", "birthday_message", "agent_daily_summary"]);
 
 function authError(message: string, status: number) {
   return new Response(JSON.stringify({ ok: false, error: message }), {
@@ -95,20 +123,90 @@ function normalizeClientRecord(client: RawClientRecord) {
   } satisfies ClientRecord;
 }
 
+function normalizePhoneNumber(phoneNumber: string) {
+  const trimmed = phoneNumber.trim();
+  if (trimmed.startsWith("+")) {
+    const digits = trimmed.replace(/[^\d]/g, "");
+    return digits.length >= 8 && digits.length <= 15 ? `+${digits}` : null;
+  }
+
+  const digits = trimmed.replace(/[^\d]/g, "");
+  if (digits.length === 10 && digits.startsWith("0")) {
+    return `+233${digits.slice(1)}`;
+  }
+  if (digits.length === 12 && digits.startsWith("233")) {
+    return `+${digits}`;
+  }
+
+  return null;
+}
+
+function toMetaPhoneNumber(phoneNumber: string) {
+  const normalized = normalizePhoneNumber(phoneNumber);
+  return normalized ? normalized.slice(1) : null;
+}
+
+function requireApprovedTemplateName(templateName: string) {
+  if (!approvedTemplateNames.has(templateName)) {
+    throw new Error("WhatsApp template is not approved");
+  }
+}
+
+function sanitizeWhatsAppError(err: unknown) {
+  if (err instanceof Error && err.message === "Invalid WhatsApp phone number") {
+    return err.message;
+  }
+  if (err instanceof Error && err.message === "WhatsApp credentials are not configured") {
+    return err.message;
+  }
+  if (err instanceof Error && err.message === "WhatsApp template is not approved") {
+    return err.message;
+  }
+  if (err instanceof Error && err.message === "Client does not belong to birthday agent") {
+    return err.message;
+  }
+  return "WhatsApp send failed";
+}
+
+async function insertWhatsAppLog(
+  supabase: ReturnType<typeof createClient>,
+  client: ClientRecord,
+  templateName: string,
+  status: "sent" | "failed",
+  messageId: string | null,
+  errorReason: string | null
+) {
+  await supabase.from("whatsapp_logs").insert({
+    agent_id: client.agent_id,
+    client_id: client.id,
+    template_name: templateName,
+    status,
+    message_id: messageId,
+    error_reason: errorReason
+  });
+}
+
 async function sendWhatsApp(client: ClientRecord, message: string) {
-  const token = Deno.env.get("WHATSAPP_ACCESS_TOKEN");
-  const phoneNumberId = Deno.env.get("WHATSAPP_PHONE_NUMBER_ID");
+  const token = Deno.env.get("WHATSAPP_ACCESS_TOKEN")?.trim();
+  const phoneNumberId = Deno.env.get("WHATSAPP_PHONE_NUMBER_ID")?.trim();
   const version = Deno.env.get("WHATSAPP_API_VERSION") ?? "v20.0";
-  const templateName = Deno.env.get("WHATSAPP_BIRTHDAY_TEMPLATE_NAME");
+  const templateName = Deno.env.get("WHATSAPP_BIRTHDAY_TEMPLATE_NAME")?.trim() || "birthday_message";
   const templateLanguage = Deno.env.get("WHATSAPP_TEMPLATE_LANGUAGE") ?? "en";
   if (!token || !phoneNumberId) {
     throw new Error("WhatsApp credentials are not configured");
   }
+  if (client.profiles.id !== client.agent_id) {
+    throw new Error("Client does not belong to birthday agent");
+  }
+  const recipientPhone = toMetaPhoneNumber(client.phone_number);
+  if (!recipientPhone) {
+    throw new Error("Invalid WhatsApp phone number");
+  }
 
-  const body = templateName
-    ? {
+  const body: WhatsAppBody = Deno.env.get("WHATSAPP_BIRTHDAY_TEMPLATE_NAME")?.trim()
+    ? (requireApprovedTemplateName(templateName), {
         messaging_product: "whatsapp",
-        to: client.phone_number.replace(/[^\d]/g, ""),
+        to: recipientPhone,
         type: "template",
         template: {
           name: templateName,
@@ -123,25 +221,33 @@ async function sendWhatsApp(client: ClientRecord, message: string) {
             }
           ]
         }
-      }
+      })
     : {
         messaging_product: "whatsapp",
-        to: client.phone_number.replace(/[^\d]/g, ""),
+        to: recipientPhone,
         type: "text",
         text: { body: message }
       };
 
-  const response = await fetch(`https://graph.facebook.com/${version}/${phoneNumberId}/messages`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${token}`,
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify(body)
-  });
+  try {
+    const response = await fetch(`https://graph.facebook.com/${version}/${phoneNumberId}/messages`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify(body)
+    });
 
-  if (!response.ok) {
-    throw new Error(`WhatsApp birthday send failed with status ${response.status}`);
+    if (!response.ok) {
+      await response.json().catch((): null => null);
+      throw new Error("WhatsApp send failed");
+    }
+
+    const metaResponse = await response.json().catch((): MetaSendResponse | null => null);
+    return { messageId: metaResponse?.messages?.[0]?.id ?? null, templateName };
+  } catch {
+    throw new Error("WhatsApp send failed");
   }
 }
 
@@ -166,7 +272,7 @@ Deno.serve(async (req) => {
 
   const { data, error } = await supabase
     .from("clients")
-    .select("id, agent_id, full_name, phone_number, date_of_birth, profiles(full_name, company_name, whatsapp_enabled, birthday_messages_enabled)")
+    .select("id, agent_id, full_name, phone_number, date_of_birth, profiles(id, full_name, company_name, whatsapp_enabled, birthday_messages_enabled)")
     .not("date_of_birth", "is", null);
 
   if (error) {
@@ -219,10 +325,13 @@ Deno.serve(async (req) => {
     let detail = `birthday:${date}:sent`;
 
     try {
-      await sendWhatsApp(client, message);
+      const sent = await sendWhatsApp(client, message);
+      await insertWhatsAppLog(supabase, client, sent.templateName, "sent", sent.messageId, null);
     } catch (err) {
       status = "failed";
-      detail = err instanceof Error ? `birthday:${date}:${err.message}` : `birthday:${date}:failed`;
+      const reason = sanitizeWhatsAppError(err);
+      detail = `birthday:${date}:${reason}`;
+      await insertWhatsAppLog(supabase, client, "birthday_message", "failed", null, reason);
     }
 
     await supabase.from("notification_logs").insert({

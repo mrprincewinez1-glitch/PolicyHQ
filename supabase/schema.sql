@@ -390,6 +390,7 @@ grant select, insert, update, delete on public.commissions to authenticated;
 grant select, insert, update, delete on public.notifications to authenticated;
 grant select on public.notification_logs to authenticated;
 grant select on public.whatsapp_logs to authenticated;
+grant select, insert on public.whatsapp_logs to service_role;
 
 grant usage, select on all sequences in schema public to authenticated;
 

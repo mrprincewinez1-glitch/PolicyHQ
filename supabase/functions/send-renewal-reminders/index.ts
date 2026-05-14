@@ -10,11 +10,13 @@ type PolicyRecord = {
   renewal_status: string;
   clients: {
     id: string;
+    agent_id: string;
     full_name: string;
     phone_number: string;
     email: string | null;
   };
   profiles: {
+    id: string;
     full_name: string;
     company_name: string | null;
     phone_number: string | null;
@@ -90,6 +92,7 @@ const reminderTypes = new Map([
   [14, "renewal_14"],
   [7, "renewal_7"]
 ]);
+const approvedTemplateNames = new Set(["renewal_reminder", "birthday_message", "agent_daily_summary"]);
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "https://policyhq.vercel.app",
@@ -170,7 +173,48 @@ function normalizePolicyRecord(policy: RawPolicyRecord) {
 }
 
 function normalizePhoneNumber(phoneNumber: string) {
-  return phoneNumber.replace(/[^\d]/g, "");
+  const trimmed = phoneNumber.trim();
+  if (trimmed.startsWith("+")) {
+    const digits = trimmed.replace(/[^\d]/g, "");
+    return digits.length >= 8 && digits.length <= 15 ? `+${digits}` : null;
+  }
+
+  const digits = trimmed.replace(/[^\d]/g, "");
+  if (digits.length === 10 && digits.startsWith("0")) {
+    return `+233${digits.slice(1)}`;
+  }
+  if (digits.length === 12 && digits.startsWith("233")) {
+    return `+${digits}`;
+  }
+
+  return null;
+}
+
+function toMetaPhoneNumber(phoneNumber: string) {
+  const normalized = normalizePhoneNumber(phoneNumber);
+  return normalized ? normalized.slice(1) : null;
+}
+
+function requireApprovedTemplateName(templateName: string) {
+  if (!approvedTemplateNames.has(templateName)) {
+    throw new Error("WhatsApp template is not approved");
+  }
+}
+
+function sanitizeWhatsAppError(err: unknown) {
+  if (err instanceof Error && err.message === "Invalid WhatsApp phone number") {
+    return err.message;
+  }
+  if (err instanceof Error && err.message === "WhatsApp credentials are not configured") {
+    return err.message;
+  }
+  if (err instanceof Error && err.message === "WhatsApp template is not approved") {
+    return err.message;
+  }
+  if (err instanceof Error && err.message === "Client does not belong to policy agent") {
+    return err.message;
+  }
+  return "WhatsApp send failed";
 }
 
 async function postWhatsAppMessage(body: WhatsAppBody): Promise<WhatsAppSendResult> {
@@ -181,28 +225,30 @@ async function postWhatsAppMessage(body: WhatsAppBody): Promise<WhatsAppSendResu
     throw new Error("WhatsApp credentials are not configured");
   }
 
-  const response = await fetch(`https://graph.facebook.com/${version}/${phoneNumberId}/messages`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${token}`,
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify(body)
-  });
+  try {
+    const response = await fetch(`https://graph.facebook.com/${version}/${phoneNumberId}/messages`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify(body)
+    });
 
-  if (!response.ok) {
-    const metaError = await response.json().catch((): MetaErrorResponse | null => null);
-    const metaMessage = metaError?.error?.message;
-    const safeMessage = metaMessage ? `: ${metaMessage}` : "";
-    throw new Error(`WhatsApp send failed with status ${response.status}${safeMessage}`);
+    if (!response.ok) {
+      await response.json().catch((): MetaErrorResponse | null => null);
+      throw new Error("WhatsApp send failed");
+    }
+
+    const metaResponse = await response.json().catch((): MetaSendResponse | null => null);
+    return { messageId: metaResponse?.messages?.[0]?.id ?? null };
+  } catch {
+    throw new Error("WhatsApp send failed");
   }
-
-  const metaResponse = await response.json().catch((): MetaSendResponse | null => null);
-  return { messageId: metaResponse?.messages?.[0]?.id ?? null };
 }
 
 function renewalTemplateName(days: number) {
-  return Deno.env.get("WHATSAPP_RENEWAL_TEMPLATE_NAME")?.trim() || `renewal_text_${days}`;
+  return Deno.env.get("WHATSAPP_RENEWAL_TEMPLATE_NAME")?.trim() || "renewal_reminder";
 }
 
 async function recentlySentWhatsApp(
@@ -249,15 +295,24 @@ async function insertWhatsAppLog(
 
 async function sendClientWhatsApp(policy: PolicyRecord, message: string, days: number) {
   const templateName = renewalTemplateName(days);
+  if (policy.clients.agent_id !== policy.agent_id || policy.profiles.id !== policy.agent_id) {
+    throw new Error("Client does not belong to policy agent");
+  }
+
   const configuredTemplateName = Deno.env.get("WHATSAPP_RENEWAL_TEMPLATE_NAME")?.trim();
   const templateLanguage = Deno.env.get("WHATSAPP_TEMPLATE_LANGUAGE") ?? "en";
+  const recipientPhone = toMetaPhoneNumber(policy.clients.phone_number);
+  if (!recipientPhone) {
+    throw new Error("Invalid WhatsApp phone number");
+  }
+
   const body: WhatsAppBody = configuredTemplateName
-    ? {
+    ? (requireApprovedTemplateName(templateName), {
         messaging_product: "whatsapp",
-        to: normalizePhoneNumber(policy.clients.phone_number),
+        to: recipientPhone,
         type: "template",
         template: {
-          name: configuredTemplateName,
+          name: templateName,
           language: { code: templateLanguage },
           components: [
             {
@@ -273,10 +328,10 @@ async function sendClientWhatsApp(policy: PolicyRecord, message: string, days: n
             }
           ]
         }
-      }
+      })
     : {
         messaging_product: "whatsapp",
-        to: normalizePhoneNumber(policy.clients.phone_number),
+        to: recipientPhone,
         type: "text",
         text: { body: message }
       };
@@ -300,14 +355,19 @@ async function sendAgentSummaryWhatsApp(summary: AgentSummary) {
   if (!templateName) {
     return "template_not_configured";
   }
+  requireApprovedTemplateName(templateName);
   if (!summary.profile.phone_number) {
     throw new Error("Agent phone number is not configured");
+  }
+  const agentPhone = toMetaPhoneNumber(summary.profile.phone_number);
+  if (!agentPhone) {
+    throw new Error("Invalid WhatsApp phone number");
   }
   const message = buildAgentSummaryMessage(summary);
   const templateLanguage = Deno.env.get("WHATSAPP_TEMPLATE_LANGUAGE") ?? "en";
   const body: WhatsAppBody = {
     messaging_product: "whatsapp",
-    to: normalizePhoneNumber(summary.profile.phone_number),
+    to: agentPhone,
     type: "template",
     template: {
       name: templateName,
@@ -316,8 +376,8 @@ async function sendAgentSummaryWhatsApp(summary: AgentSummary) {
     }
   };
 
-  await postWhatsAppMessage(body);
-  return "sent";
+  const result = await postWhatsAppMessage(body);
+  return result.messageId;
 }
 
 async function logAgentSummary(supabase: ReturnType<typeof createClient>, summary: AgentSummary) {
@@ -341,6 +401,13 @@ async function logAgentSummary(supabase: ReturnType<typeof createClient>, summar
       };
     }
 
+    await supabase.from("whatsapp_logs").insert({
+      agent_id: summary.agentId,
+      template_name: "agent_daily_summary",
+      status: "sent",
+      message_id: result
+    });
+
     await supabase.from("notification_logs").insert({
       agent_id: summary.agentId,
       channel: "whatsapp",
@@ -360,7 +427,14 @@ async function logAgentSummary(supabase: ReturnType<typeof createClient>, summar
       detail: `agent_summary:${summary.items.length}:sent`,
       timestamp: new Date().toISOString()
     };
-  } catch {
+  } catch (err) {
+    await supabase.from("whatsapp_logs").insert({
+      agent_id: summary.agentId,
+      template_name: "agent_daily_summary",
+      status: "failed",
+      error_reason: sanitizeWhatsAppError(err)
+    });
+
     return {
       agent_id: summary.agentId,
       status: "failed",
@@ -424,7 +498,7 @@ Deno.serve(async (req) => {
     const expiryDate = addDays(today, days);
     const { data, error } = await supabase
       .from("policies")
-      .select("id, agent_id, policy_number, policy_type, insurer_name, expiry_date, renewal_status, clients(id, full_name, phone_number, email), profiles(full_name, company_name, phone_number, whatsapp_enabled, email_notifications_enabled, agent_whatsapp_summary_enabled, reminder_30_enabled, reminder_14_enabled, reminder_7_enabled)")
+      .select("id, agent_id, policy_number, policy_type, insurer_name, expiry_date, renewal_status, clients(id, agent_id, full_name, phone_number, email), profiles(id, full_name, company_name, phone_number, whatsapp_enabled, email_notifications_enabled, agent_whatsapp_summary_enabled, reminder_30_enabled, reminder_14_enabled, reminder_7_enabled)")
       .eq("status", "Active")
       .eq("expiry_date", expiryDate);
 
@@ -483,7 +557,7 @@ Deno.serve(async (req) => {
         }
       } catch (err) {
         const templateName = renewalTemplateName(days);
-        const reason = err instanceof Error ? err.message : "failed";
+        const reason = sanitizeWhatsAppError(err);
         await insertWhatsAppLog(supabase, policy, templateName, "failed", null, reason);
         activity.whatsapp = reason;
       }
