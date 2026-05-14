@@ -260,6 +260,26 @@ create table if not exists public.notification_logs (
   created_at timestamptz default now()
 );
 
+create table if not exists public.whatsapp_logs (
+  id uuid primary key default gen_random_uuid(),
+  agent_id uuid not null references public.profiles(id) on delete cascade,
+  client_id uuid references public.clients(id) on delete set null,
+  policy_id uuid references public.policies(id) on delete set null,
+  template_name text not null,
+  sent_at timestamptz default now(),
+  status text not null check (status in ('sent', 'failed')),
+  message_id text,
+  error_reason text,
+  created_at timestamptz default now()
+);
+
+create index if not exists whatsapp_logs_dedupe_idx
+on public.whatsapp_logs (client_id, policy_id, template_name, sent_at desc)
+where status = 'sent';
+
+create index if not exists whatsapp_logs_agent_idx
+on public.whatsapp_logs (agent_id, sent_at desc);
+
 alter table public.notifications
 drop constraint if exists notifications_type_check;
 
@@ -359,6 +379,7 @@ alter table public.policies enable row level security;
 alter table public.commissions enable row level security;
 alter table public.notifications enable row level security;
 alter table public.notification_logs enable row level security;
+alter table public.whatsapp_logs enable row level security;
 
 grant usage on schema public to authenticated;
 
@@ -368,6 +389,7 @@ grant select, insert, update, delete on public.policies to authenticated;
 grant select, insert, update, delete on public.commissions to authenticated;
 grant select, insert, update, delete on public.notifications to authenticated;
 grant select on public.notification_logs to authenticated;
+grant select on public.whatsapp_logs to authenticated;
 
 grant usage, select on all sequences in schema public to authenticated;
 
@@ -418,6 +440,12 @@ with check (auth.uid() = agent_id);
 drop policy if exists "Notification logs are agent scoped" on public.notification_logs;
 create policy "Notification logs are agent scoped"
 on public.notification_logs for select
+using (auth.uid() = agent_id);
+
+drop policy if exists "whatsapp_logs_select_own" on public.whatsapp_logs;
+create policy "whatsapp_logs_select_own"
+on public.whatsapp_logs for select
+to authenticated
 using (auth.uid() = agent_id);
 
 insert into storage.buckets (id, name, public)

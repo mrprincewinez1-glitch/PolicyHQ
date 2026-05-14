@@ -63,6 +63,14 @@ type MetaErrorResponse = {
   };
 };
 
+type MetaSendResponse = {
+  messages?: Array<{ id?: string }>;
+};
+
+type WhatsAppSendResult = {
+  messageId: string | null;
+};
+
 type AgentSummaryItem = {
   days: number;
   clientName: string;
@@ -165,15 +173,7 @@ function normalizePhoneNumber(phoneNumber: string) {
   return phoneNumber.replace(/[^\d]/g, "");
 }
 
-function dayWindow(date: Date) {
-  const value = date.toISOString().slice(0, 10);
-  return {
-    start: `${value}T00:00:00+00:00`,
-    end: `${value}T23:59:59+00:00`
-  };
-}
-
-async function postWhatsAppMessage(body: WhatsAppBody) {
+async function postWhatsAppMessage(body: WhatsAppBody): Promise<WhatsAppSendResult> {
   const token = Deno.env.get("WHATSAPP_ACCESS_TOKEN")?.trim();
   const phoneNumberId = Deno.env.get("WHATSAPP_PHONE_NUMBER_ID")?.trim();
   const version = Deno.env.get("WHATSAPP_API_VERSION")?.trim() || "v20.0";
@@ -196,18 +196,68 @@ async function postWhatsAppMessage(body: WhatsAppBody) {
     const safeMessage = metaMessage ? `: ${metaMessage}` : "";
     throw new Error(`WhatsApp send failed with status ${response.status}${safeMessage}`);
   }
+
+  const metaResponse = await response.json().catch((): MetaSendResponse | null => null);
+  return { messageId: metaResponse?.messages?.[0]?.id ?? null };
 }
 
-async function sendClientWhatsApp(policy: PolicyRecord, message: string) {
-  const templateName = Deno.env.get("WHATSAPP_RENEWAL_TEMPLATE_NAME");
+function renewalTemplateName(days: number) {
+  return Deno.env.get("WHATSAPP_RENEWAL_TEMPLATE_NAME")?.trim() || `renewal_text_${days}`;
+}
+
+async function recentlySentWhatsApp(
+  supabase: ReturnType<typeof createClient>,
+  policy: PolicyRecord,
+  templateName: string
+) {
+  const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+  const { data, error } = await supabase
+    .from("whatsapp_logs")
+    .select("id")
+    .eq("client_id", policy.clients.id)
+    .eq("policy_id", policy.id)
+    .eq("template_name", templateName)
+    .eq("status", "sent")
+    .gte("sent_at", since)
+    .maybeSingle();
+
+  if (error) {
+    throw new Error("WhatsApp duplicate check failed");
+  }
+
+  return Boolean(data);
+}
+
+async function insertWhatsAppLog(
+  supabase: ReturnType<typeof createClient>,
+  policy: PolicyRecord,
+  templateName: string,
+  status: "sent" | "failed",
+  messageId: string | null,
+  errorReason: string | null
+) {
+  await supabase.from("whatsapp_logs").insert({
+    agent_id: policy.agent_id,
+    client_id: policy.clients.id,
+    policy_id: policy.id,
+    template_name: templateName,
+    status,
+    message_id: messageId,
+    error_reason: errorReason
+  });
+}
+
+async function sendClientWhatsApp(policy: PolicyRecord, message: string, days: number) {
+  const templateName = renewalTemplateName(days);
+  const configuredTemplateName = Deno.env.get("WHATSAPP_RENEWAL_TEMPLATE_NAME")?.trim();
   const templateLanguage = Deno.env.get("WHATSAPP_TEMPLATE_LANGUAGE") ?? "en";
-  const body: WhatsAppBody = templateName
+  const body: WhatsAppBody = configuredTemplateName
     ? {
         messaging_product: "whatsapp",
         to: normalizePhoneNumber(policy.clients.phone_number),
         type: "template",
         template: {
-          name: templateName,
+          name: configuredTemplateName,
           language: { code: templateLanguage },
           components: [
             {
@@ -231,7 +281,7 @@ async function sendClientWhatsApp(policy: PolicyRecord, message: string) {
         text: { body: message }
       };
 
-  await postWhatsAppMessage(body);
+  return await postWhatsAppMessage(body);
 }
 
 function buildAgentSummaryMessage(summary: AgentSummary) {
@@ -367,7 +417,6 @@ Deno.serve(async (req) => {
     }
   });
   const today = new Date();
-  const todayWindow = dayWindow(today);
   const results: Array<Record<string, unknown>> = [];
   const agentSummaries = new Map<string, AgentSummary>();
 
@@ -393,37 +442,6 @@ Deno.serve(async (req) => {
 
       if (!shouldSend(policy.profiles, days)) continue;
 
-      const alreadyProcessed = await supabase
-        .from("notification_logs")
-        .select("id")
-        .eq("policy_id", policy.id)
-        .eq("channel", "whatsapp")
-        .in("status", ["sent", "skipped"])
-        .eq("detail", `${days}-day:${policy.expiry_date}:processed`)
-        .gte("created_at", todayWindow.start)
-        .lt("created_at", todayWindow.end)
-        .maybeSingle();
-
-      if (alreadyProcessed.error) {
-        results.push({
-          policy_id: policy.id,
-          days,
-          status: "duplicate_check_failed",
-          timestamp: new Date().toISOString()
-        });
-        continue;
-      }
-
-      if (alreadyProcessed.data) {
-        results.push({
-          policy_id: policy.id,
-          days,
-          status: "skipped_duplicate",
-          timestamp: new Date().toISOString()
-        });
-        continue;
-      }
-
       const companyName = policy.profiles.company_name ?? policy.profiles.full_name;
       const message = `Hello ${policy.clients.full_name}, this is a reminder from ${companyName} that your ${policy.policy_type} policy (Policy No: ${policy.policy_number}) with ${policy.insurer_name} is due for renewal on ${formatDate(policy.expiry_date)}. Please contact your agent to renew on time. Thank you.`;
       const summary = agentSummaries.get(policy.agent_id) ?? { agentId: policy.agent_id, profile: policy.profiles, items: [] };
@@ -448,11 +466,26 @@ Deno.serve(async (req) => {
 
       try {
         if (policy.profiles.whatsapp_enabled) {
-          await sendClientWhatsApp(policy, message);
-          activity.whatsapp = "sent";
+          const templateName = renewalTemplateName(days);
+          const duplicate = await recentlySentWhatsApp(supabase, policy, templateName);
+          if (duplicate) {
+            console.warn("Skipped duplicate WhatsApp reminder within 24 hours", {
+              policy_id: policy.id,
+              client_id: policy.clients.id,
+              template_name: templateName
+            });
+            activity.whatsapp = "skipped_duplicate_24h";
+          } else {
+            const sent = await sendClientWhatsApp(policy, message, days);
+            await insertWhatsAppLog(supabase, policy, templateName, "sent", sent.messageId, null);
+            activity.whatsapp = "sent";
+          }
         }
       } catch (err) {
-        activity.whatsapp = err instanceof Error ? err.message : "failed";
+        const templateName = renewalTemplateName(days);
+        const reason = err instanceof Error ? err.message : "failed";
+        await insertWhatsAppLog(supabase, policy, templateName, "failed", null, reason);
+        activity.whatsapp = reason;
       }
 
       try {
@@ -478,7 +511,7 @@ Deno.serve(async (req) => {
           policy_id: policy.id,
           client_id: policy.clients.id,
           channel: "whatsapp",
-          status: activity.whatsapp === "sent" ? "sent" : activity.whatsapp === "skipped" ? "skipped" : "failed",
+          status: activity.whatsapp === "sent" ? "sent" : String(activity.whatsapp).startsWith("skipped") ? "skipped" : "failed",
           detail: String(activity.whatsapp)
         },
         {
@@ -491,7 +524,7 @@ Deno.serve(async (req) => {
         }
       ]);
 
-      if (activity.whatsapp === "sent" || activity.whatsapp === "skipped" || activity.email === "sent") {
+      if (activity.whatsapp === "sent" || String(activity.whatsapp).startsWith("skipped") || activity.email === "sent") {
         await supabase.from("notification_logs").insert({
           agent_id: policy.agent_id,
           policy_id: policy.id,
