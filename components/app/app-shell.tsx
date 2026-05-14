@@ -23,7 +23,19 @@ import {
   Users,
   X
 } from "lucide-react";
-import { uploadProfileAvatar } from "@/app/(app)/actions";
+import {
+  deleteClient as deleteClientAction,
+  deletePolicy as deletePolicyAction,
+  markAllNotificationsRead,
+  markCommissionPaid,
+  markNotificationRead,
+  updateNotificationSettings,
+  updatePolicyRenewalStatus,
+  updateProfile,
+  uploadProfileAvatar,
+  upsertClient,
+  upsertPolicy
+} from "@/app/(app)/actions";
 import { signOut } from "@/app/(auth)/actions";
 import { PolicyHqLogo } from "@/components/brand/policyhq-logo";
 import { Badge } from "@/components/ui/badge";
@@ -116,6 +128,16 @@ export function AppShell({
     return false;
   }
 
+  function payloadToFormData(payload: Record<string, unknown>) {
+    const formData = new FormData();
+    Object.entries(payload).forEach(([key, value]) => {
+      if (value !== undefined && value !== null) {
+        formData.append(key, String(value));
+      }
+    });
+    return formData;
+  }
+
   function downloadCsv(name: string, rows: Record<string, unknown>[]) {
     if (blockWrite()) return;
     const csv = toCsv(rows);
@@ -135,13 +157,13 @@ export function AppShell({
       ...current,
       policies: current.policies.map((policy) => policy.id === policyId ? { ...policy, renewal_status: status } : policy)
     }));
-    const { error } = await createClient().from("policies").update({ renewal_status: status }).eq("id", policyId);
-    if (error) {
+    const result = await updatePolicyRenewalStatus({ policy_id: policyId, renewal_status: status });
+    if (!result.ok) {
       setData((current) => ({ ...current, policies: previous }));
-      notify("error", "We could not update the renewal status.");
+      notify("error", result.message);
       return;
     }
-    notify("success", "Renewal status updated.");
+    notify("success", result.message);
   }
 
   async function saveClient(payload: Partial<Client>) {
@@ -150,22 +172,20 @@ export function AppShell({
       notify("error", "Full name and phone number are required.");
       return;
     }
-    const supabase = createClient();
-    const body = {
-      agent_id: data.profile.id,
+    const formData = payloadToFormData({
+      id: payload.id,
       full_name: payload.full_name.trim(),
       phone_number: payload.phone_number.trim(),
-      email: payload.email?.trim() || null,
-      date_of_birth: payload.date_of_birth || null,
-      address: payload.address?.trim() || null
-    };
-    const { data: saved, error } = payload.id
-      ? await supabase.from("clients").update(body).eq("id", payload.id).eq("agent_id", data.profile.id).select("*").single()
-      : await supabase.from("clients").insert(body).select("*").single();
-    if (error || !saved) {
-      notify("error", "We could not save this client.");
+      email: payload.email?.trim() || "",
+      date_of_birth: payload.date_of_birth || "",
+      address: payload.address?.trim() || ""
+    });
+    const result = await upsertClient(null, formData);
+    if (!result.ok || !result.client) {
+      notify("error", result.message);
       return;
     }
+    const saved = result.client;
     setData((current) => ({
       ...current,
       clients: payload.id ? current.clients.map((client) => client.id === saved.id ? saved : client) : [saved, ...current.clients],
@@ -177,9 +197,9 @@ export function AppShell({
 
   async function deleteClient(client: Client) {
     if (blockWrite()) return;
-    const { error } = await createClient().from("clients").delete().eq("id", client.id).eq("agent_id", data.profile.id);
-    if (error) {
-      notify("error", "We could not delete this client.");
+    const result = await deleteClientAction(client.id);
+    if (!result.ok) {
+      notify("error", result.message);
       return;
     }
     setData((current) => ({
@@ -189,7 +209,7 @@ export function AppShell({
       commissions: current.commissions.filter((commission) => current.policies.find((policy) => policy.id === commission.policy_id)?.client_id !== client.id)
     }));
     setModal(null);
-    notify("success", "Client deleted.");
+    notify("success", result.message);
   }
 
   async function savePolicy(payload: PolicySavePayload) {
@@ -280,104 +300,56 @@ export function AppShell({
       return;
     }
 
-    const supabase = createClient();
-    const duplicate = await supabase
-      .from("policies")
-      .select("id")
-      .eq("policy_number", policyNumber)
-      .neq("id", payload.id ?? "00000000-0000-0000-0000-000000000000")
-      .maybeSingle();
-    if (duplicate.data) {
-      notify("error", "Policy number already exists.");
-      return;
-    }
-
-    let clientId = payload.client_id;
-    let client = clientId ? data.clients.find((item) => item.id === clientId) : null;
-    if (!clientId) {
-      const { data: savedClient, error: clientError } = await supabase
-        .from("clients")
-        .insert({
-          agent_id: data.profile.id,
-          full_name: payload.new_client!.full_name!.trim(),
-          phone_number: payload.new_client!.phone_number!.trim(),
-          email: payload.new_client?.email?.trim() || null,
-          date_of_birth: payload.new_client?.date_of_birth || null,
-          address: payload.new_client?.address?.trim() || null
-        })
-        .select("*")
-        .single();
-      if (clientError || !savedClient) {
-        notify("error", "We could not save the client for this policy.");
-        return;
-      }
-      clientId = savedClient.id;
-      client = savedClient;
-    }
-
-    const body = {
-      agent_id: data.profile.id,
-      client_id: clientId,
+    const formData = payloadToFormData({
+      id: payload.id,
+      client_id: payload.client_id || "",
+      client_full_name: payload.new_client?.full_name?.trim() || "",
+      client_phone_number: payload.new_client?.phone_number?.trim() || "",
+      client_email: payload.new_client?.email?.trim() || "",
+      client_date_of_birth: payload.new_client?.date_of_birth || "",
+      client_address: payload.new_client?.address?.trim() || "",
       policy_number: policyNumber,
       policy_type: payload.policy_type,
       insurance_category: payload.insurance_category,
-      vehicle_number: payload.policy_type === "Motor" ? payload.vehicle_number?.trim() : null,
-      property_location: payload.policy_type === "Property" ? payload.property_location?.trim() : null,
+      vehicle_number: payload.policy_type === "Motor" ? payload.vehicle_number?.trim() : "",
+      property_location: payload.policy_type === "Property" ? payload.property_location?.trim() : "",
       insurer_name: selectedCompany.name,
       start_date: payload.start_date,
       expiry_date: payload.expiry_date,
       premium_amount: Number(payload.premium_amount),
-      currency: "GHS",
       status: payload.status ?? "Active",
       renewal_status: payload.renewal_status ?? "Not Started",
-      notes: payload.notes?.trim() || null
-    };
-
-    const policyResult = payload.id
-      ? await supabase.from("policies").update(body).eq("id", payload.id).eq("agent_id", data.profile.id).select("*").single()
-      : await supabase.from("policies").insert(body).select("*").single();
-    if (policyResult.error || !policyResult.data) {
-      console.error("PolicyHQ policy save failed", policyResult.error);
-      notify("error", "We could not save this policy.");
-      return;
-    }
-
-    const commissionRate = Number(payload.commission_rate ?? 10);
-    const commissionBody = {
-      policy_id: policyResult.data.id,
-      agent_id: data.profile.id,
-      commission_rate: commissionRate,
+      notes: payload.notes?.trim() || "",
+      commission_rate: Number(payload.commission_rate ?? 10),
       payment_status: payload.payment_status ?? "Pending"
-    };
-    const existingCommission = data.commissions.find((item) => item.policy_id === policyResult.data.id);
-    const commissionResult = existingCommission
-      ? await supabase.from("commissions").update(commissionBody).eq("id", existingCommission.id).select("*").single()
-      : await supabase.from("commissions").insert(commissionBody).select("*").single();
-    if (commissionResult.error || !commissionResult.data) {
-      console.error("PolicyHQ commission save failed", commissionResult.error);
-      notify("error", "Policy saved, but commission setup failed.");
+    });
+    const result = await upsertPolicy(null, formData);
+    if (!result.ok || !result.policy || !result.client || !result.commission) {
+      notify("error", result.message);
       return;
     }
 
-    client = client ?? data.clients.find((item) => item.id === policyResult.data.client_id)!;
-    const nextPolicy = { ...policyResult.data, client, commission: commissionResult.data } as PolicyWithClient;
+    const nextPolicy = result.policy as PolicyWithClient;
+    const client = result.client;
+    const commission = result.commission;
+    const existingCommission = data.commissions.find((item) => item.policy_id === nextPolicy.id);
     setData((current) => ({
       ...current,
-      clients: current.clients.some((item) => item.id === client!.id) ? current.clients : [client!, ...current.clients],
+      clients: current.clients.some((item) => item.id === client.id) ? current.clients.map((item) => item.id === client.id ? client : item) : [client, ...current.clients],
       policies: payload.id ? current.policies.map((policy) => policy.id === nextPolicy.id ? nextPolicy : policy) : [nextPolicy, ...current.policies],
       commissions: existingCommission
-        ? current.commissions.map((commission) => commission.id === commissionResult.data.id ? commissionResult.data : commission)
-        : [commissionResult.data, ...current.commissions]
+        ? current.commissions.map((item) => item.id === commission.id ? commission : item)
+        : [commission, ...current.commissions]
     }));
     setModal(null);
-    notify("success", "Policy saved successfully.");
+    notify("success", result.message);
   }
 
   async function deletePolicy(policy: PolicyWithClient) {
     if (blockWrite()) return;
-    const { error } = await createClient().from("policies").delete().eq("id", policy.id).eq("agent_id", data.profile.id);
-    if (error) {
-      notify("error", "We could not delete this policy.");
+    const result = await deletePolicyAction(policy.id);
+    if (!result.ok) {
+      notify("error", result.message);
       return;
     }
     setData((current) => ({
@@ -387,39 +359,39 @@ export function AppShell({
     }));
     setDetailPolicy(null);
     setModal(null);
-    notify("success", "Policy deleted.");
+    notify("success", result.message);
   }
 
   async function markPaid(commission: Commission) {
     if (blockWrite()) return;
-    const today = new Date().toISOString().slice(0, 10);
-    const { error } = await createClient().from("commissions").update({ payment_status: "Paid", payment_date: today }).eq("id", commission.id).eq("agent_id", data.profile.id);
-    if (error) {
-      notify("error", "We could not mark this commission as paid.");
+    const result = await markCommissionPaid({ commission_id: commission.id });
+    if (!result.ok || !result.commission) {
+      notify("error", result.message);
       return;
     }
+    const paidCommission = result.commission;
     setData((current) => ({
       ...current,
-      commissions: current.commissions.map((item) => item.id === commission.id ? { ...item, payment_status: "Paid", payment_date: today } : item),
-      policies: current.policies.map((policy) => policy.commission?.id === commission.id ? { ...policy, commission: { ...policy.commission, payment_status: "Paid", payment_date: today } } : policy)
+      commissions: current.commissions.map((item) => item.id === commission.id ? paidCommission : item),
+      policies: current.policies.map((policy) => policy.commission?.id === commission.id ? { ...policy, commission: paidCommission } : policy)
     }));
-    notify("success", "Commission marked as paid.");
+    notify("success", result.message);
   }
 
   async function markAllRead() {
     if (blockWrite()) return;
-    const { error } = await createClient().from("notifications").update({ is_read: true }).eq("agent_id", data.profile.id);
-    if (error) {
-      notify("error", "We could not update notifications.");
+    const result = await markAllNotificationsRead();
+    if (!result.ok) {
+      notify("error", result.message);
       return;
     }
     setData((current) => ({ ...current, notifications: current.notifications.map((item) => ({ ...item, is_read: true })) }));
-    notify("success", "Notifications marked as read.");
+    notify("success", result.message);
   }
 
   async function markNotification(notificationId: string) {
     if (blockWrite()) return;
-    await createClient().from("notifications").update({ is_read: true }).eq("id", notificationId).eq("agent_id", data.profile.id);
+    await markNotificationRead({ notification_id: notificationId });
     setData((current) => ({
       ...current,
       notifications: current.notifications.map((item) => item.id === notificationId ? { ...item, is_read: true } : item)
@@ -430,28 +402,18 @@ export function AppShell({
 
   async function saveProfile(formData: FormData) {
     if (blockWrite()) return;
-    const fullName = String(formData.get("full_name") ?? "").trim();
-    if (!fullName) {
-      notify("error", "Full name is required.");
+    const result = await updateProfile(formData);
+    if (!result.ok || !result.profile) {
+      notify("error", result.message);
       return;
     }
-    const body = {
-      full_name: fullName,
-      phone_number: String(formData.get("phone_number") ?? "").trim() || null,
-      company_name: String(formData.get("company_name") ?? "").trim() || null
-    };
-    const { data: profile, error } = await createClient().from("profiles").update(body).eq("id", data.profile.id).select("*").single();
-    if (error || !profile) {
-      notify("error", "We could not save your profile.");
-      return;
-    }
-    setData((current) => ({ ...current, profile: { ...profile, avatar_url: current.profile.avatar_url } }));
-    notify("success", "Profile saved.");
+    setData((current) => ({ ...current, profile: { ...result.profile, avatar_url: current.profile.avatar_url } }));
+    notify("success", result.message);
   }
 
   async function saveNotificationSettings(formData: FormData) {
     if (blockWrite()) return;
-    const body = {
+    const result = await updateNotificationSettings({
       whatsapp_enabled: formData.get("whatsapp_enabled") === "on",
       email_notifications_enabled: formData.get("email_notifications_enabled") === "on",
       birthday_messages_enabled: formData.get("birthday_messages_enabled") === "on",
@@ -459,14 +421,13 @@ export function AppShell({
       reminder_30_enabled: formData.get("reminder_30_enabled") === "on",
       reminder_14_enabled: formData.get("reminder_14_enabled") === "on",
       reminder_7_enabled: formData.get("reminder_7_enabled") === "on"
-    };
-    const { data: profile, error } = await createClient().from("profiles").update(body).eq("id", data.profile.id).select("*").single();
-    if (error || !profile) {
-      notify("error", "We could not save notification settings.");
+    });
+    if (!result.ok || !result.profile) {
+      notify("error", result.message);
       return;
     }
-    setData((current) => ({ ...current, profile: { ...profile, avatar_url: current.profile.avatar_url } }));
-    notify("success", "Notification settings saved.");
+    setData((current) => ({ ...current, profile: { ...result.profile, avatar_url: current.profile.avatar_url } }));
+    notify("success", result.message);
   }
 
   async function uploadAvatar(event: ChangeEvent<HTMLInputElement>) {
