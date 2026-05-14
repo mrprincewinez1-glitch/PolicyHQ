@@ -2,6 +2,7 @@ create extension if not exists pgcrypto;
 
 create table if not exists public.profiles (
   id uuid primary key references auth.users(id) on delete cascade,
+  role text not null default 'agent' check (role in ('admin', 'agent')),
   full_name text not null,
   email text,
   phone_number text,
@@ -35,6 +36,24 @@ add column if not exists birthday_messages_enabled boolean default true;
 
 alter table public.profiles
 add column if not exists agent_whatsapp_summary_enabled boolean default true;
+
+alter table public.profiles
+add column if not exists role text not null default 'agent';
+
+do $$
+begin
+  if not exists (
+    select 1
+    from pg_constraint
+    where conrelid = 'public.profiles'::regclass
+    and conname = 'profiles_role_check'
+  ) then
+    alter table public.profiles
+    add constraint profiles_role_check
+    check (role in ('admin', 'agent'));
+  end if;
+end;
+$$;
 
 alter table public.clients
 add column if not exists date_of_birth date;

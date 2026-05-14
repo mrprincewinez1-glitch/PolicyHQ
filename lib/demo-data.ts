@@ -27,6 +27,7 @@ const demoExpiryDates = [
 
 export const demoProfile: Profile = {
   id: "demo-agent",
+  role: "agent",
   full_name: "Agent",
   email: "agent@policyhq.demo",
   phone_number: "+233 24 000 0000",

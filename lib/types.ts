@@ -3,9 +3,11 @@ export type InsuranceCategory = "Life" | "Non-Life" | "Health";
 export type PolicyStatus = "Active" | "Expired" | "Cancelled";
 export type RenewalStatus = "Not Started" | "Reminder Sent" | "Under Renewal" | "Renewed" | "Lapsed";
 export type PaymentStatus = "Paid" | "Pending";
+export type UserRole = "admin" | "agent";
 
 export type Profile = {
   id: string;
+  role: UserRole;
   full_name: string;
   email: string | null;
   phone_number: string | null;
