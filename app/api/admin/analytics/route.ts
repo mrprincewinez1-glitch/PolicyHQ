@@ -15,7 +15,7 @@ export async function GET() {
   const supabase = createClient();
   const [agentsResult, clientsResult, policiesResult, commissionsResult] = await Promise.all([
     supabase.from("profiles").select("id", { count: "exact", head: true }),
-    supabase.from("clients").select("id", { count: "exact", head: true }),
+    supabase.from("clients").select("id", { count: "exact", head: true }).is("deleted_at", null),
     supabase.from("policies").select("id", { count: "exact", head: true }),
     supabase.from("commissions").select("commission_amount, payment_status").range(0, 999)
   ]);

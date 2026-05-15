@@ -257,6 +257,7 @@ export function AppShell({
         email: payload.new_client?.email?.trim() || null,
         date_of_birth: payload.new_client?.date_of_birth || null,
         address: payload.new_client?.address?.trim() || null,
+        deleted_at: null,
         created_at: new Date().toISOString(),
         updated_at: null
       };
@@ -522,7 +523,7 @@ export function AppShell({
       base={base}
       onAdd={() => blockWrite() || setModal({ type: "client" })}
       onEdit={(client) => blockWrite() || setModal({ type: "client", client })}
-      onDelete={(client) => setModal({ type: "confirm", title: "Delete client?", body: `This will remove ${client.full_name} and all linked policies.`, action: () => deleteClient(client) })}
+      onDelete={(client) => setModal({ type: "confirm", title: "Archive client?", body: `This will hide ${client.full_name} from active records while preserving policy and commission history.`, action: () => deleteClient(client) })}
       onExport={() => downloadCsv("policyhq-clients", clientRows(data.clients, data.policies))}
     />
   ) : active === "policies" ? (

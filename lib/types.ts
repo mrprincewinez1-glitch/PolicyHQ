@@ -30,6 +30,7 @@ export type Client = {
   email: string | null;
   date_of_birth: string | null;
   address: string | null;
+  deleted_at: string | null;
   created_at: string;
   updated_at: string | null;
 };

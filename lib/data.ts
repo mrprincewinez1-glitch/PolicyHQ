@@ -1,7 +1,17 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { demoData } from "@/lib/demo-data";
-import type { AppData, Commission, PolicyWithClient, Profile } from "@/lib/types";
+import type { AppData, Client, Commission, PolicyWithClient, Profile } from "@/lib/types";
+
+const profileColumns = "id, role, full_name, email, phone_number, company_name, avatar_url, whatsapp_enabled, email_notifications_enabled, birthday_messages_enabled, agent_whatsapp_summary_enabled, reminder_30_enabled, reminder_14_enabled, reminder_7_enabled";
+const clientColumns = "id, agent_id, full_name, phone_number, email, date_of_birth, address, deleted_at, created_at, updated_at";
+const policyColumns = "id, agent_id, client_id, policy_number, policy_type, insurance_category, vehicle_number, property_location, insurer_name, start_date, expiry_date, premium_amount, currency, status, renewal_status, notes, created_at, updated_at, client:clients(id, agent_id, full_name, phone_number, email, date_of_birth, address, deleted_at, created_at, updated_at)";
+const commissionColumns = "id, policy_id, agent_id, commission_rate, commission_amount, payment_status, payment_date, created_at";
+const notificationColumns = "id, agent_id, policy_id, client_id, message, type, is_read, created_at";
+
+type RawPolicyWithClient = Omit<PolicyWithClient, "client"> & {
+  client: Client | Client[] | null;
+};
 
 export async function getAuthenticatedAppData(): Promise<AppData> {
   if (process.env.NEXT_PUBLIC_LOCAL_PREVIEW === "true") {
@@ -14,11 +24,11 @@ export async function getAuthenticatedAppData(): Promise<AppData> {
   if (!user) redirect("/sign-in?error=Please sign in again. Your session was not active.");
 
   const [profileResult, clientsResult, policiesResult, commissionsResult, notificationsResult] = await Promise.all([
-    supabase.from("profiles").select("*").eq("id", user.id).single(),
-    supabase.from("clients").select("*").eq("agent_id", user.id).order("created_at", { ascending: false }),
-    supabase.from("policies").select("*, client:clients(*)").eq("agent_id", user.id).order("expiry_date", { ascending: true }),
-    supabase.from("commissions").select("*").eq("agent_id", user.id).order("created_at", { ascending: false }),
-    supabase.from("notifications").select("*").eq("agent_id", user.id).order("created_at", { ascending: false })
+    supabase.from("profiles").select(profileColumns).eq("id", user.id).single(),
+    supabase.from("clients").select(clientColumns).eq("agent_id", user.id).is("deleted_at", null).order("created_at", { ascending: false }),
+    supabase.from("policies").select(policyColumns).eq("agent_id", user.id).order("expiry_date", { ascending: true }),
+    supabase.from("commissions").select(commissionColumns).eq("agent_id", user.id).order("created_at", { ascending: false }),
+    supabase.from("notifications").select(notificationColumns).eq("agent_id", user.id).order("created_at", { ascending: false })
   ]);
 
   let profile = profileResult.data;
@@ -34,7 +44,7 @@ export async function getAuthenticatedAppData(): Promise<AppData> {
         agent_whatsapp_summary_enabled: true,
         company_name: user.user_metadata?.company_name ?? null
       })
-      .select("*")
+      .select(profileColumns)
       .single();
 
     if (repairError || !repairedProfile) {
@@ -44,19 +54,44 @@ export async function getAuthenticatedAppData(): Promise<AppData> {
     profile = repairedProfile;
   }
 
-  const commissions = (commissionsResult.data ?? []) as Commission[];
-  const policies = ((policiesResult.data ?? []) as PolicyWithClient[]).map((policy) => ({
-    ...policy,
-    commission: commissions.find((commission) => commission.policy_id === policy.id)
-  }));
+  const rawCommissions = (commissionsResult.data ?? []) as Commission[];
+  const clients = (clientsResult.data ?? []) as Client[];
+  await logClientViews(supabase, user.id, clients.map((client) => client.id));
+  const policies: PolicyWithClient[] = [];
+  for (const policy of (policiesResult.data ?? []) as unknown as RawPolicyWithClient[]) {
+    const client = Array.isArray(policy.client) ? policy.client[0] : policy.client;
+    if (!client || client.deleted_at) continue;
+    policies.push({
+      ...policy,
+      client,
+      commission: rawCommissions.find((commission) => commission.policy_id === policy.id)
+    });
+  }
+  const activePolicyIds = new Set(policies.map((policy) => policy.id));
+  const commissions = rawCommissions.filter((commission) => activePolicyIds.has(commission.policy_id));
 
   return {
     profile: await profileWithSignedAvatar(supabase, profile as Profile),
-    clients: clientsResult.data ?? [],
+    clients,
     policies,
     commissions,
     notifications: notificationsResult.data ?? []
   };
+}
+
+async function logClientViews(supabase: ReturnType<typeof createClient>, userId: string, clientIds: string[]) {
+  if (!clientIds.length) return;
+  const { error } = await supabase.from("audit_log").insert(
+    clientIds.map((clientId) => ({
+      user_id: userId,
+      action: "viewed",
+      table_name: "clients",
+      record_id: clientId
+    }))
+  );
+  if (error) {
+    console.error("Client view audit log insert failed");
+  }
 }
 
 async function profileWithSignedAvatar(supabase: ReturnType<typeof createClient>, profile: Profile) {

@@ -14,6 +14,7 @@ type PolicyRecord = {
     full_name: string;
     phone_number: string;
     email: string | null;
+    deleted_at: string | null;
   };
   profiles: {
     id: string;
@@ -686,7 +687,7 @@ Deno.serve(async (req) => {
     try {
       const query = await supabase
         .from("policies")
-        .select("id, agent_id, policy_number, policy_type, insurer_name, expiry_date, renewal_status, clients(id, agent_id, full_name, phone_number, email), profiles(id, full_name, company_name, phone_number, whatsapp_enabled, email_notifications_enabled, agent_whatsapp_summary_enabled, reminder_30_enabled, reminder_14_enabled, reminder_7_enabled)")
+        .select("id, agent_id, policy_number, policy_type, insurer_name, expiry_date, renewal_status, clients(id, agent_id, full_name, phone_number, email, deleted_at), profiles(id, full_name, company_name, phone_number, whatsapp_enabled, email_notifications_enabled, agent_whatsapp_summary_enabled, reminder_30_enabled, reminder_14_enabled, reminder_7_enabled)")
         .eq("status", "Active")
         .eq("expiry_date", expiryDate);
 
@@ -709,6 +710,11 @@ Deno.serve(async (req) => {
       if (!policy) {
         stats.messagesSkipped += 1;
         results.push({ days, status: "missing_join_data", timestamp: new Date().toISOString() });
+        continue;
+      }
+      if (policy.clients.deleted_at) {
+        stats.messagesSkipped += 1;
+        results.push({ days, status: "skipped_deleted_client", timestamp: new Date().toISOString() });
         continue;
       }
 

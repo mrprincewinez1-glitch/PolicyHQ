@@ -27,6 +27,7 @@ create table if not exists public.clients (
   email text,
   date_of_birth date,
   address text,
+  deleted_at timestamptz,
   created_at timestamptz default now(),
   updated_at timestamptz
 );
@@ -57,6 +58,9 @@ $$;
 
 alter table public.clients
 add column if not exists date_of_birth date;
+
+alter table public.clients
+add column if not exists deleted_at timestamptz;
 
 create table if not exists public.policies (
   id uuid primary key default gen_random_uuid(),
@@ -291,9 +295,44 @@ create table if not exists public.backup_logs (
   created_at timestamptz default now()
 );
 
+create table if not exists public.audit_log (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references public.profiles(id) on delete cascade,
+  action text not null check (action in ('viewed', 'updated', 'deleted')),
+  table_name text not null,
+  record_id uuid not null,
+  "timestamp" timestamptz default now()
+);
+
+comment on table public.profiles is 'data_classification=PII: stores agent name, email, phone number, company profile details, and avatar path.';
+comment on table public.clients is 'data_classification=PII: stores client name, phone number, email, date of birth, and address.';
+comment on table public.policies is 'data_classification=PII_LINKED: policy numbers, notes, vehicle numbers, and property locations can identify clients.';
+comment on table public.notifications is 'data_classification=PII_LINKED: notification messages may include client names and policy numbers.';
+comment on table public.notification_logs is 'data_classification=PII_LINKED: delivery logs are linked to clients and policies.';
+comment on table public.whatsapp_logs is 'data_classification=PII_LINKED: WhatsApp delivery logs are linked to client communication.';
+comment on table public.audit_log is 'data_classification=SECURITY_AUDIT: records access and changes to client records.';
+comment on table public.backup_logs is 'data_classification=CONFIDENTIAL: file paths may point to backups containing PII.';
+comment on column public.clients.full_name is 'PII';
+comment on column public.clients.phone_number is 'PII';
+comment on column public.clients.email is 'PII';
+comment on column public.clients.date_of_birth is 'PII';
+comment on column public.clients.address is 'PII';
+comment on column public.profiles.full_name is 'PII';
+comment on column public.profiles.email is 'PII';
+comment on column public.profiles.phone_number is 'PII';
+comment on column public.policies.vehicle_number is 'PII_LINKED';
+comment on column public.policies.property_location is 'PII_LINKED';
+comment on column public.policies.notes is 'PII_LINKED';
+
 create index if not exists whatsapp_logs_dedupe_idx
 on public.whatsapp_logs (client_id, policy_id, template_name, sent_at desc)
 where status = 'sent';
+
+create index if not exists clients_agent_active_idx
+on public.clients (agent_id, deleted_at, created_at desc);
+
+create index if not exists audit_log_user_timestamp_idx
+on public.audit_log (user_id, "timestamp" desc);
 
 create index if not exists whatsapp_logs_agent_idx
 on public.whatsapp_logs (agent_id, sent_at desc);
@@ -406,6 +445,7 @@ alter table public.notification_logs enable row level security;
 alter table public.whatsapp_logs enable row level security;
 alter table public.function_error_logs enable row level security;
 alter table public.backup_logs enable row level security;
+alter table public.audit_log enable row level security;
 
 grant usage on schema public to authenticated;
 
@@ -421,6 +461,8 @@ grant select on public.function_error_logs to authenticated;
 grant insert, update on public.function_error_logs to service_role;
 grant select on public.backup_logs to authenticated;
 grant insert on public.backup_logs to service_role;
+grant insert on public.audit_log to authenticated;
+grant select on public.audit_log to authenticated;
 
 grant usage, select on all sequences in schema public to authenticated;
 
@@ -433,32 +475,54 @@ with check (auth.uid() = id);
 drop policy if exists "Clients are agent scoped" on public.clients;
 create policy "Clients are agent scoped"
 on public.clients for all
-using (auth.uid() = agent_id)
+using (auth.uid() = agent_id and deleted_at is null)
 with check (auth.uid() = agent_id);
 
 drop policy if exists "Policies are agent scoped" on public.policies;
 create policy "Policies are agent scoped"
 on public.policies for all
-using (auth.uid() = agent_id)
+using (
+  auth.uid() = agent_id and
+  exists (
+    select 1 from public.clients
+    where clients.id = policies.client_id
+    and clients.agent_id = auth.uid()
+    and clients.deleted_at is null
+  )
+)
 with check (
   auth.uid() = agent_id and
   exists (
     select 1 from public.clients
     where clients.id = policies.client_id
     and clients.agent_id = auth.uid()
+    and clients.deleted_at is null
   )
 );
 
 drop policy if exists "Commissions are agent scoped" on public.commissions;
 create policy "Commissions are agent scoped"
 on public.commissions for all
-using (auth.uid() = agent_id)
+using (
+  auth.uid() = agent_id and
+  exists (
+    select 1
+    from public.policies
+    join public.clients on clients.id = policies.client_id
+    where policies.id = commissions.policy_id
+    and policies.agent_id = auth.uid()
+    and clients.deleted_at is null
+  )
+)
 with check (
   auth.uid() = agent_id and
   exists (
-    select 1 from public.policies
+    select 1
+    from public.policies
+    join public.clients on clients.id = policies.client_id
     where policies.id = commissions.policy_id
     and policies.agent_id = auth.uid()
+    and clients.deleted_at is null
   )
 );
 
@@ -495,6 +559,22 @@ with check (public.is_admin());
 drop policy if exists "backup_logs_admin_select" on public.backup_logs;
 create policy "backup_logs_admin_select"
 on public.backup_logs for select
+to authenticated
+using (public.is_admin());
+
+drop policy if exists "audit_log_insert_own_client_events" on public.audit_log;
+create policy "audit_log_insert_own_client_events"
+on public.audit_log for insert
+to authenticated
+with check (
+  user_id = auth.uid()
+  and table_name = 'clients'
+  and action in ('viewed', 'updated', 'deleted')
+);
+
+drop policy if exists "audit_log_admin_select" on public.audit_log;
+create policy "audit_log_admin_select"
+on public.audit_log for select
 to authenticated
 using (public.is_admin());
 

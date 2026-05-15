@@ -34,7 +34,7 @@ export default async function AdminPage() {
   const supabase = createClient();
   const [agentsResult, clientsResult, policiesResult, commissionsResult, functionErrorsResult] = await Promise.all([
     supabase.from("profiles").select("id, full_name, email, company_name, role, created_at").order("created_at", { ascending: false }).range(0, 99),
-    supabase.from("clients").select("id", { count: "exact", head: true }),
+    supabase.from("clients").select("id", { count: "exact", head: true }).is("deleted_at", null),
     supabase.from("policies").select("id", { count: "exact", head: true }),
     supabase.from("commissions").select("commission_amount, payment_status").range(0, 999),
     supabase.from("function_error_logs").select("id, function_name, error_message, created_at").eq("resolved", false).order("created_at", { ascending: false }).range(0, 24)

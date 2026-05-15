@@ -72,6 +72,7 @@ export const demoClients: Client[] = [
     "1995-11-24"
   ][index],
   address,
+  deleted_at: null,
   created_at: subDays(today, 70 - index * 4).toISOString(),
   updated_at: null
 }));

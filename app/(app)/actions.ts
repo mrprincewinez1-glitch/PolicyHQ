@@ -74,7 +74,7 @@ const avatarAllowedTypes = new Map([
   ["image/webp", "webp"]
 ]);
 const maxAvatarSize = 2 * 1024 * 1024;
-const clientColumns = "id, agent_id, full_name, phone_number, email, date_of_birth, address, created_at, updated_at";
+const clientColumns = "id, agent_id, full_name, phone_number, email, date_of_birth, address, deleted_at, created_at, updated_at";
 const policyColumns = "id, agent_id, client_id, policy_number, policy_type, insurance_category, vehicle_number, property_location, insurer_name, start_date, expiry_date, premium_amount, currency, status, renewal_status, notes, created_at, updated_at";
 const commissionColumns = "id, policy_id, agent_id, commission_rate, commission_amount, payment_status, payment_date, created_at";
 const profileColumns = "id, role, full_name, email, phone_number, company_name, avatar_url, whatsapp_enabled, email_notifications_enabled, birthday_messages_enabled, agent_whatsapp_summary_enabled, reminder_30_enabled, reminder_14_enabled, reminder_7_enabled";
@@ -92,26 +92,53 @@ async function currentUserId() {
   return { supabase, agentId: data.user.id };
 }
 
+async function insertClientAuditLog(
+  supabase: ReturnType<typeof createClient>,
+  agentId: string,
+  action: "viewed" | "updated" | "deleted",
+  clientId: string
+) {
+  const { error } = await supabase.from("audit_log").insert({
+    user_id: agentId,
+    action,
+    table_name: "clients",
+    record_id: clientId
+  });
+  if (error) {
+    console.error("Client audit log insert failed");
+  }
+}
+
 export async function upsertClient(_: unknown, formData: FormData) {
   const parsed = clientSchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) return { ok: false, message: parsed.error.issues[0]?.message ?? "Check client details." };
   const { supabase, agentId } = await currentUserId();
   const payload = { ...parsed.data, agent_id: agentId, email: parsed.data.email || null, date_of_birth: parsed.data.date_of_birth || null };
   const query = parsed.data.id
-    ? supabase.from("clients").update(payload).eq("id", parsed.data.id).eq("agent_id", agentId).select(clientColumns).single()
+    ? supabase.from("clients").update(payload).eq("id", parsed.data.id).eq("agent_id", agentId).is("deleted_at", null).select(clientColumns).single()
     : supabase.from("clients").insert(payload).select(clientColumns).single();
   const { data: client, error } = await query;
   if (error || !client) return { ok: false, message: "We could not save this client." };
+  await insertClientAuditLog(supabase, agentId, "updated", client.id);
   revalidatePath("/clients");
   return { ok: true, message: "Client saved successfully.", client };
 }
 
 export async function deleteClient(clientId: string) {
   const { supabase, agentId } = await currentUserId();
-  const { error } = await supabase.from("clients").delete().eq("id", clientId).eq("agent_id", agentId);
-  if (error) return { ok: false, message: "We could not delete this client." };
+  const { error } = await supabase
+    .from("clients")
+    .update({ deleted_at: new Date().toISOString() })
+    .eq("id", clientId)
+    .eq("agent_id", agentId)
+    .is("deleted_at", null);
+  if (error) return { ok: false, message: "We could not archive this client." };
+  await insertClientAuditLog(supabase, agentId, "deleted", clientId);
   revalidatePath("/clients");
-  return { ok: true, message: "Client deleted." };
+  revalidatePath("/policies");
+  revalidatePath("/commissions");
+  revalidatePath("/dashboard");
+  return { ok: true, message: "Client archived." };
 }
 
 export async function upsertPolicy(_: unknown, formData: FormData) {
@@ -138,6 +165,19 @@ export async function upsertPolicy(_: unknown, formData: FormData) {
   if (duplicate.data) return { ok: false, message: "Policy number already exists." };
 
   let clientId = parsed.data.client_id || "";
+  if (clientId) {
+    const existingClient = await supabase
+      .from("clients")
+      .select("id")
+      .eq("id", clientId)
+      .eq("agent_id", agentId)
+      .is("deleted_at", null)
+      .maybeSingle();
+    if (existingClient.error || !existingClient.data) {
+      return { ok: false, message: "Select an active client before saving this policy." };
+    }
+  }
+
   if (!clientId) {
     const { data: client, error: clientError } = await supabase
       .from("clients")
@@ -202,6 +242,7 @@ export async function upsertPolicy(_: unknown, formData: FormData) {
     .select(clientColumns)
     .eq("id", policy.client_id)
     .eq("agent_id", agentId)
+    .is("deleted_at", null)
     .single();
   if (clientFetchError || !client) return { ok: false, message: "Policy saved, but client details could not be loaded." };
 

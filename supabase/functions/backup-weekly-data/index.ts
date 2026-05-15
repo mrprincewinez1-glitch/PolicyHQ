@@ -8,6 +8,7 @@ type ClientRow = {
   email: string | null;
   date_of_birth: string | null;
   address: string | null;
+  deleted_at: string | null;
   created_at: string;
   updated_at: string | null;
 };
@@ -51,6 +52,7 @@ const csvHeaders = [
   "email",
   "date_of_birth",
   "address",
+  "deleted_at",
   "policy_number",
   "policy_type",
   "insurance_category",
@@ -128,6 +130,7 @@ function clientToCsvRow(client: ClientRow) {
     client.email,
     client.date_of_birth,
     client.address,
+    client.deleted_at,
     "",
     "",
     "",
@@ -152,6 +155,7 @@ function policyToCsvRow(policy: PolicyRow) {
     policy.id,
     policy.agent_id,
     policy.client_id,
+    "",
     "",
     "",
     "",
@@ -319,7 +323,7 @@ Deno.serve(async (req) => {
       fetchAllRows<ClientRow>(
         supabase,
         "clients",
-        "id, agent_id, full_name, phone_number, email, date_of_birth, address, created_at, updated_at"
+        "id, agent_id, full_name, phone_number, email, date_of_birth, address, deleted_at, created_at, updated_at"
       ),
       fetchAllRows<PolicyRow>(
         supabase,

@@ -6,6 +6,7 @@ type ClientRecord = {
   full_name: string;
   phone_number: string;
   date_of_birth: string | null;
+  deleted_at: string | null;
   profiles: {
     id: string;
     full_name: string;
@@ -352,8 +353,9 @@ Deno.serve(async (req) => {
 
     const { data, error } = await supabase
       .from("clients")
-      .select("id, agent_id, full_name, phone_number, date_of_birth, profiles(id, full_name, company_name, whatsapp_enabled, birthday_messages_enabled)")
-      .not("date_of_birth", "is", null);
+      .select("id, agent_id, full_name, phone_number, date_of_birth, deleted_at, profiles(id, full_name, company_name, whatsapp_enabled, birthday_messages_enabled)")
+      .not("date_of_birth", "is", null)
+      .is("deleted_at", null);
 
     if (error) {
       throw new Error("Birthday client query failed");
@@ -367,6 +369,7 @@ Deno.serve(async (req) => {
       }
 
       if (!isBirthdayToday(client.date_of_birth, month, day)) continue;
+      if (client.deleted_at) continue;
 
       const alreadySent = await supabase
         .from("notification_logs")
