@@ -3,3 +3,6 @@ verify_jwt = true
 
 [functions.send-birthday-messages]
 verify_jwt = true
+
+[functions.backup-weekly-data]
+verify_jwt = true

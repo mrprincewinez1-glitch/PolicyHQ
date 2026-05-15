@@ -282,6 +282,15 @@ create table if not exists public.function_error_logs (
   resolved boolean default false
 );
 
+create table if not exists public.backup_logs (
+  id uuid primary key default gen_random_uuid(),
+  run_at timestamptz default now(),
+  tables_backed_up text[] not null default array[]::text[],
+  file_path text,
+  status text not null check (status in ('success', 'failed')),
+  created_at timestamptz default now()
+);
+
 create index if not exists whatsapp_logs_dedupe_idx
 on public.whatsapp_logs (client_id, policy_id, template_name, sent_at desc)
 where status = 'sent';
@@ -291,6 +300,9 @@ on public.whatsapp_logs (agent_id, sent_at desc);
 
 create index if not exists function_error_logs_unresolved_idx
 on public.function_error_logs (resolved, created_at desc);
+
+create index if not exists backup_logs_run_at_idx
+on public.backup_logs (run_at desc);
 
 alter table public.notifications
 drop constraint if exists notifications_type_check;
@@ -393,6 +405,7 @@ alter table public.notifications enable row level security;
 alter table public.notification_logs enable row level security;
 alter table public.whatsapp_logs enable row level security;
 alter table public.function_error_logs enable row level security;
+alter table public.backup_logs enable row level security;
 
 grant usage on schema public to authenticated;
 
@@ -406,6 +419,8 @@ grant select on public.whatsapp_logs to authenticated;
 grant select, insert on public.whatsapp_logs to service_role;
 grant select on public.function_error_logs to authenticated;
 grant insert, update on public.function_error_logs to service_role;
+grant select on public.backup_logs to authenticated;
+grant insert on public.backup_logs to service_role;
 
 grant usage, select on all sequences in schema public to authenticated;
 
@@ -477,6 +492,12 @@ to authenticated
 using (public.is_admin())
 with check (public.is_admin());
 
+drop policy if exists "backup_logs_admin_select" on public.backup_logs;
+create policy "backup_logs_admin_select"
+on public.backup_logs for select
+to authenticated
+using (public.is_admin());
+
 insert into storage.buckets (id, name, public)
 values ('avatars', 'avatars', false)
 on conflict (id) do nothing;
@@ -489,6 +510,14 @@ insert into storage.buckets (id, name, public)
 values ('policy-documents', 'policy-documents', false)
 on conflict (id) do nothing;
 
+insert into storage.buckets (id, name, public)
+values ('policy-backups', 'policy-backups', false)
+on conflict (id) do nothing;
+
+update storage.buckets
+set public = false
+where id = 'policy-backups';
+
 drop policy if exists "Avatar read public" on storage.objects;
 
 drop policy if exists "Agents manage own avatars" on storage.objects;
@@ -496,6 +525,28 @@ create policy "Agents manage own avatars"
 on storage.objects for all
 using (bucket_id = 'avatars' and auth.uid()::text = (storage.foldername(name))[1])
 with check (bucket_id = 'avatars' and auth.uid()::text = (storage.foldername(name))[1]);
+
+drop policy if exists "policy_backups_admin_read" on storage.objects;
+create policy "policy_backups_admin_read"
+on storage.objects for select
+to authenticated
+using (
+  bucket_id = 'policy-backups'
+  and public.is_admin()
+);
+
+drop policy if exists "policy_backups_admin_update" on storage.objects;
+create policy "policy_backups_admin_update"
+on storage.objects for update
+to authenticated
+using (
+  bucket_id = 'policy-backups'
+  and public.is_admin()
+)
+with check (
+  bucket_id = 'policy-backups'
+  and public.is_admin()
+);
 
 drop policy if exists "Agents manage own policy documents" on storage.objects;
 create policy "Agents manage own policy documents"
