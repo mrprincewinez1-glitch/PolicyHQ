@@ -80,6 +80,12 @@ type RunStats = {
   messagesSkipped: number;
 };
 
+type CriticalFunctionError = {
+  message: string;
+  stack: string | null;
+  timestamp: string;
+};
+
 type AgentSummaryItem = {
   days: number;
   clientName: string;
@@ -101,6 +107,7 @@ const reminderTypes = new Map([
 ]);
 const approvedTemplateNames = new Set(["renewal_reminder", "birthday_message", "agent_daily_summary"]);
 const dailyRunTemplateName = "renewal_reminder";
+const functionName = "send-renewal-reminders";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "https://policyhq.vercel.app",
@@ -231,6 +238,77 @@ function sanitizeWhatsAppError(err: unknown) {
     return err.message;
   }
   return "WhatsApp send failed";
+}
+
+function criticalFunctionError(err: unknown): CriticalFunctionError {
+  if (err instanceof Error) {
+    return {
+      message: err.message || "Unknown function error",
+      stack: err.stack ?? null,
+      timestamp: new Date().toISOString()
+    };
+  }
+
+  return {
+    message: "Unknown function error",
+    stack: null,
+    timestamp: new Date().toISOString()
+  };
+}
+
+async function sendCriticalErrorEmail(error: CriticalFunctionError) {
+  const apiKey = Deno.env.get("RESEND_API_KEY")?.trim();
+  const alertEmail = Deno.env.get("FUNCTION_ERROR_ALERT_EMAIL")?.trim() || "mrprincewinez1@gmail.com";
+  if (!apiKey || !alertEmail) return;
+
+  try {
+    const response = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        from: "PolicyHQ Alerts <alerts@policyhq.app>",
+        to: [alertEmail],
+        subject: `PolicyHQ critical function failure: ${functionName}`,
+        html: `
+          <div style="font-family: Inter, Arial, sans-serif; color: #0F172A; line-height: 1.6;">
+            <h2 style="margin: 0 0 12px;">Critical Edge Function Failure</h2>
+            <p><strong>Function:</strong> ${functionName}</p>
+            <p><strong>Time:</strong> ${error.timestamp}</p>
+            <p><strong>Error:</strong> ${error.message}</p>
+          </div>
+        `
+      })
+    });
+
+    if (!response.ok) {
+      console.error("Critical function error alert email failed");
+    }
+  } catch {
+    console.error("Critical function error alert email crashed");
+  }
+}
+
+async function logCriticalFunctionError(supabase: ReturnType<typeof createClient>, err: unknown) {
+  const error = criticalFunctionError(err);
+
+  try {
+    const insert = await supabase.from("function_error_logs").insert({
+      function_name: functionName,
+      error_message: error.message,
+      error_stack: error.stack
+    });
+
+    if (insert.error) {
+      console.error("Critical function error log insert failed", insert.error.message);
+    }
+  } catch (logErr) {
+    console.error("Critical function error log insert crashed", logErr instanceof Error ? logErr.message : "Unknown error");
+  }
+
+  await sendCriticalErrorEmail(error);
 }
 
 async function postWhatsAppMessage(body: WhatsAppBody): Promise<WhatsAppSendResult> {
@@ -786,6 +864,15 @@ Deno.serve(async (req) => {
     headers: { ...corsHeaders, "Content-Type": "application/json" }
   });
   } catch (err) {
+    const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
+    const supabase = createClient(supabaseUrl, trustedJwt.token, {
+      global: {
+        headers: {
+          Authorization: `Bearer ${trustedJwt.token}`
+        }
+      }
+    });
+    await logCriticalFunctionError(supabase, err);
     console.error("Renewal reminder job failed", err instanceof Error ? err.message : "Unknown error");
     return new Response(JSON.stringify({ ok: false, error: "Renewal reminder job failed." }), {
       status: 500,

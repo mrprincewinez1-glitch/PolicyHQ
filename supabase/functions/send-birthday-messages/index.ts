@@ -45,12 +45,19 @@ type MetaSendResponse = {
   messages?: Array<{ id?: string }>;
 };
 
+type CriticalFunctionError = {
+  message: string;
+  stack: string | null;
+  timestamp: string;
+};
+
 const corsHeaders = {
   "Access-Control-Allow-Origin": "https://policyhq.vercel.app",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
   "Access-Control-Allow-Methods": "POST, OPTIONS"
 };
 const approvedTemplateNames = new Set(["renewal_reminder", "birthday_message", "agent_daily_summary"]);
+const functionName = "send-birthday-messages";
 
 function authError(message: string, status: number) {
   return new Response(JSON.stringify({ ok: false, error: message }), {
@@ -168,6 +175,77 @@ function sanitizeWhatsAppError(err: unknown) {
   return "WhatsApp send failed";
 }
 
+function criticalFunctionError(err: unknown): CriticalFunctionError {
+  if (err instanceof Error) {
+    return {
+      message: err.message || "Unknown function error",
+      stack: err.stack ?? null,
+      timestamp: new Date().toISOString()
+    };
+  }
+
+  return {
+    message: "Unknown function error",
+    stack: null,
+    timestamp: new Date().toISOString()
+  };
+}
+
+async function sendCriticalErrorEmail(error: CriticalFunctionError) {
+  const apiKey = Deno.env.get("RESEND_API_KEY")?.trim();
+  const alertEmail = Deno.env.get("FUNCTION_ERROR_ALERT_EMAIL")?.trim() || "mrprincewinez1@gmail.com";
+  if (!apiKey || !alertEmail) return;
+
+  try {
+    const response = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        from: "PolicyHQ Alerts <alerts@policyhq.app>",
+        to: [alertEmail],
+        subject: `PolicyHQ critical function failure: ${functionName}`,
+        html: `
+          <div style="font-family: Inter, Arial, sans-serif; color: #0F172A; line-height: 1.6;">
+            <h2 style="margin: 0 0 12px;">Critical Edge Function Failure</h2>
+            <p><strong>Function:</strong> ${functionName}</p>
+            <p><strong>Time:</strong> ${error.timestamp}</p>
+            <p><strong>Error:</strong> ${error.message}</p>
+          </div>
+        `
+      })
+    });
+
+    if (!response.ok) {
+      console.error("Critical function error alert email failed");
+    }
+  } catch {
+    console.error("Critical function error alert email crashed");
+  }
+}
+
+async function logCriticalFunctionError(supabase: ReturnType<typeof createClient>, err: unknown) {
+  const error = criticalFunctionError(err);
+
+  try {
+    const insert = await supabase.from("function_error_logs").insert({
+      function_name: functionName,
+      error_message: error.message,
+      error_stack: error.stack
+    });
+
+    if (insert.error) {
+      console.error("Critical function error log insert failed", insert.error.message);
+    }
+  } catch (logErr) {
+    console.error("Critical function error log insert crashed", logErr instanceof Error ? logErr.message : "Unknown error");
+  }
+
+  await sendCriticalErrorEmail(error);
+}
+
 async function insertWhatsAppLog(
   supabase: ReturnType<typeof createClient>,
   client: ClientRecord,
@@ -267,94 +345,101 @@ Deno.serve(async (req) => {
       }
     }
   });
-  const { date, month, day } = todayParts();
-  const results: Array<Record<string, unknown>> = [];
 
-  const { data, error } = await supabase
-    .from("clients")
-    .select("id, agent_id, full_name, phone_number, date_of_birth, profiles(id, full_name, company_name, whatsapp_enabled, birthday_messages_enabled)")
-    .not("date_of_birth", "is", null);
+  try {
+    const { date, month, day } = todayParts();
+    const results: Array<Record<string, unknown>> = [];
 
-  if (error) {
-    return new Response(JSON.stringify({ ok: false, error: error.message, timestamp: new Date().toISOString() }), {
-      status: 500,
-      headers: { ...corsHeaders, "Content-Type": "application/json" }
-    });
-  }
+    const { data, error } = await supabase
+      .from("clients")
+      .select("id, agent_id, full_name, phone_number, date_of_birth, profiles(id, full_name, company_name, whatsapp_enabled, birthday_messages_enabled)")
+      .not("date_of_birth", "is", null);
 
-  for (const rawClient of (data ?? []) as unknown as RawClientRecord[]) {
-    const client = normalizeClientRecord(rawClient);
-    if (!client) {
-      results.push({ status: "missing_join_data", timestamp: new Date().toISOString() });
-      continue;
+    if (error) {
+      throw new Error("Birthday client query failed");
     }
 
-    if (!isBirthdayToday(client.date_of_birth, month, day)) continue;
+    for (const rawClient of (data ?? []) as unknown as RawClientRecord[]) {
+      const client = normalizeClientRecord(rawClient);
+      if (!client) {
+        results.push({ status: "missing_join_data", timestamp: new Date().toISOString() });
+        continue;
+      }
 
-    const alreadySent = await supabase
-      .from("notification_logs")
-      .select("id")
-      .eq("agent_id", client.agent_id)
-      .eq("client_id", client.id)
-      .eq("channel", "whatsapp")
-      .eq("status", "sent")
-      .eq("detail", `birthday:${date}:sent`)
-      .gte("created_at", `${date}T00:00:00+00:00`)
-      .lt("created_at", `${date}T23:59:59+00:00`)
-      .maybeSingle();
+      if (!isBirthdayToday(client.date_of_birth, month, day)) continue;
 
-    if (alreadySent.data) {
-      results.push({ client_id: client.id, status: "skipped_duplicate", timestamp: new Date().toISOString() });
-      continue;
-    }
+      const alreadySent = await supabase
+        .from("notification_logs")
+        .select("id")
+        .eq("agent_id", client.agent_id)
+        .eq("client_id", client.id)
+        .eq("channel", "whatsapp")
+        .eq("status", "sent")
+        .eq("detail", `birthday:${date}:sent`)
+        .gte("created_at", `${date}T00:00:00+00:00`)
+        .lt("created_at", `${date}T23:59:59+00:00`)
+        .maybeSingle();
 
-    if (!client.profiles.whatsapp_enabled || !client.profiles.birthday_messages_enabled) {
+      if (alreadySent.data) {
+        results.push({ client_id: client.id, status: "skipped_duplicate", timestamp: new Date().toISOString() });
+        continue;
+      }
+
+      if (!client.profiles.whatsapp_enabled || !client.profiles.birthday_messages_enabled) {
+        await supabase.from("notification_logs").insert({
+          agent_id: client.agent_id,
+          client_id: client.id,
+          channel: "whatsapp",
+          status: "skipped",
+          detail: `birthday:${date}:disabled`
+        });
+        results.push({ client_id: client.id, status: "skipped_disabled", timestamp: new Date().toISOString() });
+        continue;
+      }
+
+      const message = birthdayMessage(client);
+      let status = "sent";
+      let detail = `birthday:${date}:sent`;
+
+      try {
+        const sent = await sendWhatsApp(client, message);
+        await insertWhatsAppLog(supabase, client, sent.templateName, "sent", sent.messageId, null);
+      } catch (err) {
+        status = "failed";
+        const reason = sanitizeWhatsAppError(err);
+        detail = `birthday:${date}:${reason}`;
+        await insertWhatsAppLog(supabase, client, "birthday_message", "failed", null, reason);
+      }
+
       await supabase.from("notification_logs").insert({
         agent_id: client.agent_id,
         client_id: client.id,
         channel: "whatsapp",
-        status: "skipped",
-        detail: `birthday:${date}:disabled`
+        status,
+        detail
       });
-      results.push({ client_id: client.id, status: "skipped_disabled", timestamp: new Date().toISOString() });
-      continue;
+
+      await supabase.from("notifications").insert({
+        agent_id: client.agent_id,
+        client_id: client.id,
+        type: "birthday",
+        message: status === "sent"
+          ? `Birthday WhatsApp message sent to ${client.full_name}.`
+          : `Birthday WhatsApp message failed for ${client.full_name}.`
+      });
+
+      results.push({ client_id: client.id, status, timestamp: new Date().toISOString() });
     }
 
-    const message = birthdayMessage(client);
-    let status = "sent";
-    let detail = `birthday:${date}:sent`;
-
-    try {
-      const sent = await sendWhatsApp(client, message);
-      await insertWhatsAppLog(supabase, client, sent.templateName, "sent", sent.messageId, null);
-    } catch (err) {
-      status = "failed";
-      const reason = sanitizeWhatsAppError(err);
-      detail = `birthday:${date}:${reason}`;
-      await insertWhatsAppLog(supabase, client, "birthday_message", "failed", null, reason);
-    }
-
-    await supabase.from("notification_logs").insert({
-      agent_id: client.agent_id,
-      client_id: client.id,
-      channel: "whatsapp",
-      status,
-      detail
+    return new Response(JSON.stringify({ ok: true, date, results }), {
+      headers: { ...corsHeaders, "Content-Type": "application/json" }
     });
-
-    await supabase.from("notifications").insert({
-      agent_id: client.agent_id,
-      client_id: client.id,
-      type: "birthday",
-      message: status === "sent"
-        ? `Birthday WhatsApp message sent to ${client.full_name}.`
-        : `Birthday WhatsApp message failed for ${client.full_name}.`
+  } catch (err) {
+    await logCriticalFunctionError(supabase, err);
+    console.error("Birthday message job failed", err instanceof Error ? err.message : "Unknown error");
+    return new Response(JSON.stringify({ ok: false, error: "Birthday message job failed." }), {
+      status: 500,
+      headers: { ...corsHeaders, "Content-Type": "application/json" }
     });
-
-    results.push({ client_id: client.id, status, timestamp: new Date().toISOString() });
   }
-
-  return new Response(JSON.stringify({ ok: true, date, results }), {
-    headers: { ...corsHeaders, "Content-Type": "application/json" }
-  });
 });

@@ -273,12 +273,24 @@ create table if not exists public.whatsapp_logs (
   created_at timestamptz default now()
 );
 
+create table if not exists public.function_error_logs (
+  id uuid primary key default gen_random_uuid(),
+  function_name text not null,
+  error_message text not null,
+  error_stack text,
+  created_at timestamptz default now(),
+  resolved boolean default false
+);
+
 create index if not exists whatsapp_logs_dedupe_idx
 on public.whatsapp_logs (client_id, policy_id, template_name, sent_at desc)
 where status = 'sent';
 
 create index if not exists whatsapp_logs_agent_idx
 on public.whatsapp_logs (agent_id, sent_at desc);
+
+create index if not exists function_error_logs_unresolved_idx
+on public.function_error_logs (resolved, created_at desc);
 
 alter table public.notifications
 drop constraint if exists notifications_type_check;
@@ -380,6 +392,7 @@ alter table public.commissions enable row level security;
 alter table public.notifications enable row level security;
 alter table public.notification_logs enable row level security;
 alter table public.whatsapp_logs enable row level security;
+alter table public.function_error_logs enable row level security;
 
 grant usage on schema public to authenticated;
 
@@ -391,6 +404,8 @@ grant select, insert, update, delete on public.notifications to authenticated;
 grant select on public.notification_logs to authenticated;
 grant select on public.whatsapp_logs to authenticated;
 grant select, insert on public.whatsapp_logs to service_role;
+grant select on public.function_error_logs to authenticated;
+grant insert, update on public.function_error_logs to service_role;
 
 grant usage, select on all sequences in schema public to authenticated;
 
@@ -448,6 +463,19 @@ create policy "whatsapp_logs_select_own"
 on public.whatsapp_logs for select
 to authenticated
 using (auth.uid() = agent_id);
+
+drop policy if exists "function_error_logs_admin_select" on public.function_error_logs;
+create policy "function_error_logs_admin_select"
+on public.function_error_logs for select
+to authenticated
+using (public.is_admin());
+
+drop policy if exists "function_error_logs_admin_update" on public.function_error_logs;
+create policy "function_error_logs_admin_update"
+on public.function_error_logs for update
+to authenticated
+using (public.is_admin())
+with check (public.is_admin());
 
 insert into storage.buckets (id, name, public)
 values ('avatars', 'avatars', false)

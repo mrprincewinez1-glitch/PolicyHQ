@@ -18,6 +18,13 @@ type CommissionRow = {
   payment_status: "Paid" | "Pending";
 };
 
+type FunctionErrorRow = {
+  id: string;
+  function_name: string;
+  error_message: string;
+  created_at: string;
+};
+
 export default async function AdminPage() {
   const admin = await requireAdmin();
   if (!admin.ok) {
@@ -25,15 +32,17 @@ export default async function AdminPage() {
   }
 
   const supabase = createClient();
-  const [agentsResult, clientsResult, policiesResult, commissionsResult] = await Promise.all([
+  const [agentsResult, clientsResult, policiesResult, commissionsResult, functionErrorsResult] = await Promise.all([
     supabase.from("profiles").select("id, full_name, email, company_name, role, created_at").order("created_at", { ascending: false }).range(0, 99),
     supabase.from("clients").select("id", { count: "exact", head: true }),
     supabase.from("policies").select("id", { count: "exact", head: true }),
-    supabase.from("commissions").select("commission_amount, payment_status").range(0, 999)
+    supabase.from("commissions").select("commission_amount, payment_status").range(0, 999),
+    supabase.from("function_error_logs").select("id, function_name, error_message, created_at").eq("resolved", false).order("created_at", { ascending: false }).range(0, 24)
   ]);
 
   const agents = (agentsResult.data ?? []) as AgentRow[];
   const commissions = (commissionsResult.data ?? []) as CommissionRow[];
+  const functionErrors = (functionErrorsResult.data ?? []) as FunctionErrorRow[];
   const totalPaid = commissions
     .filter((commission) => commission.payment_status === "Paid")
     .reduce((sum, commission) => sum + commission.commission_amount, 0);
@@ -60,6 +69,28 @@ export default async function AdminPage() {
           <AdminMetric label="Clients" value={clientsResult.count ?? 0} />
           <AdminMetric label="Policies" value={policiesResult.count ?? 0} />
           <AdminMetric label="Paid Commissions" value={formatCurrency(totalPaid)} />
+        </section>
+
+        <section className="rounded-xl border border-slate-200 bg-white shadow-sm">
+          <div className="border-b border-slate-200 p-5">
+            <h2 className="text-xl font-extrabold text-slate-950">Unresolved Function Errors</h2>
+            <p className="mt-1 text-sm text-slate-600">Critical Supabase Edge Function failures that need review.</p>
+          </div>
+          {functionErrors.length ? (
+            <div className="divide-y divide-slate-100">
+              {functionErrors.map((error) => (
+                <div key={error.id} className="p-5">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <p className="font-bold text-slate-950">{error.function_name}</p>
+                    <time className="text-sm text-slate-500">{new Date(error.created_at).toLocaleString("en-GB")}</time>
+                  </div>
+                  <p className="mt-2 text-sm text-red-700">{error.error_message}</p>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="p-5 text-sm font-semibold text-slate-600">No unresolved function errors.</p>
+          )}
         </section>
 
         <section className="rounded-xl border border-slate-200 bg-white shadow-sm">
