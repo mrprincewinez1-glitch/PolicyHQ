@@ -8,6 +8,8 @@ const authRouteAliases: Record<string, string> = {
   "/login": "/sign-in",
   "/signup": "/sign-up"
 };
+const inactivityCookieName = "policyhq_last_active";
+const inactivityTimeoutMs = 8 * 60 * 60 * 1000;
 
 type CookieToSet = {
   name: string;
@@ -31,6 +33,26 @@ function redirectTo(request: NextRequest, pathname: string) {
   const url = request.nextUrl.clone();
   url.pathname = pathname;
   return NextResponse.redirect(url);
+}
+
+function clearInactivityCookie(response: NextResponse) {
+  response.cookies.set(inactivityCookieName, "", {
+    httpOnly: true,
+    sameSite: "lax",
+    secure: process.env.NODE_ENV === "production",
+    path: "/",
+    maxAge: 0
+  });
+}
+
+function setInactivityCookie(response: NextResponse) {
+  response.cookies.set(inactivityCookieName, String(Date.now()), {
+    httpOnly: true,
+    sameSite: "lax",
+    secure: process.env.NODE_ENV === "production",
+    path: "/",
+    maxAge: Math.floor(inactivityTimeoutMs / 1000)
+  });
 }
 
 export async function middleware(request: NextRequest) {
@@ -62,6 +84,9 @@ export async function middleware(request: NextRequest) {
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     {
+      auth: {
+        flowType: "pkce"
+      },
       cookies: {
         getAll() {
           return request.cookies.getAll();
@@ -82,15 +107,34 @@ export async function middleware(request: NextRequest) {
   const { data } = await supabase.auth.getUser();
 
   if (data.user && isAuthRoute(pathname)) {
-    return redirectTo(request, "/dashboard");
+    const redirectResponse = redirectTo(request, "/dashboard");
+    setInactivityCookie(redirectResponse);
+    return redirectResponse;
   }
 
   if (!data.user) {
     const url = request.nextUrl.clone();
     url.pathname = "/sign-in";
     url.searchParams.set("redirectedFrom", request.nextUrl.pathname);
-    return NextResponse.redirect(url);
+    const redirectResponse = NextResponse.redirect(url);
+    clearInactivityCookie(redirectResponse);
+    return redirectResponse;
   }
+
+  const lastActiveValue = request.cookies.get(inactivityCookieName)?.value;
+  const lastActive = lastActiveValue ? Number(lastActiveValue) : Date.now();
+
+  if (!Number.isFinite(lastActive) || Date.now() - lastActive > inactivityTimeoutMs) {
+    await supabase.auth.signOut();
+    const url = request.nextUrl.clone();
+    url.pathname = "/sign-in";
+    url.searchParams.set("error", "Your session expired after 8 hours of inactivity. Please sign in again.");
+    const redirectResponse = NextResponse.redirect(url);
+    clearInactivityCookie(redirectResponse);
+    return redirectResponse;
+  }
+
+  setInactivityCookie(response);
 
   return response;
 }

@@ -9,7 +9,6 @@ export function SignInForm() {
       <form action={signIn} className="space-y-4">
         <label className="block text-sm font-semibold">Email<Input name="email" type="email" required className="mt-1" /></label>
         <label className="block text-sm font-semibold">Password<Input name="password" type="password" required className="mt-1" /></label>
-        <label className="flex items-center gap-2 text-sm text-slate-600"><input type="checkbox" name="remember" /> Remember Me</label>
         <Button className="w-full" type="submit">Sign In</Button>
       </form>
       <div className="mt-5 flex justify-between text-sm font-semibold">
