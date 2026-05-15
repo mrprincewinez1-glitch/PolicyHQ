@@ -21,7 +21,8 @@ import {
   Trash2,
   Upload,
   Users,
-  X
+  X,
+  type LucideIcon
 } from "lucide-react";
 import {
   deleteClient as deleteClientAction,
@@ -76,6 +77,7 @@ type CommissionPaymentFilter = "All" | "Paid" | "Pending";
 type CommissionDisplayStatus = "Pending" | "Overdue" | "Paid";
 type CommissionClassFilter = "All" | InsuranceCategory;
 type CommissionPeriodMode = "Monthly" | "Yearly" | "All Time";
+type NavItem = readonly [Section | "admin", LucideIcon, string];
 
 const nav = [
   ["dashboard", LayoutDashboard, "Dashboard"],
@@ -114,6 +116,9 @@ export function AppShell({
   const [detailPolicy, setDetailPolicy] = useState<PolicyWithClient | null>(null);
   const base = demo ? "/demo" : "";
   const unread = data.notifications.filter((item) => !item.is_read).length;
+  const navItems: NavItem[] = data.profile.role === "admin" && !demo
+    ? [...nav, ["admin", ShieldCheck, "Admin"]]
+    : [...nav];
 
   function notify(tone: "success" | "error", message: string) {
     setToast({ tone, message });
@@ -577,12 +582,12 @@ export function AppShell({
             </Link>
           </div>
           <nav className="space-y-1 p-3">
-            {nav.map(([key, Icon, label]) => (
+            {navItems.map(([key, Icon, label]) => (
               <Link
                 key={key}
-                href={navHref(base, key)}
+                href={key === "admin" ? "/admin" : navHref(base, key)}
                 onClick={() => {
-                  setActive(key);
+                  if (key !== "admin") setActive(key);
                   setMobileOpen(false);
                 }}
                 className={`flex w-full items-center gap-3 rounded-xl border-l-4 px-4 py-3 text-left text-sm font-semibold ${active === key && !renewalRange ? "border-accent bg-white/10 text-white" : "border-transparent text-slate-300 hover:bg-white/5"}`}
