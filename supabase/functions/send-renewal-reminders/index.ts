@@ -73,6 +73,13 @@ type WhatsAppSendResult = {
   messageId: string | null;
 };
 
+type RunStats = {
+  policiesChecked: number;
+  messagesSent: number;
+  messagesFailed: number;
+  messagesSkipped: number;
+};
+
 type AgentSummaryItem = {
   days: number;
   clientName: string;
@@ -93,6 +100,7 @@ const reminderTypes = new Map([
   [7, "renewal_7"]
 ]);
 const approvedTemplateNames = new Set(["renewal_reminder", "birthday_message", "agent_daily_summary"]);
+const dailyRunTemplateName = "renewal_reminder";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "https://policyhq.vercel.app",
@@ -138,6 +146,14 @@ function addDays(date: Date, days: number) {
   const next = new Date(date);
   next.setUTCDate(next.getUTCDate() + days);
   return next.toISOString().slice(0, 10);
+}
+
+function todayUtcWindow() {
+  const now = new Date();
+  const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+  const end = new Date(start);
+  end.setUTCDate(end.getUTCDate() + 1);
+  return { start: start.toISOString(), end: end.toISOString() };
 }
 
 function formatDate(value: string) {
@@ -257,21 +273,53 @@ async function recentlySentWhatsApp(
   templateName: string
 ) {
   const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
-  const { data, error } = await supabase
-    .from("whatsapp_logs")
-    .select("id")
-    .eq("client_id", policy.clients.id)
-    .eq("policy_id", policy.id)
-    .eq("template_name", templateName)
-    .eq("status", "sent")
-    .gte("sent_at", since)
-    .maybeSingle();
+  try {
+    const { data, error } = await supabase
+      .from("whatsapp_logs")
+      .select("id")
+      .eq("client_id", policy.clients.id)
+      .eq("policy_id", policy.id)
+      .eq("template_name", templateName)
+      .eq("status", "sent")
+      .gte("sent_at", since)
+      .maybeSingle();
 
-  if (error) {
+    if (error) {
+      console.error("WhatsApp duplicate check failed", error.message);
+      throw new Error("WhatsApp duplicate check failed");
+    }
+
+    return Boolean(data);
+  } catch (err) {
+    console.error("WhatsApp duplicate check crashed", err instanceof Error ? err.message : "Unknown error");
     throw new Error("WhatsApp duplicate check failed");
   }
+}
 
-  return Boolean(data);
+async function remindersAlreadySentToday(supabase: ReturnType<typeof createClient>) {
+  const { start, end } = todayUtcWindow();
+
+  try {
+    const { data, error } = await supabase
+      .from("whatsapp_logs")
+      .select("id")
+      .eq("template_name", dailyRunTemplateName)
+      .eq("status", "sent")
+      .gte("sent_at", start)
+      .lt("sent_at", end)
+      .limit(1)
+      .maybeSingle();
+
+    if (error) {
+      console.error("Daily renewal run check failed", error.message);
+      return { checked: false, alreadyRan: true };
+    }
+
+    return { checked: true, alreadyRan: Boolean(data) };
+  } catch (err) {
+    console.error("Daily renewal run check crashed", err instanceof Error ? err.message : "Unknown error");
+    return { checked: false, alreadyRan: true };
+  }
 }
 
 async function insertWhatsAppLog(
@@ -282,15 +330,27 @@ async function insertWhatsAppLog(
   messageId: string | null,
   errorReason: string | null
 ) {
-  await supabase.from("whatsapp_logs").insert({
-    agent_id: policy.agent_id,
-    client_id: policy.clients.id,
-    policy_id: policy.id,
-    template_name: templateName,
-    status,
-    message_id: messageId,
-    error_reason: errorReason
-  });
+  try {
+    const { error } = await supabase.from("whatsapp_logs").insert({
+      agent_id: policy.agent_id,
+      client_id: policy.clients.id,
+      policy_id: policy.id,
+      template_name: templateName,
+      status,
+      message_id: messageId,
+      error_reason: errorReason
+    });
+
+    if (error) {
+      console.error("WhatsApp log insert failed", error.message);
+      return false;
+    }
+
+    return true;
+  } catch (err) {
+    console.error("WhatsApp log insert crashed", err instanceof Error ? err.message : "Unknown error");
+    return false;
+  }
 }
 
 async function sendClientWhatsApp(policy: PolicyRecord, message: string, days: number) {
@@ -401,25 +461,34 @@ async function logAgentSummary(supabase: ReturnType<typeof createClient>, summar
       };
     }
 
-    await supabase.from("whatsapp_logs").insert({
+    const summaryLog = await supabase.from("whatsapp_logs").insert({
       agent_id: summary.agentId,
       template_name: "agent_daily_summary",
       status: "sent",
       message_id: result
     });
+    if (summaryLog.error) {
+      console.error("Agent WhatsApp summary log insert failed", summaryLog.error.message);
+    }
 
-    await supabase.from("notification_logs").insert({
+    const notificationLog = await supabase.from("notification_logs").insert({
       agent_id: summary.agentId,
       channel: "whatsapp",
       status: "sent",
       detail: `agent_summary:${summary.items.length}:sent`
     });
+    if (notificationLog.error) {
+      console.error("Agent summary notification log insert failed", notificationLog.error.message);
+    }
 
-    await supabase.from("notifications").insert({
+    const notification = await supabase.from("notifications").insert({
       agent_id: summary.agentId,
       type: "general",
       message: `Daily WhatsApp renewal summary sent to you for ${summary.items.length} follow-up${summary.items.length === 1 ? "" : "s"}.`
     });
+    if (notification.error) {
+      console.error("Agent summary notification insert failed", notification.error.message);
+    }
 
     return {
       agent_id: summary.agentId,
@@ -428,12 +497,19 @@ async function logAgentSummary(supabase: ReturnType<typeof createClient>, summar
       timestamp: new Date().toISOString()
     };
   } catch (err) {
-    await supabase.from("whatsapp_logs").insert({
-      agent_id: summary.agentId,
-      template_name: "agent_daily_summary",
-      status: "failed",
-      error_reason: sanitizeWhatsAppError(err)
-    });
+    try {
+      const { error } = await supabase.from("whatsapp_logs").insert({
+        agent_id: summary.agentId,
+        template_name: "agent_daily_summary",
+        status: "failed",
+        error_reason: sanitizeWhatsAppError(err)
+      });
+      if (error) {
+        console.error("Agent WhatsApp summary failure log insert failed", error.message);
+      }
+    } catch (logErr) {
+      console.error("Agent WhatsApp summary failure log insert crashed", logErr instanceof Error ? logErr.message : "Unknown error");
+    }
 
     return {
       agent_id: summary.agentId,
@@ -478,6 +554,10 @@ Deno.serve(async (req) => {
     return new Response("ok", { headers: corsHeaders });
   }
 
+  if (req.method !== "POST") {
+    return authError("Method not allowed.", 405);
+  }
+
   const trustedJwt = requireTrustedJwt(req);
   if ("error" in trustedJwt) return trustedJwt.error;
 
@@ -493,28 +573,71 @@ Deno.serve(async (req) => {
   const today = new Date();
   const results: Array<Record<string, unknown>> = [];
   const agentSummaries = new Map<string, AgentSummary>();
+  const stats: RunStats = {
+    policiesChecked: 0,
+    messagesSent: 0,
+    messagesFailed: 0,
+    messagesSkipped: 0
+  };
+
+  console.info("Renewal reminder job started", {
+    started_at: new Date().toISOString()
+  });
+
+  const dailyRun = await remindersAlreadySentToday(supabase);
+  if (dailyRun.alreadyRan) {
+    console.info("Renewal reminder job skipped", {
+      reason: dailyRun.checked ? "already_ran_today" : "daily_run_check_failed",
+      ...stats,
+      finished_at: new Date().toISOString()
+    });
+
+    return new Response(JSON.stringify({
+      ok: true,
+      skipped: true,
+      reason: dailyRun.checked ? "already_ran_today" : "daily_run_check_failed",
+      stats
+    }), {
+      headers: { ...corsHeaders, "Content-Type": "application/json" }
+    });
+  }
 
   for (const days of [30, 14, 7]) {
     const expiryDate = addDays(today, days);
-    const { data, error } = await supabase
-      .from("policies")
-      .select("id, agent_id, policy_number, policy_type, insurer_name, expiry_date, renewal_status, clients(id, agent_id, full_name, phone_number, email), profiles(id, full_name, company_name, phone_number, whatsapp_enabled, email_notifications_enabled, agent_whatsapp_summary_enabled, reminder_30_enabled, reminder_14_enabled, reminder_7_enabled)")
-      .eq("status", "Active")
-      .eq("expiry_date", expiryDate);
+    let data: RawPolicyRecord[] = [];
+    try {
+      const query = await supabase
+        .from("policies")
+        .select("id, agent_id, policy_number, policy_type, insurer_name, expiry_date, renewal_status, clients(id, agent_id, full_name, phone_number, email), profiles(id, full_name, company_name, phone_number, whatsapp_enabled, email_notifications_enabled, agent_whatsapp_summary_enabled, reminder_30_enabled, reminder_14_enabled, reminder_7_enabled)")
+        .eq("status", "Active")
+        .eq("expiry_date", expiryDate);
 
-    if (error) {
-      results.push({ days, status: "query_failed", error: error.message, timestamp: new Date().toISOString() });
+      if (query.error) {
+        console.error("Renewal policy query failed", query.error.message);
+        results.push({ days, status: "query_failed", timestamp: new Date().toISOString() });
+        continue;
+      }
+
+      data = (query.data ?? []) as unknown as RawPolicyRecord[];
+    } catch (err) {
+      console.error("Renewal policy query crashed", err instanceof Error ? err.message : "Unknown error");
+      results.push({ days, status: "query_failed", timestamp: new Date().toISOString() });
       continue;
     }
 
-    for (const rawPolicy of (data ?? []) as unknown as RawPolicyRecord[]) {
+    for (const rawPolicy of data) {
+      stats.policiesChecked += 1;
       const policy = normalizePolicyRecord(rawPolicy);
       if (!policy) {
+        stats.messagesSkipped += 1;
         results.push({ days, status: "missing_join_data", timestamp: new Date().toISOString() });
         continue;
       }
 
-      if (!shouldSend(policy.profiles, days)) continue;
+      if (!shouldSend(policy.profiles, days)) {
+        stats.messagesSkipped += 1;
+        continue;
+      }
 
       const companyName = policy.profiles.company_name ?? policy.profiles.full_name;
       const message = `Hello ${policy.clients.full_name}, this is a reminder from ${companyName} that your ${policy.policy_type} policy (Policy No: ${policy.policy_number}) with ${policy.insurer_name} is due for renewal on ${formatDate(policy.expiry_date)}. Please contact your agent to renew on time. Thank you.`;
@@ -549,17 +672,22 @@ Deno.serve(async (req) => {
               template_name: templateName
             });
             activity.whatsapp = "skipped_duplicate_24h";
+            stats.messagesSkipped += 1;
           } else {
             const sent = await sendClientWhatsApp(policy, message, days);
             await insertWhatsAppLog(supabase, policy, templateName, "sent", sent.messageId, null);
             activity.whatsapp = "sent";
+            stats.messagesSent += 1;
           }
+        } else {
+          stats.messagesSkipped += 1;
         }
       } catch (err) {
         const templateName = renewalTemplateName(days);
         const reason = sanitizeWhatsAppError(err);
         await insertWhatsAppLog(supabase, policy, templateName, "failed", null, reason);
         activity.whatsapp = reason;
+        stats.messagesFailed += 1;
       }
 
       try {
@@ -571,46 +699,74 @@ Deno.serve(async (req) => {
         activity.email = err instanceof Error ? err.message : "failed";
       }
 
-      await supabase.from("notifications").insert({
-        agent_id: policy.agent_id,
-        policy_id: policy.id,
-        client_id: policy.clients.id,
-        type: reminderTypes.get(days),
-        message: `${days}-day renewal reminder sent for ${policy.clients.full_name} (${policy.policy_number}).`
-      });
-
-      await supabase.from("notification_logs").insert([
-        {
+      try {
+        const notification = await supabase.from("notifications").insert({
           agent_id: policy.agent_id,
           policy_id: policy.id,
           client_id: policy.clients.id,
-          channel: "whatsapp",
-          status: activity.whatsapp === "sent" ? "sent" : String(activity.whatsapp).startsWith("skipped") ? "skipped" : "failed",
-          detail: String(activity.whatsapp)
-        },
-        {
-          agent_id: policy.agent_id,
-          policy_id: policy.id,
-          client_id: policy.clients.id,
-          channel: "email",
-          status: activity.email === "sent" ? "sent" : activity.email === "skipped" ? "skipped" : "failed",
-          detail: String(activity.email)
+          type: reminderTypes.get(days),
+          message: `${days}-day renewal reminder sent for ${policy.clients.full_name} (${policy.policy_number}).`
+        });
+        if (notification.error) {
+          console.error("Renewal notification insert failed", notification.error.message);
         }
-      ]);
+      } catch (err) {
+        console.error("Renewal notification insert crashed", err instanceof Error ? err.message : "Unknown error");
+      }
+
+      try {
+        const logs = await supabase.from("notification_logs").insert([
+          {
+            agent_id: policy.agent_id,
+            policy_id: policy.id,
+            client_id: policy.clients.id,
+            channel: "whatsapp",
+            status: activity.whatsapp === "sent" ? "sent" : String(activity.whatsapp).startsWith("skipped") ? "skipped" : "failed",
+            detail: String(activity.whatsapp)
+          },
+          {
+            agent_id: policy.agent_id,
+            policy_id: policy.id,
+            client_id: policy.clients.id,
+            channel: "email",
+            status: activity.email === "sent" ? "sent" : activity.email === "skipped" ? "skipped" : "failed",
+            detail: String(activity.email)
+          }
+        ]);
+        if (logs.error) {
+          console.error("Renewal notification logs insert failed", logs.error.message);
+        }
+      } catch (err) {
+        console.error("Renewal notification logs insert crashed", err instanceof Error ? err.message : "Unknown error");
+      }
 
       if (activity.whatsapp === "sent" || String(activity.whatsapp).startsWith("skipped") || activity.email === "sent") {
-        await supabase.from("notification_logs").insert({
-          agent_id: policy.agent_id,
-          policy_id: policy.id,
-          client_id: policy.clients.id,
-          channel: "whatsapp",
-          status: "sent",
-          detail: `${days}-day:${policy.expiry_date}:processed`
-        });
+        try {
+          const processedLog = await supabase.from("notification_logs").insert({
+            agent_id: policy.agent_id,
+            policy_id: policy.id,
+            client_id: policy.clients.id,
+            channel: "whatsapp",
+            status: "sent",
+            detail: `${days}-day:${policy.expiry_date}:processed`
+          });
+          if (processedLog.error) {
+            console.error("Renewal processed log insert failed", processedLog.error.message);
+          }
+        } catch (err) {
+          console.error("Renewal processed log insert crashed", err instanceof Error ? err.message : "Unknown error");
+        }
       }
 
       if (policy.renewal_status === "Not Started") {
-        await supabase.from("policies").update({ renewal_status: "Reminder Sent" }).eq("id", policy.id);
+        try {
+          const update = await supabase.from("policies").update({ renewal_status: "Reminder Sent" }).eq("id", policy.id);
+          if (update.error) {
+            console.error("Renewal status update failed", update.error.message);
+          }
+        } catch (err) {
+          console.error("Renewal status update crashed", err instanceof Error ? err.message : "Unknown error");
+        }
       }
 
       results.push(activity);
@@ -621,7 +777,12 @@ Deno.serve(async (req) => {
     results.push(await logAgentSummary(supabase, summary));
   }
 
-  return new Response(JSON.stringify({ ok: true, results }), {
+  console.info("Renewal reminder job finished", {
+    ...stats,
+    finished_at: new Date().toISOString()
+  });
+
+  return new Response(JSON.stringify({ ok: true, stats, results }), {
     headers: { ...corsHeaders, "Content-Type": "application/json" }
   });
   } catch (err) {
