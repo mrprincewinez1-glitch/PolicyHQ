@@ -2,7 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { createServerClient } from "@supabase/ssr";
 import type { CookieOptions } from "@supabase/ssr";
 
-const publicRoutes = ["/", "/forgot-password", "/reset-password", "/demo"];
+const publicRoutes = ["/", "/forgot-password", "/reset-password", "/demo", "/privacy", "/terms"];
 const authRoutes = ["/sign-in", "/sign-up", "/login", "/signup"];
 const authRouteAliases: Record<string, string> = {
   "/login": "/sign-in",
@@ -110,6 +110,10 @@ export async function middleware(request: NextRequest) {
     const redirectResponse = redirectTo(request, "/dashboard");
     setInactivityCookie(redirectResponse);
     return redirectResponse;
+  }
+
+  if (!data.user && isAuthRoute(pathname)) {
+    return response;
   }
 
   if (!data.user) {

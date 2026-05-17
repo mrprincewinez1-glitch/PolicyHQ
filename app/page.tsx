@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Bell, Calculator, CheckCircle2, FileDown, MessageCircle, ShieldCheck, Users, Workflow } from "lucide-react";
+import { Bell, Calculator, FileDown, MessageCircle, ShieldCheck, Users, Workflow } from "lucide-react";
 import { PolicyHqLogo } from "@/components/brand/policyhq-logo";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -10,7 +10,7 @@ const features = [
   [ShieldCheck, "Policy Tracker", "Track every policy across all insurers in one dashboard"],
   [Calculator, "Commission Tracker", "Know exactly what you've earned and what's pending"],
   [MessageCircle, "WhatsApp Reminders", "Automatically notify clients before their policy expires"],
-  [FileDown, "Reports & Exports", "Export your data anytime with one click"]
+  [FileDown, "Reports & Exports", "Review renewal, policy, and commission activity in one place"]
 ];
 
 export default function LandingPage() {
@@ -38,7 +38,7 @@ export default function LandingPage() {
         <div>
           <h1 className="max-w-3xl text-5xl font-extrabold tracking-normal text-primary md:text-6xl">Manage Every Policy. Never Miss a Renewal.</h1>
           <p className="mt-6 max-w-2xl text-lg leading-8 text-slate-600">
-            PolicyHQ is the all-in-one platform built for insurance agents in Ghana and West Africa. Track policies, manage clients, automate renewal reminders, and monitor your commissions — all in one place.
+            PolicyHQ is the all-in-one platform built for insurance agents in Ghana and West Africa. Track policies, manage clients, prepare renewal reminders, and monitor your commissions — all in one place.
           </p>
           <div className="mt-8 flex flex-wrap gap-3">
             <Button asChild><Link href="/sign-up">Start For Free</Link></Button>
@@ -93,8 +93,8 @@ export default function LandingPage() {
         <h2 className="text-3xl font-extrabold text-primary">How It Works</h2>
         <div className="mt-8 grid gap-6 md:grid-cols-3">
           {[
-            ["Add Your Clients & Policies", "Import or manually add your entire book of business in minutes"],
-            ["Set Up Automated Reminders", "PolicyHQ automatically contacts your clients at 30, 14, and 7 days before expiry via WhatsApp and email"],
+            ["Add Your Clients & Policies", "Manually add your book of business and keep every client-policy relationship organised"],
+            ["Set Up Renewal Reminders", "PolicyHQ helps you track 30, 14, and 7 day renewal windows for WhatsApp and email follow-up"],
             ["Track Renewals & Commissions", "Monitor every renewal in real time and know exactly what commissions you are owed"]
           ].map(([title, body], index) => (
             <div key={title} className="border-l-4 border-accent pl-5">
@@ -118,8 +118,8 @@ export default function LandingPage() {
       <section id="pricing" className="mx-auto max-w-5xl px-4 py-20 sm:px-6 lg:px-8">
         <h2 className="text-3xl font-extrabold text-primary">Pricing</h2>
         <div className="mt-8 grid gap-6 md:grid-cols-2">
-          <Card><CardContent className="p-6"><h3 className="text-xl font-bold">Free Plan</h3><p className="mt-3 text-4xl font-extrabold">GHS 0<span className="text-base font-semibold text-slate-500">/month</span></p><p className="mt-4 text-slate-600">Up to 20 clients, basic renewal alerts, manual reminders, CSV export</p><Button asChild className="mt-6"><Link href="/sign-up">Get Started Free</Link></Button></CardContent></Card>
-          <Card className="border-orange-200"><CardContent className="p-6"><span className="rounded-full bg-orange-100 px-3 py-1 text-xs font-bold text-orange-700">Coming Soon</span><h3 className="mt-4 text-xl font-bold">Pro Plan</h3><p className="mt-3 text-4xl font-extrabold">GHS 99<span className="text-base font-semibold text-slate-500">/month</span></p><p className="mt-4 text-slate-600">Unlimited clients, automated WhatsApp & email reminders, priority support, advanced reports</p></CardContent></Card>
+          <Card><CardContent className="p-6"><h3 className="text-xl font-bold">Free Beta</h3><p className="mt-3 text-4xl font-extrabold">GHS 0<span className="text-base font-semibold text-slate-500">/month</span></p><p className="mt-4 text-slate-600">Client records, policy tracking, renewal alerts, and commission management while PolicyHQ is in beta</p><Button asChild className="mt-6"><Link href="/sign-up">Get Started Free</Link></Button></CardContent></Card>
+          <Card className="border-orange-200"><CardContent className="p-6"><span className="rounded-full bg-orange-100 px-3 py-1 text-xs font-bold text-orange-700">Coming Soon</span><h3 className="mt-4 text-xl font-bold">Pro Plan</h3><p className="mt-3 text-4xl font-extrabold">GHS 99<span className="text-base font-semibold text-slate-500">/month</span></p><p className="mt-4 text-slate-600">Advanced automation, priority support, reports, and production WhatsApp workflows for growing agencies</p></CardContent></Card>
         </div>
       </section>
 
@@ -130,7 +130,7 @@ export default function LandingPage() {
             <p className="mt-3 text-sm text-slate-300">Built for insurance agents across West Africa</p>
           </div>
           <div className="flex gap-5 text-sm text-slate-300"><Link href="/privacy">Privacy Policy</Link><Link href="/terms">Terms of Service</Link></div>
-          <p className="text-sm text-slate-300">© 2025 PolicyHQ. All rights reserved.</p>
+          <p className="text-sm text-slate-300">© 2026 PolicyHQ. All rights reserved.</p>
         </div>
       </footer>
     </main>
