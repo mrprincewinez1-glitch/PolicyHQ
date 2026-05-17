@@ -379,7 +379,7 @@ export async function uploadProfileAvatar(formData: FormData) {
     .from("profiles")
     .update({ avatar_url: path })
     .eq("id", agentId)
-    .select("*")
+    .select(profileColumns)
     .single();
   if (error || !profile) {
     return { ok: false, message: "We could not save your profile photo." };
