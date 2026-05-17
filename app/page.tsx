@@ -26,14 +26,13 @@ export default function LandingPage() {
             <a href="#how">How It Works</a>
             <a href="#pricing">Pricing</a>
             <Link href="/demo">Try Live Demo</Link>
-            <Link href="/sign-in">Sign In</Link>
           </nav>
           <div className="flex items-center gap-2">
             <Button asChild variant="ghost" className="px-3">
               <Link href="/sign-in">Sign In</Link>
             </Button>
             <Button asChild className="px-3 sm:px-5">
-              <Link href="/sign-up">Get Started Free</Link>
+              <Link href="/sign-up">Sign Up</Link>
             </Button>
           </div>
         </div>
