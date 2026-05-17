@@ -11,7 +11,7 @@ export function SignUpForm() {
         <label className="block text-sm font-semibold">Email<Input name="email" type="email" required className="mt-1" /></label>
         <label className="block text-sm font-semibold">
           Phone / WhatsApp number
-          <Input name="phone_number" type="tel" required placeholder="024 000 0000 or +233 24 000 0000" className="mt-1" />
+          <Input name="phone_number" type="tel" required placeholder="024 000 0000" className="mt-1" />
         </label>
         <label className="block text-sm font-semibold">Company name<Input name="company_name" className="mt-1" /></label>
         <label className="block text-sm font-semibold">Password<Input name="password" type="password" minLength={8} required className="mt-1" /></label>

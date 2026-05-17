@@ -562,9 +562,9 @@ export function AppShell({
   return (
     <div>
       {demo ? (
-        <div className="fixed inset-x-0 top-0 z-50 flex items-center justify-between gap-3 bg-primary px-4 py-3 text-sm font-semibold text-white">
-          <span>🔍 You are viewing a live demo. All data shown is fictional. Sign up free to manage your real policies.</span>
-          <Button asChild size="sm"><Link href="/sign-up">Sign Up Free</Link></Button>
+        <div className="fixed inset-x-0 top-0 z-50 flex items-center justify-between gap-3 bg-primary px-3 py-2 text-xs font-semibold leading-5 text-white sm:px-4 sm:py-3 sm:text-sm">
+          <span><span className="sm:hidden">Live demo. Fictional data only.</span><span className="hidden sm:inline">🔍 You are viewing a live demo. All data shown is fictional. Sign up free to manage your real policies.</span></span>
+          <Button asChild size="sm" className="shrink-0 whitespace-nowrap px-3"><Link href="/sign-up">Sign Up Free</Link></Button>
         </div>
       ) : null}
       <div className={demo ? "pt-14" : ""}>
@@ -831,16 +831,16 @@ function Commissions({ data, totalEarned, totalPaid, base, markPaid, openPolicy,
             <h1 className="text-2xl font-extrabold text-primary">Commissions</h1>
             <p className="mt-1 text-sm font-semibold text-slate-500">Choose the earnings period for Total Earned.</p>
           </div>
-          <div className="inline-flex flex-wrap rounded-xl bg-slate-100 p-1">
+          <div className="grid w-full grid-cols-3 rounded-xl bg-slate-100 p-1 sm:inline-flex sm:w-auto sm:flex-wrap">
             <button
               type="button"
               onClick={() => setPeriodMode("All Time")}
-              className={`rounded-lg px-4 py-2 text-sm font-bold ${periodMode === "All Time" ? "bg-white text-primary shadow-sm" : "text-slate-500 hover:text-primary"}`}
+              className={`rounded-lg px-2 py-2 text-xs font-bold sm:px-4 sm:text-sm ${periodMode === "All Time" ? "bg-white text-primary shadow-sm" : "text-slate-500 hover:text-primary"}`}
             >
               All Time
             </button>
             <div className={`flex items-center rounded-lg ${periodMode === "Yearly" ? "bg-white text-primary shadow-sm" : "text-slate-500 hover:text-primary"}`}>
-              <button type="button" onClick={() => setPeriodMode("Yearly")} className="px-4 py-2 text-sm font-bold">Yearly</button>
+              <button type="button" onClick={() => setPeriodMode("Yearly")} className="px-2 py-2 text-xs font-bold sm:px-4 sm:text-sm">Yearly</button>
               {periodMode === "Yearly" ? (
                 <select value={selectedYear} onChange={(event) => setSelectedYear(Number(event.target.value))} className="mr-1 h-8 rounded-md border border-slate-200 bg-white px-2 text-sm font-bold outline-none">
                   {availableYears.map((year) => <option key={year} value={year}>{year}</option>)}
@@ -848,7 +848,7 @@ function Commissions({ data, totalEarned, totalPaid, base, markPaid, openPolicy,
               ) : null}
             </div>
             <div className={`flex items-center rounded-lg ${periodMode === "Monthly" ? "bg-white text-primary shadow-sm" : "text-slate-500 hover:text-primary"}`}>
-              <button type="button" onClick={() => setPeriodMode("Monthly")} className="px-4 py-2 text-sm font-bold">Monthly</button>
+              <button type="button" onClick={() => setPeriodMode("Monthly")} className="px-2 py-2 text-xs font-bold sm:px-4 sm:text-sm">Monthly</button>
               {periodMode === "Monthly" ? (
                 <div className="mr-1 flex items-center gap-1">
                   <select value={selectedMonth} onChange={(event) => setSelectedMonth(Number(event.target.value))} className="h-8 rounded-md border border-slate-200 bg-white px-2 text-sm font-bold outline-none">

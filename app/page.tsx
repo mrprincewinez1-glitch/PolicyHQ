@@ -17,9 +17,9 @@ export default function LandingPage() {
   return (
     <main className="bg-white">
       <header className="sticky top-0 z-30 border-b border-slate-100 bg-white/95 backdrop-blur">
-        <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-4 sm:px-6 lg:px-8">
+        <div className="mx-auto flex max-w-7xl items-center justify-between gap-2 px-3 py-3 sm:px-6 sm:py-4 lg:px-8">
           <Link href="/" className="flex items-center">
-            <PolicyHqLogo className="h-12 w-auto sm:h-14" />
+            <PolicyHqLogo className="h-9 w-auto max-w-[118px] sm:h-14 sm:max-w-none" />
           </Link>
           <nav className="hidden items-center gap-6 text-sm font-semibold text-slate-600 lg:flex">
             <a href="#features">Features</a>
@@ -27,11 +27,11 @@ export default function LandingPage() {
             <a href="#pricing">Pricing</a>
             <Link href="/demo">Try Live Demo</Link>
           </nav>
-          <div className="flex items-center gap-2">
-            <Button asChild variant="ghost" className="px-3">
+          <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
+            <Button asChild size="sm" variant="ghost" className="whitespace-nowrap px-2.5 sm:px-3">
               <Link href="/sign-in">Sign In</Link>
             </Button>
-            <Button asChild className="px-3 sm:px-5">
+            <Button asChild size="sm" className="whitespace-nowrap px-3 sm:px-5">
               <Link href="/sign-up">Sign Up</Link>
             </Button>
           </div>
@@ -40,7 +40,7 @@ export default function LandingPage() {
 
       <section className="mx-auto grid min-h-[calc(100vh-73px)] max-w-7xl items-center gap-12 px-4 py-16 sm:px-6 lg:grid-cols-[1fr_0.95fr] lg:px-8">
         <div>
-          <h1 className="max-w-3xl text-5xl font-extrabold tracking-normal text-primary md:text-6xl">Manage Every Policy. Never Miss a Renewal.</h1>
+          <h1 className="max-w-3xl text-4xl font-extrabold tracking-normal text-primary sm:text-5xl md:text-6xl">Manage Every Policy. Never Miss a Renewal.</h1>
           <p className="mt-6 max-w-2xl text-lg leading-8 text-slate-600">
             PolicyHQ is the all-in-one platform built for insurance agents in Ghana and West Africa. Track policies, manage clients, prepare renewal reminders, and monitor your commissions — all in one place.
           </p>
