@@ -29,8 +29,8 @@ export default function LandingPage() {
             <Link href="/demo">Try Live Demo</Link>
             <Link href="/feedback">Feedback</Link>
           </nav>
-          <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
-            <Button asChild size="sm" variant="ghost" className="whitespace-nowrap px-2.5 sm:px-3">
+          <div className="flex shrink-0 items-center gap-2">
+            <Button asChild size="sm" variant="outline" className="whitespace-nowrap border-primary px-3 text-primary hover:border-accent hover:text-accent sm:px-4">
               <Link href="/sign-in">Sign In</Link>
             </Button>
             <Button asChild size="sm" className="whitespace-nowrap px-3 sm:px-5">
