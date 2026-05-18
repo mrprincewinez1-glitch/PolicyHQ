@@ -523,7 +523,7 @@ export function AppShell({
       base={base}
       onAdd={() => blockWrite() || setModal({ type: "client" })}
       onEdit={(client) => blockWrite() || setModal({ type: "client", client })}
-      onDelete={(client) => setModal({ type: "confirm", title: "Archive client?", body: `This will hide ${client.full_name} from active records while preserving policy and commission history.`, action: () => deleteClient(client) })}
+      onDelete={(client) => blockWrite() || setModal({ type: "confirm", title: "Archive client?", body: `This will hide ${client.full_name} from active records while preserving policy and commission history.`, action: () => deleteClient(client) })}
       onExport={() => downloadCsv("policyhq-clients", clientRows(data.clients, data.policies))}
     />
   ) : active === "policies" ? (
@@ -532,7 +532,7 @@ export function AppShell({
       clients={data.clients}
       onAdd={() => blockWrite() || setModal({ type: "policy" })}
       onEdit={(policy) => blockWrite() || setModal({ type: "policy", policy })}
-      onDelete={(policy) => setModal({ type: "confirm", title: "Delete policy?", body: `This will permanently delete ${policy.policy_number}.`, action: () => deletePolicy(policy) })}
+      onDelete={(policy) => blockWrite() || setModal({ type: "confirm", title: "Delete policy?", body: `This will permanently delete ${policy.policy_number}.`, action: () => deletePolicy(policy) })}
       onExport={() => downloadCsv("policyhq-policies", policyRows(data.policies))}
       updateRenewal={updateRenewal}
       openPolicy={setDetailPolicy}
@@ -546,6 +546,7 @@ export function AppShell({
       markPaid={markPaid}
       openPolicy={setDetailPolicy}
       onExport={(commissions) => downloadCsv("policyhq-commissions", commissionRows(commissions, data.policies))}
+      onWriteAttempt={blockWrite}
     />
   ) : active === "notifications" ? (
     <Notifications data={data} base={base} markAllRead={markAllRead} onClick={markNotification} onBack={() => setActive("dashboard")} />
@@ -764,7 +765,7 @@ function Policies({ policies, clients, onAdd, onEdit, onDelete, onExport, update
   );
 }
 
-function Commissions({ data, totalEarned, totalPaid, base, markPaid, openPolicy, onExport }: { data: AppData; totalEarned: number; totalPaid: number; base: string; markPaid: (commission: Commission) => void; openPolicy: (policy: PolicyWithClient) => void; onExport: (commissions: Commission[]) => void }) {
+function Commissions({ data, totalEarned, totalPaid, base, markPaid, openPolicy, onExport, onWriteAttempt }: { data: AppData; totalEarned: number; totalPaid: number; base: string; markPaid: (commission: Commission) => void; openPolicy: (policy: PolicyWithClient) => void; onExport: (commissions: Commission[]) => void; onWriteAttempt: () => boolean }) {
   const [paymentFilter, setPaymentFilter] = useState<CommissionPaymentFilter>("All");
   const [classFilter, setClassFilter] = useState<CommissionClassFilter>("All");
   const [confirmingId, setConfirmingId] = useState<string | null>(null);
@@ -957,7 +958,9 @@ function Commissions({ data, totalEarned, totalPaid, base, markPaid, openPolicy,
                   </div>
                   <BusinessClassBadge value={businessClass} />
                 </div>
-                <CommissionAction commission={commission} status={displayStatus} confirming={confirmingId === commission.id} flagged={flaggedIds.has(commission.id)} onStart={() => setConfirmingId(commission.id)} onCancel={() => setConfirmingId(null)} onConfirm={() => confirmMarkPaid(commission)} onFlag={() => toggleFlag(commission.id)} onView={() => openPolicy(policy)} mobile />
+                <div onClick={(event) => event.stopPropagation()}>
+                  <CommissionAction commission={commission} status={displayStatus} confirming={confirmingId === commission.id} flagged={flaggedIds.has(commission.id)} onStart={() => onWriteAttempt() || setConfirmingId(commission.id)} onCancel={() => setConfirmingId(null)} onConfirm={() => confirmMarkPaid(commission)} onFlag={() => onWriteAttempt() || toggleFlag(commission.id)} onView={() => openPolicy(policy)} mobile />
+                </div>
               </div>
             ))}
           </div>
@@ -976,7 +979,7 @@ function Commissions({ data, totalEarned, totalPaid, base, markPaid, openPolicy,
                     <td className="px-4 py-3">{formatCurrency(policy.premium_amount)}</td>
                     <td className="px-4 py-3"><span className="font-extrabold">{formatCurrency(amount)}</span>{displayStatus !== "Paid" ? <span className="mt-1 block text-xs font-semibold text-slate-500">{daysPending} days pending</span> : null}</td>
                     <td className="px-4 py-3"><div className="flex items-center gap-2"><CommissionStatusBadge status={displayStatus} />{flaggedIds.has(commission.id) ? <Flag className="h-4 w-4 text-danger" /> : null}</div></td>
-                    <td className="px-4 py-3" onClick={(event) => event.stopPropagation()}><CommissionAction commission={commission} status={displayStatus} confirming={confirmingId === commission.id} flagged={flaggedIds.has(commission.id)} onStart={() => setConfirmingId(commission.id)} onCancel={() => setConfirmingId(null)} onConfirm={() => confirmMarkPaid(commission)} onFlag={() => toggleFlag(commission.id)} onView={() => openPolicy(policy)} /></td>
+                    <td className="px-4 py-3" onClick={(event) => event.stopPropagation()}><CommissionAction commission={commission} status={displayStatus} confirming={confirmingId === commission.id} flagged={flaggedIds.has(commission.id)} onStart={() => onWriteAttempt() || setConfirmingId(commission.id)} onCancel={() => setConfirmingId(null)} onConfirm={() => confirmMarkPaid(commission)} onFlag={() => onWriteAttempt() || toggleFlag(commission.id)} onView={() => openPolicy(policy)} /></td>
                   </tr>
                 ))}
               </tbody>
