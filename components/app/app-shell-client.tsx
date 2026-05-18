@@ -613,7 +613,7 @@ export function AppShell({
               <Search className="h-4 w-4 text-slate-400" />
               <input value={query} onChange={(event) => setQuery(event.target.value)} className="h-10 w-full outline-none" placeholder="Search clients, policies, or insurers" />
             </div>
-            <div className="ml-auto flex items-center gap-4">
+            <div className="ml-auto flex items-center gap-2 sm:gap-4">
               <Link
                 href={navHref(base, "notifications")}
                 onClick={() => setActive("notifications")}
@@ -629,7 +629,7 @@ export function AppShell({
                 <Avatar profile={data.profile} />
                 <strong className="text-sm">{data.profile.full_name}</strong>
               </button>
-              {demo ? <Button asChild size="sm"><Link href="/sign-up">Sign Up Free</Link></Button> : <form action={signOut}><Button variant="ghost" size="sm"><LogOut className="h-4 w-4" /> Sign Out</Button></form>}
+              {demo ? <Button asChild size="sm" className="whitespace-nowrap px-3"><Link href="/sign-up"><span className="sm:hidden">Sign Up</span><span className="hidden sm:inline">Sign Up Free</span></Link></Button> : <form action={signOut}><Button variant="ghost" size="sm"><LogOut className="h-4 w-4" /> Sign Out</Button></form>}
             </div>
           </header>
           <div className="p-4 lg:p-8">{content}</div>
