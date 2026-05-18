@@ -1,7 +1,7 @@
 export type PolicyType = "Life" | "Health" | "Motor" | "Property" | "Fire" | "Marine" | "Travel";
 export type InsuranceCategory = "Life" | "Non-Life" | "Health";
 export type PolicyStatus = "Active" | "Expired" | "Cancelled";
-export type RenewalStatus = "Not Started" | "Reminder Sent" | "Under Renewal" | "Renewed" | "Lapsed";
+export type RenewalStatus = "Upcoming" | "Contacted" | "Quote Requested" | "Payment Pending" | "Renewed" | "Lost";
 export type PaymentStatus = "Paid" | "Pending";
 export type UserRole = "admin" | "agent";
 
@@ -78,9 +78,21 @@ export type Notification = {
   created_at: string;
 };
 
+export type ActivityNote = {
+  id: string;
+  agent_id: string;
+  client_id: string | null;
+  policy_id: string | null;
+  note_text: string;
+  created_by: string | null;
+  created_at: string;
+  author_name?: string | null;
+};
+
 export type PolicyWithClient = Policy & {
   client: Client;
   commission?: Commission;
+  activity_notes?: ActivityNote[];
 };
 
 export type AppData = {
@@ -89,4 +101,5 @@ export type AppData = {
   policies: PolicyWithClient[];
   commissions: Commission[];
   notifications: Notification[];
+  activity_notes: ActivityNote[];
 };

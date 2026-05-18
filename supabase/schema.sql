@@ -77,7 +77,7 @@ create table if not exists public.policies (
   premium_amount numeric not null check (premium_amount >= 0),
   currency text default 'GHS',
   status text default 'Active' check (status in ('Active', 'Expired', 'Cancelled')),
-  renewal_status text default 'Not Started' check (renewal_status in ('Not Started', 'Reminder Sent', 'Under Renewal', 'Renewed', 'Lapsed')),
+  renewal_status text default 'Upcoming' check (renewal_status in ('Upcoming', 'Contacted', 'Quote Requested', 'Payment Pending', 'Renewed', 'Lost')),
   notes text,
   created_at timestamptz default now(),
   updated_at timestamptz
@@ -304,6 +304,17 @@ create table if not exists public.audit_log (
   "timestamp" timestamptz default now()
 );
 
+create table if not exists public.activity_notes (
+  id uuid primary key default gen_random_uuid(),
+  agent_id uuid not null references public.profiles(id) on delete cascade,
+  client_id uuid references public.clients(id) on delete cascade,
+  policy_id uuid references public.policies(id) on delete cascade,
+  note_text text not null check (char_length(note_text) between 2 and 500),
+  created_by uuid references public.profiles(id) on delete set null,
+  created_at timestamptz default now(),
+  constraint activity_notes_has_subject check (client_id is not null or policy_id is not null)
+);
+
 comment on table public.profiles is 'data_classification=PII: stores agent name, email, phone number, company profile details, and avatar path.';
 comment on table public.clients is 'data_classification=PII: stores client name, phone number, email, date of birth, and address.';
 comment on table public.policies is 'data_classification=PII_LINKED: policy numbers, notes, vehicle numbers, and property locations can identify clients.';
@@ -311,7 +322,9 @@ comment on table public.notifications is 'data_classification=PII_LINKED: notifi
 comment on table public.notification_logs is 'data_classification=PII_LINKED: delivery logs are linked to clients and policies.';
 comment on table public.whatsapp_logs is 'data_classification=PII_LINKED: WhatsApp delivery logs are linked to client communication.';
 comment on table public.audit_log is 'data_classification=SECURITY_AUDIT: records access and changes to client records.';
+comment on table public.activity_notes is 'data_classification=PII_LINKED: stores agent-written client and policy relationship notes.';
 comment on table public.backup_logs is 'data_classification=CONFIDENTIAL: file paths may point to backups containing PII.';
+comment on column public.activity_notes.note_text is 'PII_LINKED';
 comment on column public.clients.full_name is 'PII';
 comment on column public.clients.phone_number is 'PII';
 comment on column public.clients.email is 'PII';
@@ -333,6 +346,15 @@ on public.clients (agent_id, deleted_at, created_at desc);
 
 create index if not exists audit_log_user_timestamp_idx
 on public.audit_log (user_id, "timestamp" desc);
+
+create index if not exists activity_notes_agent_id_created_at_idx
+on public.activity_notes (agent_id, created_at desc);
+
+create index if not exists activity_notes_client_id_idx
+on public.activity_notes (client_id);
+
+create index if not exists activity_notes_policy_id_idx
+on public.activity_notes (policy_id);
 
 create index if not exists whatsapp_logs_agent_idx
 on public.whatsapp_logs (agent_id, sent_at desc);
@@ -487,6 +509,7 @@ alter table public.whatsapp_logs enable row level security;
 alter table public.function_error_logs enable row level security;
 alter table public.backup_logs enable row level security;
 alter table public.audit_log enable row level security;
+alter table public.activity_notes enable row level security;
 
 grant usage on schema public to authenticated;
 
@@ -504,6 +527,7 @@ grant select on public.backup_logs to authenticated;
 grant insert on public.backup_logs to service_role;
 grant insert on public.audit_log to authenticated;
 grant select on public.audit_log to authenticated;
+grant select, insert, update, delete on public.activity_notes to authenticated;
 
 grant usage, select on all sequences in schema public to authenticated;
 
@@ -618,6 +642,14 @@ create policy "audit_log_admin_select"
 on public.audit_log for select
 to authenticated
 using (public.is_admin());
+
+drop policy if exists "Activity notes are agent scoped" on public.activity_notes;
+create policy "Activity notes are agent scoped"
+on public.activity_notes
+for all
+to authenticated
+using (agent_id = auth.uid())
+with check (agent_id = auth.uid());
 
 insert into storage.buckets (id, name, public)
 values ('avatars', 'avatars', false)

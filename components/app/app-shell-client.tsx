@@ -8,6 +8,7 @@ import {
   Bell,
   Calculator,
   CheckCircle2,
+  Cake,
   Download,
   FileText,
   Flag,
@@ -31,6 +32,8 @@ import {
   markAllNotificationsRead,
   markCommissionPaid,
   markNotificationRead,
+  addActivityNote,
+  importClientsFromCsvRows,
   updateNotificationSettings,
   updatePolicyRenewalStatus,
   updateProfile,
@@ -48,7 +51,7 @@ import { findInsuranceCompany, findInsuranceCompanyCategory, insuranceCategoryFo
 import { isValidPolicyNumber, normalizePolicyNumber, policyNumberHelpText } from "@/lib/policy-number";
 import { feedbackMailto } from "@/lib/site";
 import { createClient } from "@/lib/supabase/client";
-import type { AppData, Client, Commission, InsuranceCategory, Policy, PolicyStatus, PolicyType, PolicyWithClient, RenewalStatus } from "@/lib/types";
+import type { ActivityNote, AppData, Client, Commission, InsuranceCategory, Policy, PolicyStatus, PolicyType, PolicyWithClient, RenewalStatus } from "@/lib/types";
 import {
   activePolicies,
   expiringThisMonth,
@@ -57,10 +60,14 @@ import {
   formatDate,
   fullDate,
   greeting,
+  isBirthdayToday,
+  normalizeGhanaPhoneNumber,
   policiesForRange,
+  renewalUrgency,
   sortByExpiry,
   toCsv,
-  urgency
+  urgency,
+  whatsAppUrl
 } from "@/lib/utils";
 
 type Section = "dashboard" | "clients" | "policies" | "commissions" | "notifications" | "profile";
@@ -68,12 +75,28 @@ type ModalState =
   | { type: "demo" }
   | { type: "client"; client?: Client }
   | { type: "policy"; policy?: PolicyWithClient }
+  | { type: "import" }
   | { type: "confirm"; title: string; body: string; action: () => Promise<void> | void }
   | null;
 type PolicySavePayload = Partial<Policy> & {
   commission_rate?: number;
   payment_status?: "Paid" | "Pending";
   new_client?: Partial<Client>;
+};
+type ImportClientRow = {
+  client_name: string;
+  phone_number: string;
+  policy_number: string;
+  policy_type: PolicyType;
+  insurer_name: string;
+  policy_start_date: string;
+  policy_end_date: string;
+  vehicle_number?: string;
+  property_location?: string;
+  premium?: number;
+  email?: string;
+  date_of_birth?: string;
+  notes?: string;
 };
 type CommissionPaymentFilter = "All" | "Paid" | "Pending";
 type CommissionDisplayStatus = "Pending" | "Overdue" | "Paid";
@@ -92,7 +115,7 @@ const nav = [
 
 const policyTypes: PolicyType[] = ["Life", "Health", "Motor", "Property", "Fire", "Marine", "Travel"];
 const policyStatuses: PolicyStatus[] = ["Active", "Expired", "Cancelled"];
-const renewalStatuses: RenewalStatus[] = ["Not Started", "Reminder Sent", "Under Renewal", "Renewed", "Lapsed"];
+const renewalStatuses: RenewalStatus[] = ["Upcoming", "Contacted", "Quote Requested", "Payment Pending", "Renewed", "Lost"];
 const commissionBusinessClasses: InsuranceCategory[] = ["Life", "Non-Life", "Health"];
 const monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 
@@ -164,12 +187,51 @@ export function AppShell({
       ...current,
       policies: current.policies.map((policy) => policy.id === policyId ? { ...policy, renewal_status: status } : policy)
     }));
+    setDetailPolicy((current) => current?.id === policyId ? { ...current, renewal_status: status } : current);
     const result = await updatePolicyRenewalStatus({ policy_id: policyId, renewal_status: status });
     if (!result.ok) {
       setData((current) => ({ ...current, policies: previous }));
+      setDetailPolicy((current) => current?.id === policyId ? previous.find((policy) => policy.id === policyId) ?? current : current);
       notify("error", result.message);
       return;
     }
+    notify("success", result.message);
+  }
+
+  async function saveActivityNote(input: { client_id?: string; policy_id?: string; note_text: string }) {
+    if (blockWrite()) return;
+    const result = await addActivityNote(input);
+    if (!result.ok || !result.note) {
+      notify("error", result.message);
+      return;
+    }
+    const note = {
+      ...result.note,
+      author_name: data.profile.full_name
+    };
+    setData((current) => ({
+      ...current,
+      activity_notes: [note, ...current.activity_notes],
+      policies: current.policies.map((policy) => policy.id === note.policy_id ? { ...policy, activity_notes: [note, ...(policy.activity_notes ?? [])] } : policy)
+    }));
+    setDetailPolicy((current) => current?.id === note.policy_id ? { ...current, activity_notes: [note, ...(current.activity_notes ?? [])] } : current);
+    notify("success", result.message);
+  }
+
+  async function importClients(rows: ImportClientRow[]) {
+    if (blockWrite()) return;
+    const result = await importClientsFromCsvRows(rows);
+    if (!result.ok || !result.clients || !result.policies || !result.commissions) {
+      notify("error", result.message);
+      return;
+    }
+    setData((current) => ({
+      ...current,
+      clients: [...result.clients, ...current.clients],
+      policies: [...result.policies, ...current.policies],
+      commissions: [...result.commissions, ...current.commissions]
+    }));
+    setModal(null);
     notify("success", result.message);
   }
 
@@ -291,7 +353,7 @@ export function AppShell({
         premium_amount: Number(payload.premium_amount),
         currency: "GHS",
         status: payload.status ?? "Active",
-        renewal_status: payload.renewal_status ?? "Not Started",
+        renewal_status: payload.renewal_status ?? "Upcoming",
         notes: payload.notes?.trim() || null,
         created_at: new Date().toISOString(),
         updated_at: null,
@@ -326,7 +388,7 @@ export function AppShell({
       expiry_date: payload.expiry_date,
       premium_amount: Number(payload.premium_amount),
       status: payload.status ?? "Active",
-      renewal_status: payload.renewal_status ?? "Not Started",
+      renewal_status: payload.renewal_status ?? "Upcoming",
       notes: payload.notes?.trim() || "",
       commission_rate: Number(payload.commission_rate ?? 10),
       payment_status: payload.payment_status ?? "Pending"
@@ -499,6 +561,7 @@ export function AppShell({
   const totalPaidThisMonth = commissionTotal(data.commissions.filter((item) => item.payment_status === "Paid" && isCurrentMonth(commissionEarnedDate(item))), data.policies);
 
   const selectedClient = clientId ? data.clients.find((client) => client.id === clientId) : null;
+  const todaysBirthdays = useMemo(() => data.clients.filter((client) => isBirthdayToday(client.date_of_birth)), [data.clients]);
 
   const content = selectedClient ? (
     <ClientDetail
@@ -506,6 +569,8 @@ export function AppShell({
       policies={data.policies.filter((policy) => policy.client_id === selectedClient.id)}
       base={base}
       openPolicy={setDetailPolicy}
+      notes={data.activity_notes.filter((note) => note.client_id === selectedClient.id || policiesForClient(data.policies, selectedClient.id).some((policy) => policy.id === note.policy_id))}
+      saveNote={saveActivityNote}
     />
   ) : renewalRange ? (
     <RenewalList
@@ -517,13 +582,14 @@ export function AppShell({
       onBack={() => setActive("dashboard")}
     />
   ) : active === "dashboard" ? (
-    <Dashboard data={data} base={base} totalPaidThisMonth={totalPaidThisMonth} openPolicy={setDetailPolicy} />
+    <Dashboard data={data} base={base} totalPaidThisMonth={totalPaidThisMonth} openPolicy={setDetailPolicy} todaysBirthdays={todaysBirthdays} />
   ) : active === "clients" ? (
     <Clients
       clients={filteredClients}
       policies={data.policies}
       base={base}
       onAdd={() => blockWrite() || setModal({ type: "client" })}
+      onImport={() => blockWrite() || setModal({ type: "import" })}
       onEdit={(client) => blockWrite() || setModal({ type: "client", client })}
       onDelete={(client) => blockWrite() || setModal({ type: "confirm", title: "Archive client?", body: `This will hide ${client.full_name} from active records while preserving policy and commission history.`, action: () => deleteClient(client) })}
       onExport={() => downloadCsv("policyhq-clients", clientRows(data.clients, data.policies))}
@@ -605,6 +671,7 @@ export function AppShell({
                 <MessageCircle className="h-4 w-4" />
                 Send Feedback
               </a>
+              <BirthdaySidebarCard clients={todaysBirthdays} />
             </div>
           </aside>
         <main className="min-h-screen lg:pl-72">
@@ -649,17 +716,19 @@ export function AppShell({
       {modal?.type === "demo" ? <DemoModal onClose={() => setModal(null)} /> : null}
       {modal?.type === "client" ? <ClientModal client={modal.client} onClose={() => setModal(null)} onSave={saveClient} /> : null}
       {modal?.type === "policy" ? <PolicyModal policy={modal.policy} clients={data.clients} onClose={() => setModal(null)} onSave={savePolicy} /> : null}
+      {modal?.type === "import" ? <ImportClientsModal onClose={() => setModal(null)} onImport={importClients} /> : null}
       {modal?.type === "confirm" ? <ConfirmModal title={modal.title} body={modal.body} onClose={() => setModal(null)} onConfirm={modal.action} /> : null}
-      {detailPolicy ? <PolicyDetailPanel policy={detailPolicy} onClose={() => setDetailPolicy(null)} /> : null}
+      {detailPolicy ? <PolicyDetailPanel policy={detailPolicy} onClose={() => setDetailPolicy(null)} updateRenewal={updateRenewal} saveNote={saveActivityNote} /> : null}
       {toast ? <div className={`fixed bottom-5 right-5 z-[70] rounded-xl px-4 py-3 text-sm font-bold text-white shadow-soft ${toast.tone === "success" ? "bg-success" : "bg-danger"}`}>{toast.message}</div> : null}
     </div>
   );
 }
 
-function Dashboard({ data, base, totalPaidThisMonth, openPolicy }: { data: AppData; base: string; totalPaidThisMonth: number; openPolicy: (policy: PolicyWithClient) => void }) {
+function Dashboard({ data, base, totalPaidThisMonth, openPolicy, todaysBirthdays }: { data: AppData; base: string; totalPaidThisMonth: number; openPolicy: (policy: PolicyWithClient) => void; todaysBirthdays: Client[] }) {
   const recent = [...data.policies].sort((a, b) => new Date(b.updated_at ?? b.created_at).getTime() - new Date(a.updated_at ?? a.created_at).getTime()).slice(0, 5);
   const active = activePolicies(data.policies);
   const premiumDueThisMonth = expiringThisMonth(data.policies).reduce((sum, policy) => sum + policy.premium_amount, 0);
+  const managerMetrics = renewalManagerMetrics(data.policies, todaysBirthdays.length);
   return (
     <div className="space-y-6">
       <div><h1 className="text-3xl font-extrabold">{greeting(firstName(data.profile.full_name))}</h1><p className="mt-1 text-slate-600">{fullDate()}</p></div>
@@ -679,6 +748,19 @@ function Dashboard({ data, base, totalPaidThisMonth, openPolicy }: { data: AppDa
             </Card>
           </Link>
         ))}
+      </div>
+      <div className="grid gap-4 md:grid-cols-5">
+        {managerMetrics.map((item) => (
+          <Card key={item.label}>
+            <CardContent className="p-4">
+              <p className="text-xs font-bold uppercase text-slate-500">{item.label}</p>
+              <strong className="mt-2 block text-2xl text-primary">{item.value}</strong>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+      <div className="lg:hidden">
+        <BirthdayDashboardCard clients={todaysBirthdays} />
       </div>
       <div className="space-y-3">
         <div className="flex items-center gap-3">
@@ -711,18 +793,18 @@ function RenewalList({ title, policies, base, updateRenewal, openPolicy, onBack 
   return (
     <div className="space-y-5">
       <Button asChild variant="outline"><Link href={navHref(base, "dashboard")} onClick={onBack}>Back to dashboard</Link></Button>
-      <Card><CardHeader><h1 className="text-2xl font-extrabold">{title}</h1></CardHeader><div className="overflow-auto"><table className="w-full min-w-[980px] text-sm"><thead className="sticky top-0 bg-slate-50"><tr>{["Client Name", "Phone Number", "Policy Number", "Policy Type", "Insurer", "Expiry Date", "Premium Amount (GHS)", "Renewal Status", "Alert"].map((h) => <th className="px-4 py-3 text-left" key={h}>{h}</th>)}</tr></thead><tbody>{[...policies].sort(sortByExpiry).map((p) => <tr key={p.id} onClick={() => openPolicy(p)} className={`cursor-pointer border-t ${urgency(p.expiry_date) === "urgent" ? "bg-red-50" : urgency(p.expiry_date) === "soon" ? "bg-amber-50" : "odd:bg-white even:bg-slate-50"}`}><td className="px-4 py-3 font-semibold">{p.client.full_name}</td><td className="px-4 py-3">{p.client.phone_number}</td><td className="px-4 py-3">{p.policy_number}</td><td className="px-4 py-3">{p.policy_type}</td><td className="px-4 py-3">{p.insurer_name}</td><td className="px-4 py-3">{formatDate(p.expiry_date)}</td><td className="px-4 py-3">{formatCurrency(p.premium_amount)}</td><td className="px-4 py-3" onClick={(e) => e.stopPropagation()}><Select value={p.renewal_status} onChange={(e) => updateRenewal(p.id, e.target.value as RenewalStatus)}>{renewalStatuses.map((s) => <option key={s}>{s}</option>)}</Select></td><td className="px-4 py-3">{UrgencyBadge(p.expiry_date)}</td></tr>)}</tbody></table></div></Card>
+      <Card><CardHeader><h1 className="text-2xl font-extrabold">{title}</h1></CardHeader><div className="overflow-auto"><table className="w-full min-w-[1120px] text-sm"><thead className="sticky top-0 bg-slate-50"><tr>{["Client Name", "Phone Number", "Policy Number", "Policy Type", "Insurer", "Expiry Date", "Premium Amount (GHS)", "Renewal Status", "Urgency", "Action"].map((h) => <th className="px-4 py-3 text-left" key={h}>{h}</th>)}</tr></thead><tbody>{[...policies].sort(sortByExpiry).map((p) => <tr key={p.id} onClick={() => openPolicy(p)} className={`cursor-pointer border-t ${urgency(p.expiry_date) === "urgent" ? "bg-red-50" : urgency(p.expiry_date) === "soon" ? "bg-amber-50" : "odd:bg-white even:bg-slate-50"}`}><td className="px-4 py-3 font-semibold">{p.client.full_name}</td><td className="px-4 py-3">{p.client.phone_number}</td><td className="px-4 py-3">{p.policy_number}</td><td className="px-4 py-3">{p.policy_type}</td><td className="px-4 py-3">{p.insurer_name}</td><td className="px-4 py-3">{formatDate(p.expiry_date)}</td><td className="px-4 py-3">{formatCurrency(p.premium_amount)}</td><td className="px-4 py-3" onClick={(e) => e.stopPropagation()}><Select value={p.renewal_status} onChange={(e) => updateRenewal(p.id, e.target.value as RenewalStatus)}>{renewalStatuses.map((s) => <option key={s}>{s}</option>)}</Select></td><td className="px-4 py-3"><UrgencyBadge date={p.expiry_date} status={p.renewal_status} /></td><td className="px-4 py-3" onClick={(e) => e.stopPropagation()}><WhatsAppButton href={renewalWhatsAppHref(p)} label="WhatsApp" /></td></tr>)}</tbody></table></div></Card>
     </div>
   );
 }
 
-function Clients({ clients, policies, base, onAdd, onEdit, onDelete, onExport }: { clients: Client[]; policies: PolicyWithClient[]; base: string; onAdd: () => void; onEdit: (client: Client) => void; onDelete: (client: Client) => void; onExport: () => void }) {
+function Clients({ clients, policies, base, onAdd, onImport, onEdit, onDelete, onExport }: { clients: Client[]; policies: PolicyWithClient[]; base: string; onAdd: () => void; onImport: () => void; onEdit: (client: Client) => void; onDelete: (client: Client) => void; onExport: () => void }) {
   const [sort, setSort] = useState<"name" | "date">("name");
   const sorted = [...clients].sort((a, b) => sort === "name" ? a.full_name.localeCompare(b.full_name) : new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
   if (!clients.length) return <Empty title="No clients yet. Add your first client to get started." action="Add Client" onAction={onAdd} />;
   return (
     <Card>
-      <CardHeader className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between"><h1 className="text-2xl font-extrabold">Clients</h1><div className="flex flex-wrap gap-2"><Select value={sort} onChange={(e) => setSort(e.target.value as "name" | "date")}><option value="name">Sort by Name</option><option value="date">Sort by Date Added</option></Select><Button variant="outline" onClick={onExport}><Download className="h-4 w-4" /> Export to CSV</Button><Button onClick={onAdd}><Plus className="h-4 w-4" /> Add New Client</Button></div></CardHeader>
+      <CardHeader className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between"><h1 className="text-2xl font-extrabold">Clients</h1><div className="flex flex-wrap gap-2"><Select value={sort} onChange={(e) => setSort(e.target.value as "name" | "date")}><option value="name">Sort by Name</option><option value="date">Sort by Date Added</option></Select><Button variant="outline" onClick={onExport}><Download className="h-4 w-4" /> Export to CSV</Button><Button variant="outline" onClick={onImport}><Upload className="h-4 w-4" /> Import Clients</Button><Button onClick={onAdd}><Plus className="h-4 w-4" /> Add New Client</Button></div></CardHeader>
       <div className="space-y-3 border-t p-4 md:hidden">
         {sorted.map((client) => (
           <div key={client.id} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
@@ -750,27 +832,34 @@ function Clients({ clients, policies, base, onAdd, onEdit, onDelete, onExport }:
   );
 }
 
-function ClientDetail({ client, policies, base, openPolicy }: { client: Client; policies: PolicyWithClient[]; base: string; openPolicy: (policy: PolicyWithClient) => void }) {
+function ClientDetail({ client, policies, base, openPolicy, notes, saveNote }: { client: Client; policies: PolicyWithClient[]; base: string; openPolicy: (policy: PolicyWithClient) => void; notes: ActivityNote[]; saveNote: (input: { client_id?: string; policy_id?: string; note_text: string }) => void }) {
+  const [noteText, setNoteText] = useState("");
+  function submitNote(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    saveNote({ client_id: client.id, note_text: noteText });
+    setNoteText("");
+  }
   return (
     <div className="space-y-5">
       <Button asChild variant="outline"><Link href={`${base}/clients`}>Back to clients</Link></Button>
       <Card>
         <CardHeader><h1 className="text-2xl font-extrabold">{client.full_name}</h1></CardHeader>
         <CardContent className="grid gap-4 md:grid-cols-5">
-          <Info label="Phone Number" value={client.phone_number} />
+          <Info label="Phone Number" value={<span className="flex flex-col gap-2"><span>{client.phone_number}</span><WhatsAppButton href={clientWhatsAppHref(client)} label="WhatsApp Client" /></span>} />
           <Info label="Email" value={client.email || "No email"} />
           <Info label="Date of Birth" value={client.date_of_birth ? formatDate(client.date_of_birth) : "Not recorded"} />
           <Info label="Address" value={client.address || "No address"} />
           <Info label="Date Added" value={formatDate(client.created_at)} />
         </CardContent>
       </Card>
+      <ActivityNotesCard notes={notes} value={noteText} onChange={setNoteText} onSubmit={submitNote} />
       <Card>
         <CardHeader><h2 className="text-xl font-bold">Policies</h2></CardHeader>
         {policies.length ? (
           <div className="overflow-auto">
             <table className="w-full min-w-[900px] text-sm">
               <thead className="sticky top-0 bg-slate-50"><tr>{["Policy Number", "Type", "Insurer", "Expiry Date", "Premium", "Status", "Renewal Status"].map((h) => <th className="px-4 py-3 text-left" key={h}>{h}</th>)}</tr></thead>
-              <tbody>{policies.map((policy) => <tr key={policy.id} onClick={() => openPolicy(policy)} className="cursor-pointer border-t odd:bg-white even:bg-slate-50"><td className="px-4 py-3 font-bold">{policy.policy_number}</td><td className="px-4 py-3">{policy.policy_type}</td><td className="px-4 py-3">{policy.insurer_name}</td><td className="px-4 py-3">{formatDate(policy.expiry_date)} {UrgencyBadge(policy.expiry_date)}</td><td className="px-4 py-3">{formatCurrency(policy.premium_amount)}</td><td className="px-4 py-3"><Badge tone={policy.status === "Active" ? "green" : "slate"}>{policy.status}</Badge></td><td className="px-4 py-3">{policy.renewal_status}</td></tr>)}</tbody>
+              <tbody>{policies.map((policy) => <tr key={policy.id} onClick={() => openPolicy(policy)} className="cursor-pointer border-t odd:bg-white even:bg-slate-50"><td className="px-4 py-3 font-bold">{policy.policy_number}</td><td className="px-4 py-3">{policy.policy_type}</td><td className="px-4 py-3">{policy.insurer_name}</td><td className="px-4 py-3">{formatDate(policy.expiry_date)} <UrgencyBadge date={policy.expiry_date} status={policy.renewal_status} /></td><td className="px-4 py-3">{formatCurrency(policy.premium_amount)}</td><td className="px-4 py-3"><Badge tone={policy.status === "Active" ? "green" : "slate"}>{policy.status}</Badge></td><td className="px-4 py-3">{policy.renewal_status}</td></tr>)}</tbody>
             </table>
           </div>
         ) : (
@@ -806,12 +895,13 @@ function Policies({ policies, clients, onAdd, onEdit, onDelete, onExport, update
                 <Info label="Type" value={policy.policy_type} />
                 <Info label="Premium" value={formatCurrency(policy.premium_amount)} />
                 <Info label="Expiry" value={formatDate(policy.expiry_date)} />
-                <div>{UrgencyBadge(policy.expiry_date)}</div>
+                <div><UrgencyBadge date={policy.expiry_date} status={policy.renewal_status} /></div>
               </div>
             </button>
             <div className="mt-4 grid gap-2" onClick={(event) => event.stopPropagation()}>
               <Select value={policy.renewal_status} onChange={(event) => updateRenewal(policy.id, event.target.value as RenewalStatus)}>{renewalStatuses.map((item) => <option key={item}>{item}</option>)}</Select>
               <div className="flex gap-2">
+                <WhatsAppButton href={renewalWhatsAppHref(policy)} label="WhatsApp" className="flex-1" />
                 <Button variant="outline" size="sm" className="flex-1" onClick={() => onEdit(policy)}>Edit</Button>
                 <Button variant="ghost" size="sm" className="h-11 w-11" aria-label={`Delete ${policy.policy_number}`} onClick={() => onDelete(policy)}><Trash2 className="h-4 w-4 text-danger" /></Button>
               </div>
@@ -819,7 +909,7 @@ function Policies({ policies, clients, onAdd, onEdit, onDelete, onExport, update
           </div>
         ))}
       </div>
-      <div className="hidden overflow-auto md:block"><table className="w-full min-w-[1100px] text-sm"><thead className="sticky top-0 bg-slate-50"><tr>{["Client Name", "Policy Number", "Type", "Insurer", "Start Date", "Expiry Date", "Premium (GHS)", "Status", "Renewal Status", "Actions"].map((h) => <th className="px-4 py-3 text-left" key={h}>{h}</th>)}</tr></thead><tbody>{filtered.map((p) => <tr key={p.id} onClick={() => openPolicy(p)} className={`cursor-pointer border-t ${urgency(p.expiry_date) === "urgent" ? "bg-red-50" : urgency(p.expiry_date) === "soon" ? "bg-amber-50" : "odd:bg-white even:bg-slate-50"}`}><td className="px-4 py-3 font-bold">{p.client.full_name}</td><td className="px-4 py-3">{p.policy_number}</td><td className="px-4 py-3">{p.policy_type}</td><td className="px-4 py-3">{p.insurer_name}</td><td className="px-4 py-3">{formatDate(p.start_date)}</td><td className="px-4 py-3">{formatDate(p.expiry_date)} {UrgencyBadge(p.expiry_date)}</td><td className="px-4 py-3">{formatCurrency(p.premium_amount)}</td><td className="px-4 py-3"><Badge tone={p.status === "Active" ? "green" : "slate"}>{p.status}</Badge></td><td className="px-4 py-3" onClick={(e) => e.stopPropagation()}><Select value={p.renewal_status} onChange={(e) => updateRenewal(p.id, e.target.value as RenewalStatus)}>{renewalStatuses.map((s) => <option key={s}>{s}</option>)}</Select></td><td className="px-4 py-3" onClick={(e) => e.stopPropagation()}><Button variant="ghost" size="sm" onClick={() => onEdit(p)}>Edit</Button><Button variant="ghost" size="sm" onClick={() => onDelete(p)}><Trash2 className="h-4 w-4 text-danger" /></Button></td></tr>)}</tbody></table></div>
+      <div className="hidden overflow-auto md:block"><table className="w-full min-w-[1200px] text-sm"><thead className="sticky top-0 bg-slate-50"><tr>{["Client Name", "Policy Number", "Type", "Insurer", "Start Date", "Expiry Date", "Premium (GHS)", "Status", "Renewal Status", "Actions"].map((h) => <th className="px-4 py-3 text-left" key={h}>{h}</th>)}</tr></thead><tbody>{filtered.map((p) => <tr key={p.id} onClick={() => openPolicy(p)} className={`cursor-pointer border-t ${urgency(p.expiry_date) === "urgent" ? "bg-red-50" : urgency(p.expiry_date) === "soon" ? "bg-amber-50" : "odd:bg-white even:bg-slate-50"}`}><td className="px-4 py-3 font-bold">{p.client.full_name}</td><td className="px-4 py-3">{p.policy_number}</td><td className="px-4 py-3">{p.policy_type}</td><td className="px-4 py-3">{p.insurer_name}</td><td className="px-4 py-3">{formatDate(p.start_date)}</td><td className="px-4 py-3">{formatDate(p.expiry_date)} <UrgencyBadge date={p.expiry_date} status={p.renewal_status} /></td><td className="px-4 py-3">{formatCurrency(p.premium_amount)}</td><td className="px-4 py-3"><Badge tone={p.status === "Active" ? "green" : "slate"}>{p.status}</Badge></td><td className="px-4 py-3" onClick={(e) => e.stopPropagation()}><Select value={p.renewal_status} onChange={(e) => updateRenewal(p.id, e.target.value as RenewalStatus)}>{renewalStatuses.map((s) => <option key={s}>{s}</option>)}</Select></td><td className="px-4 py-3" onClick={(e) => e.stopPropagation()}><WhatsAppButton href={renewalWhatsAppHref(p)} label="WhatsApp" /><Button variant="ghost" size="sm" onClick={() => onEdit(p)}>Edit</Button><Button variant="ghost" size="sm" onClick={() => onDelete(p)}><Trash2 className="h-4 w-4 text-danger" /></Button></td></tr>)}</tbody></table></div>
     </Card>
   );
 }
@@ -1167,7 +1257,7 @@ function PolicyModal({ policy, clients, onClose, onSave }: { policy?: PolicyWith
       expiry_date: String(form.get("expiry_date") ?? ""),
       premium_amount: Number(form.get("premium_amount") ?? 0),
       status: String(form.get("status") ?? "Active") as PolicyStatus,
-      renewal_status: String(form.get("renewal_status") ?? "Not Started") as RenewalStatus,
+      renewal_status: String(form.get("renewal_status") ?? "Upcoming") as RenewalStatus,
       notes: String(form.get("notes") ?? ""),
       commission_rate: Number(form.get("commission_rate") ?? policy?.commission?.commission_rate ?? 10),
       payment_status: String(form.get("payment_status") ?? policy?.commission?.payment_status ?? "Pending") as "Paid" | "Pending"
@@ -1208,7 +1298,7 @@ function PolicyModal({ policy, clients, onClose, onSave }: { policy?: PolicyWith
             <InsurerAutocomplete category={insuranceCategory} value={insurerName} onChange={setInsurerName} />
             <label className="block text-sm font-semibold">Expiry Date<Input name="expiry_date" type="date" required defaultValue={policy?.expiry_date} className="mt-1" /></label>
             <label className="block text-sm font-semibold">Status<Select name="status" defaultValue={policy?.status ?? "Active"} className="mt-1">{policyStatuses.map((item) => <option key={item}>{item}</option>)}</Select></label>
-            <label className="block text-sm font-semibold">Renewal Status<Select name="renewal_status" defaultValue={policy?.renewal_status ?? "Not Started"} className="mt-1">{renewalStatuses.map((item) => <option key={item}>{item}</option>)}</Select></label>
+            <label className="block text-sm font-semibold">Renewal Status<Select name="renewal_status" defaultValue={policy?.renewal_status ?? "Upcoming"} className="mt-1">{renewalStatuses.map((item) => <option key={item}>{item}</option>)}</Select></label>
           </div>
           <div className="space-y-4">
             <label className="block text-sm font-semibold">
@@ -1237,6 +1327,58 @@ function PolicyModal({ policy, clients, onClose, onSave }: { policy?: PolicyWith
         <label className="block text-sm font-semibold md:col-span-2">Notes<Textarea name="notes" defaultValue={policy?.notes ?? ""} className="mt-1" /></label>
         <div className="md:col-span-2 mt-2 flex justify-end gap-3"><Button type="button" variant="outline" onClick={onClose}>Cancel</Button><Button>Save Policy</Button></div>
       </form>
+    </ModalFrame>
+  );
+}
+
+function ImportClientsModal({ onClose, onImport }: { onClose: () => void; onImport: (rows: ImportClientRow[]) => void }) {
+  const [rows, setRows] = useState<ImportClientRow[]>([]);
+  const [errors, setErrors] = useState<string[]>([]);
+
+  async function handleFile(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    const text = await file.text();
+    const parsed = parseClientCsv(text);
+    setRows(parsed.rows);
+    setErrors(parsed.errors);
+  }
+
+  return (
+    <ModalFrame title="Import Clients" onClose={onClose}>
+      <div className="space-y-5">
+        <div className="rounded-xl bg-slate-50 p-4 text-sm text-slate-600">
+          <p className="font-bold text-primary">Upload a CSV with clients and policies.</p>
+          <p className="mt-1">Required columns: client_name, phone_number, policy_number, policy_type, insurer_name, policy_start_date, policy_end_date. Add vehicle_number for Motor and property_location for Property.</p>
+        </div>
+        <div className="flex flex-wrap gap-3">
+          <Button type="button" variant="outline" onClick={downloadClientImportTemplate}><Download className="h-4 w-4" /> Download Template</Button>
+          <label className="inline-flex h-11 cursor-pointer items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-5 font-semibold text-slate-900 hover:border-accent hover:text-accent">
+            <Upload className="h-4 w-4" /> Upload CSV
+            <input type="file" accept=".csv,text/csv" className="sr-only" onChange={handleFile} />
+          </label>
+        </div>
+        {errors.length ? (
+          <div className="rounded-xl bg-red-50 p-4 text-sm font-semibold text-red-700">
+            {errors.map((error) => <p key={error}>{error}</p>)}
+          </div>
+        ) : null}
+        {rows.length ? (
+          <div className="space-y-3">
+            <p className="text-sm font-bold text-slate-600">{rows.length} valid row{rows.length === 1 ? "" : "s"} ready to import.</p>
+            <div className="max-h-72 overflow-auto rounded-xl border border-slate-200">
+              <table className="w-full min-w-[860px] text-sm">
+                <thead className="sticky top-0 bg-slate-50"><tr>{["Client", "Phone", "Policy No.", "Type", "Insurer", "Start", "End", "Vehicle/Property", "Premium"].map((header) => <th key={header} className="px-3 py-2 text-left">{header}</th>)}</tr></thead>
+                <tbody>{rows.map((row) => <tr key={row.policy_number} className="border-t"><td className="px-3 py-2 font-bold">{row.client_name}</td><td className="px-3 py-2">{row.phone_number}</td><td className="px-3 py-2">{row.policy_number}</td><td className="px-3 py-2">{row.policy_type}</td><td className="px-3 py-2">{row.insurer_name}</td><td className="px-3 py-2">{row.policy_start_date}</td><td className="px-3 py-2">{row.policy_end_date}</td><td className="px-3 py-2">{row.vehicle_number || row.property_location || "—"}</td><td className="px-3 py-2">{row.premium ? formatCurrency(row.premium) : "—"}</td></tr>)}</tbody>
+              </table>
+            </div>
+          </div>
+        ) : null}
+        <div className="flex justify-end gap-3">
+          <Button type="button" variant="outline" onClick={onClose}>Cancel</Button>
+          <Button type="button" disabled={!rows.length || Boolean(errors.length)} onClick={() => onImport(rows)}>Import Valid Rows</Button>
+        </div>
+      </div>
     </ModalFrame>
   );
 }
@@ -1308,8 +1450,14 @@ function ExistingClientDetails({ client }: { client: Client }) {
   );
 }
 
-function PolicyDetailPanel({ policy, onClose }: { policy: PolicyWithClient; onClose: () => void }) {
+function PolicyDetailPanel({ policy, onClose, updateRenewal, saveNote }: { policy: PolicyWithClient; onClose: () => void; updateRenewal: (id: string, status: RenewalStatus) => void; saveNote: (input: { client_id?: string; policy_id?: string; note_text: string }) => void }) {
   const commission = policy.commission;
+  const [noteText, setNoteText] = useState("");
+  function submitNote(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    saveNote({ client_id: policy.client_id, policy_id: policy.id, note_text: noteText });
+    setNoteText("");
+  }
   const rows = [
     ["Policy Number", policy.policy_number],
     ["Type", policy.policy_type],
@@ -1321,17 +1469,17 @@ function PolicyDetailPanel({ policy, onClose }: { policy: PolicyWithClient; onCl
     ["Expiry Date", formatDate(policy.expiry_date)],
     ["Premium", formatCurrency(policy.premium_amount)],
     ["Status", policy.status],
-    ["Renewal Status", policy.renewal_status],
+    ["Urgency", <UrgencyBadge key="urgency" date={policy.expiry_date} status={policy.renewal_status} />],
     ["Commission Rate", commission ? `${commission.commission_rate}%` : "—"],
     ["Commission Amount", commission ? formatCurrency(policy.premium_amount * commission.commission_rate / 100) : "—"],
     ["Payment Status", commission?.payment_status ?? "—"],
     ["Payment Date", commission?.payment_date ? formatDate(commission.payment_date) : "—"]
   ];
-  return <div className="fixed inset-y-0 right-0 z-[55] w-full max-w-xl overflow-y-auto border-l border-slate-200 bg-white p-6 shadow-soft"><div className="mb-6 flex items-center justify-between"><h2 className="text-2xl font-extrabold">Policy Detail</h2><Button variant="ghost" size="icon" onClick={onClose}><X className="h-5 w-5" /></Button></div><div className="space-y-5"><Card><CardContent className="space-y-2 p-5"><h3 className="font-bold">{policy.client.full_name}</h3><p>{policy.client.phone_number}</p><p>{policy.client.email || "No email"}</p><p>{policy.client.date_of_birth ? `Birthday: ${formatDate(policy.client.date_of_birth)}` : "Birthday not recorded"}</p></CardContent></Card><dl className="grid grid-cols-2 gap-4 text-sm">{rows.map(([label, value]) => <div key={label} className="rounded-xl bg-slate-50 p-3"><dt className="font-bold text-slate-500">{label}</dt><dd className="mt-1 font-semibold">{value}</dd></div>)}</dl><Card><CardHeader><h3 className="font-bold">Notes</h3></CardHeader><CardContent><p className="text-sm leading-6 text-slate-600">{policy.notes || "No notes recorded."}</p></CardContent></Card></div></div>;
+  return <div className="fixed inset-y-0 right-0 z-[55] w-full max-w-xl overflow-y-auto border-l border-slate-200 bg-white p-6 shadow-soft"><div className="mb-6 flex items-center justify-between"><h2 className="text-2xl font-extrabold">Policy Detail</h2><Button variant="ghost" size="icon" onClick={onClose}><X className="h-5 w-5" /></Button></div><div className="space-y-5"><Card><CardContent className="space-y-3 p-5"><h3 className="font-bold">{policy.client.full_name}</h3><p>{policy.client.phone_number}</p><p>{policy.client.email || "No email"}</p><p>{policy.client.date_of_birth ? `Birthday: ${formatDate(policy.client.date_of_birth)}` : "Birthday not recorded"}</p><div className="flex flex-wrap gap-2"><WhatsAppButton href={clientWhatsAppHref(policy.client)} label="WhatsApp Client" /><WhatsAppButton href={renewalWhatsAppHref(policy)} label="Send Renewal Reminder" /></div></CardContent></Card><Card><CardContent className="p-4"><label className="block text-sm font-semibold">Renewal Status<Select value={policy.renewal_status} onChange={(event) => updateRenewal(policy.id, event.target.value as RenewalStatus)} className="mt-1">{renewalStatuses.map((status) => <option key={status}>{status}</option>)}</Select></label></CardContent></Card><dl className="grid grid-cols-2 gap-4 text-sm">{rows.map(([label, value]) => <div key={String(label)} className="rounded-xl bg-slate-50 p-3"><dt className="font-bold text-slate-500">{label}</dt><dd className="mt-1 font-semibold">{value}</dd></div>)}</dl><Card><CardHeader><h3 className="font-bold">Policy Notes</h3></CardHeader><CardContent><p className="text-sm leading-6 text-slate-600">{policy.notes || "No policy notes recorded."}</p></CardContent></Card><ActivityNotesCard notes={policy.activity_notes ?? []} value={noteText} onChange={setNoteText} onSubmit={submitNote} /></div></div>;
 }
 
 function Info({ label, value }: { label: string; value: ReactNode }) {
-  return <div className="rounded-xl bg-slate-50 p-3"><p className="text-xs font-bold uppercase text-slate-500">{label}</p><p className="mt-1 font-semibold">{value}</p></div>;
+  return <div className="rounded-xl bg-slate-50 p-3"><p className="text-xs font-bold uppercase text-slate-500">{label}</p><div className="mt-1 font-semibold">{value}</div></div>;
 }
 
 function ConfirmModal({ title, body, onClose, onConfirm }: { title: string; body: string; onClose: () => void; onConfirm: () => Promise<void> | void }) {
@@ -1362,6 +1510,66 @@ function Empty({ title, action, onAction }: { title: string; action: string; onA
   return <Card><CardContent className="flex min-h-96 flex-col items-center justify-center text-center"><FileText className="h-12 w-12 text-slate-300" /><h1 className="mt-4 text-xl font-bold">{title}</h1><Button className="mt-5" onClick={onAction}>{action}</Button></CardContent></Card>;
 }
 
+function BirthdaySidebarCard({ clients }: { clients: Client[] }) {
+  return (
+    <div className="mt-4 hidden rounded-xl border border-white/10 bg-white/5 p-4 lg:block">
+      <div className="flex items-center gap-2 text-sm font-extrabold text-white"><Cake className="h-4 w-4 text-accent" /> Today’s Birthdays</div>
+      {clients.length ? (
+        <div className="mt-3 space-y-3">
+          {clients.slice(0, 3).map((client) => (
+            <div key={client.id} className="rounded-lg bg-white/10 p-2">
+              <p className="text-sm font-bold text-white">{client.full_name}</p>
+              <WhatsAppButton href={birthdayWhatsAppHref(client)} label="WhatsApp" className="mt-2 w-full border-white/20 bg-white text-primary hover:bg-orange-50" />
+            </div>
+          ))}
+        </div>
+      ) : <p className="mt-3 text-sm font-semibold text-slate-300">None today</p>}
+    </div>
+  );
+}
+
+function BirthdayDashboardCard({ clients }: { clients: Client[] }) {
+  return (
+    <Card>
+      <CardHeader><h2 className="flex items-center gap-2 text-lg font-extrabold"><Cake className="h-5 w-5 text-accent" /> Today’s Birthdays</h2></CardHeader>
+      <CardContent className="space-y-3">
+        {clients.length ? clients.map((client) => (
+          <div key={client.id} className="flex items-center justify-between gap-3 rounded-xl bg-slate-50 p-3">
+            <div><p className="font-bold text-primary">{client.full_name}</p><p className="text-sm text-slate-600">{client.phone_number}</p></div>
+            <WhatsAppButton href={birthdayWhatsAppHref(client)} label="WhatsApp" />
+          </div>
+        )) : <p className="text-sm font-semibold text-slate-500">No client birthdays today.</p>}
+      </CardContent>
+    </Card>
+  );
+}
+
+function ActivityNotesCard({ notes, value, onChange, onSubmit }: { notes: ActivityNote[]; value: string; onChange: (value: string) => void; onSubmit: (event: FormEvent<HTMLFormElement>) => void }) {
+  return (
+    <Card>
+      <CardHeader><h3 className="font-bold">Activity Notes</h3></CardHeader>
+      <CardContent className="space-y-4">
+        <form onSubmit={onSubmit} className="space-y-3">
+          <Textarea value={value} onChange={(event) => onChange(event.target.value)} placeholder="Add a short follow-up note" className="min-h-20" />
+          <Button disabled={!value.trim()}>Add Note</Button>
+        </form>
+        <div className="space-y-3">
+          {notes.length ? notes.map((note) => (
+            <div key={note.id} className="rounded-xl bg-slate-50 p-3 text-sm">
+              <p className="font-semibold text-slate-800">{note.note_text}</p>
+              <p className="mt-2 text-xs font-bold uppercase text-slate-400">{formatDate(note.created_at)} · {note.author_name ?? "Agent"}</p>
+            </div>
+          )) : <p className="text-sm font-semibold text-slate-500">No activity notes yet.</p>}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function WhatsAppButton({ href, label, className = "" }: { href: string; label: string; className?: string }) {
+  return <Button asChild size="sm" variant="outline" className={className}><a href={href} target="_blank" rel="noreferrer"><MessageCircle className="h-4 w-4" /> {label}</a></Button>;
+}
+
 function CommissionStatusBadge({ status }: { status: CommissionDisplayStatus }) {
   if (status === "Paid") return <Badge tone="green">Paid</Badge>;
   if (status === "Overdue") return <Badge tone="red">Overdue</Badge>;
@@ -1387,11 +1595,10 @@ function CommissionAction({ commission, status, confirming, flagged, onStart, on
   );
 }
 
-function UrgencyBadge(date: string) {
-  const level = urgency(date);
-  if (level === "urgent") return <Badge tone="red">URGENT</Badge>;
-  if (level === "soon") return <Badge tone="amber">DUE SOON</Badge>;
-  return null;
+function UrgencyBadge({ date, status }: { date: string; status?: RenewalStatus }) {
+  const level = renewalUrgency(date, status);
+  const tone = level === "Overdue" || level === "Critical" ? "red" : level === "Urgent" || level === "Watch" ? "amber" : "green";
+  return <Badge tone={tone}>{level}</Badge>;
 }
 
 function commissionTotal(commissions: Commission[], policies: PolicyWithClient[]) {
@@ -1509,4 +1716,114 @@ function commissionRows(commissions: Commission[], policies: PolicyWithClient[])
 function navHref(base: string, section: Section) {
   if (base) return section === "dashboard" ? base : `${base}/${section}`;
   return section === "dashboard" ? "/dashboard" : `/${section}`;
+}
+
+function policiesForClient(policies: PolicyWithClient[], clientId: string) {
+  return policies.filter((policy) => policy.client_id === clientId);
+}
+
+function renewalWhatsAppHref(policy: PolicyWithClient) {
+  const message = `Hello ${policy.client.full_name}, this is a reminder that your ${policy.policy_type} policy expires on ${formatDate(policy.expiry_date)}. Kindly let me know when you would like us to start the renewal process. Thank you.`;
+  return whatsAppUrl(policy.client.phone_number, message);
+}
+
+function clientWhatsAppHref(client: Client) {
+  return whatsAppUrl(client.phone_number, `Hello ${client.full_name}, thank you for trusting us. How may I help you today?`);
+}
+
+function birthdayWhatsAppHref(client: Client) {
+  return whatsAppUrl(client.phone_number, `Happy Birthday ${client.full_name}! Wishing you good health, happiness, and a wonderful year ahead. Thank you for trusting us.`);
+}
+
+function renewalManagerMetrics(policies: PolicyWithClient[], birthdaysToday: number) {
+  const due = policies.filter((policy) => ["Watch", "Urgent", "Critical", "Overdue"].includes(renewalUrgency(policy.expiry_date, policy.renewal_status)) && policy.renewal_status !== "Renewed").length;
+  return [
+    { label: "Renewals Due", value: due },
+    { label: "Renewed", value: policies.filter((policy) => policy.renewal_status === "Renewed").length },
+    { label: "Overdue", value: policies.filter((policy) => renewalUrgency(policy.expiry_date, policy.renewal_status) === "Overdue").length },
+    { label: "Lost", value: policies.filter((policy) => policy.renewal_status === "Lost").length },
+    { label: "Birthdays Today", value: birthdaysToday }
+  ];
+}
+
+function downloadClientImportTemplate() {
+  const headers = ["client_name", "phone_number", "policy_number", "policy_type", "insurer_name", "policy_start_date", "policy_end_date", "vehicle_number", "property_location", "premium", "email", "date_of_birth", "notes"];
+  const example = ["Ama Mensah", "+233241234567", "POL-GH-MOT-2026-001", "Motor", "Enterprise Insurance LTD", "2026-01-01", "2026-12-31", "GR-4421-26", "", "1200", "ama@example.com", "1990-05-18", "Imported client"];
+  const csv = `${headers.join(",")}\n${example.map((value) => `"${value}"`).join(",")}`;
+  const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = "policyhq-client-import-template.csv";
+  anchor.click();
+  URL.revokeObjectURL(url);
+}
+
+function parseClientCsv(text: string) {
+  const lines = text.split(/\r?\n/).filter((line) => line.trim());
+  if (lines.length < 2) return { rows: [], errors: ["CSV needs a header row and at least one client row."] };
+  const headers = splitCsvLine(lines[0]).map((header) => header.trim());
+  const required = ["client_name", "phone_number", "policy_number", "policy_type", "insurer_name", "policy_start_date", "policy_end_date"];
+  const missingHeaders = required.filter((header) => !headers.includes(header));
+  if (missingHeaders.length) return { rows: [], errors: [`Missing columns: ${missingHeaders.join(", ")}`] };
+
+  const rows: ImportClientRow[] = [];
+  const errors: string[] = [];
+  lines.slice(1).forEach((line, index) => {
+    const values = splitCsvLine(line);
+    const record = Object.fromEntries(headers.map((header, headerIndex) => [header, values[headerIndex]?.trim() ?? ""]));
+    const rowNumber = index + 2;
+    for (const field of required) {
+      if (!record[field]) errors.push(`Row ${rowNumber}: ${field} is required.`);
+    }
+    if (record.policy_type && !policyTypes.includes(record.policy_type as PolicyType)) errors.push(`Row ${rowNumber}: policy_type must be one of ${policyTypes.join(", ")}.`);
+    if (record.policy_type === "Motor" && !record.vehicle_number) errors.push(`Row ${rowNumber}: vehicle_number is required for Motor.`);
+    if (record.policy_type === "Property" && !record.property_location) errors.push(`Row ${rowNumber}: property_location is required for Property.`);
+    if (record.policy_start_date && !/^\d{4}-\d{2}-\d{2}$/.test(record.policy_start_date)) errors.push(`Row ${rowNumber}: policy_start_date must be YYYY-MM-DD.`);
+    if (record.policy_end_date && !/^\d{4}-\d{2}-\d{2}$/.test(record.policy_end_date)) errors.push(`Row ${rowNumber}: policy_end_date must be YYYY-MM-DD.`);
+    if (record.date_of_birth && !/^\d{4}-\d{2}-\d{2}$/.test(record.date_of_birth)) errors.push(`Row ${rowNumber}: date_of_birth must be YYYY-MM-DD.`);
+    if (record.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(record.email)) errors.push(`Row ${rowNumber}: email is invalid.`);
+    const premium = record.premium ? Number(record.premium) : undefined;
+    if (record.premium && (!premium || premium <= 0)) errors.push(`Row ${rowNumber}: premium must be a positive number.`);
+    if (!errors.some((error) => error.startsWith(`Row ${rowNumber}:`))) {
+      rows.push({
+        client_name: record.client_name,
+        phone_number: normalizeGhanaPhoneNumber(record.phone_number),
+        policy_number: normalizePolicyNumber(record.policy_number),
+        policy_type: record.policy_type as PolicyType,
+        insurer_name: record.insurer_name,
+        policy_start_date: record.policy_start_date,
+        policy_end_date: record.policy_end_date,
+        vehicle_number: record.vehicle_number || undefined,
+        property_location: record.property_location || undefined,
+        premium,
+        email: record.email || undefined,
+        date_of_birth: record.date_of_birth || undefined,
+        notes: record.notes || undefined
+      });
+    }
+  });
+  return { rows: errors.length ? [] : rows, errors };
+}
+
+function splitCsvLine(line: string) {
+  const cells: string[] = [];
+  let current = "";
+  let quoted = false;
+  for (let index = 0; index < line.length; index += 1) {
+    const char = line[index];
+    const next = line[index + 1];
+    if (char === '"' && quoted && next === '"') {
+      current += '"';
+      index += 1;
+    } else if (char === '"') {
+      quoted = !quoted;
+    } else if (char === "," && !quoted) {
+      cells.push(current);
+      current = "";
+    } else {
+      current += char;
+    }
+  }
+  cells.push(current);
+  return cells;
 }

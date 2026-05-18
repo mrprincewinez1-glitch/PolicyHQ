@@ -4,7 +4,10 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { isValidPolicyNumber, normalizePolicyNumber, policyNumberHelpText } from "@/lib/policy-number";
 import { createClient } from "@/lib/supabase/server";
-import type { RenewalStatus } from "@/lib/types";
+import { findInsuranceCompany, insuranceCategoryForPolicyType } from "@/lib/insurance";
+import type { ActivityNote, Client, Commission, PolicyWithClient, RenewalStatus } from "@/lib/types";
+
+const renewalStatusValues = ["Upcoming", "Contacted", "Quote Requested", "Payment Pending", "Renewed", "Lost"] as const;
 
 const clientSchema = z.object({
   id: z.string().uuid().optional(),
@@ -35,14 +38,38 @@ const policySchema = z.object({
   commission_rate: z.coerce.number().positive("Commission rate must be greater than zero"),
   payment_status: z.enum(["Paid", "Pending"]),
   status: z.enum(["Active", "Expired", "Cancelled"]),
-  renewal_status: z.enum(["Not Started", "Reminder Sent", "Under Renewal", "Renewed", "Lapsed"]),
+  renewal_status: z.enum(renewalStatusValues),
   notes: z.string().optional()
 });
 
 const renewalStatusSchema = z.object({
   policy_id: z.string().uuid("Policy is invalid"),
-  renewal_status: z.enum(["Not Started", "Reminder Sent", "Under Renewal", "Renewed", "Lapsed"])
+  renewal_status: z.enum(renewalStatusValues)
 });
+
+const activityNoteSchema = z.object({
+  client_id: z.string().uuid("Client is invalid").optional().or(z.literal("")),
+  policy_id: z.string().uuid("Policy is invalid").optional().or(z.literal("")),
+  note_text: z.string().trim().min(2, "Write a short note before saving.").max(500, "Keep notes under 500 characters.")
+}).refine((value) => value.client_id || value.policy_id, "Choose a client or policy for this note.");
+
+const importClientRowSchema = z.object({
+  client_name: z.string().trim().min(2, "Client name is required"),
+  phone_number: z.string().trim().regex(/^\+?[0-9 ()-]{8,20}$/, "Phone number is invalid"),
+  policy_number: z.string().transform(normalizePolicyNumber).refine(isValidPolicyNumber, policyNumberHelpText),
+  policy_type: z.enum(["Life", "Health", "Motor", "Property", "Fire", "Marine", "Travel"]),
+  insurer_name: z.string().trim().min(2, "Insurer is required"),
+  policy_start_date: z.string().refine(isValidDateInput, "Policy start date is invalid"),
+  policy_end_date: z.string().refine(isValidDateInput, "Policy end date is invalid"),
+  vehicle_number: z.string().trim().optional().or(z.literal("")),
+  property_location: z.string().trim().optional().or(z.literal("")),
+  premium: z.coerce.number().positive("Premium must be greater than zero").optional(),
+  email: z.string().email().optional().or(z.literal("")),
+  date_of_birth: z.string().refine(isValidDateInput, "Date of birth is invalid").optional().or(z.literal("")),
+  notes: z.string().max(500, "Notes are too long").optional().or(z.literal(""))
+});
+
+const importClientRowsSchema = z.array(importClientRowSchema).min(1, "Upload at least one valid row.").max(100, "Import 100 rows or fewer at a time.");
 
 const commissionPaidSchema = z.object({
   commission_id: z.string().uuid("Commission is invalid")
@@ -78,6 +105,7 @@ const clientColumns = "id, agent_id, full_name, phone_number, email, date_of_bir
 const policyColumns = "id, agent_id, client_id, policy_number, policy_type, insurance_category, vehicle_number, property_location, insurer_name, start_date, expiry_date, premium_amount, currency, status, renewal_status, notes, created_at, updated_at";
 const commissionColumns = "id, policy_id, agent_id, commission_rate, commission_amount, payment_status, payment_date, created_at";
 const profileColumns = "id, role, full_name, email, phone_number, company_name, avatar_url, whatsapp_enabled, email_notifications_enabled, birthday_messages_enabled, agent_whatsapp_summary_enabled, reminder_30_enabled, reminder_14_enabled, reminder_7_enabled";
+const activityNoteColumns = "id, agent_id, client_id, policy_id, note_text, created_by, created_at";
 
 function isValidDateInput(value: string) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
@@ -274,6 +302,133 @@ export async function updatePolicyRenewalStatus(input: { policy_id: string; rene
   revalidatePath("/dashboard");
   revalidatePath("/policies");
   return { ok: true, message: "Renewal status updated.", policy };
+}
+
+export async function addActivityNote(input: { client_id?: string; policy_id?: string; note_text: string }) {
+  const parsed = activityNoteSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, message: parsed.error.issues[0]?.message ?? "Check the note." };
+  const { supabase, agentId } = await currentUserId();
+  if (parsed.data.policy_id) {
+    const { data: policy } = await supabase.from("policies").select("id").eq("id", parsed.data.policy_id).eq("agent_id", agentId).maybeSingle();
+    if (!policy) return { ok: false, message: "We could not confirm this policy belongs to you." };
+  }
+  if (parsed.data.client_id) {
+    const { data: client } = await supabase.from("clients").select("id").eq("id", parsed.data.client_id).eq("agent_id", agentId).is("deleted_at", null).maybeSingle();
+    if (!client) return { ok: false, message: "We could not confirm this client belongs to you." };
+  }
+  const { data: note, error } = await supabase
+    .from("activity_notes")
+    .insert({
+      agent_id: agentId,
+      client_id: parsed.data.client_id || null,
+      policy_id: parsed.data.policy_id || null,
+      note_text: parsed.data.note_text,
+      created_by: agentId
+    })
+    .select(activityNoteColumns)
+    .single();
+  if (error || !note) return { ok: false, message: "We could not save this note." };
+  revalidatePath("/clients");
+  revalidatePath("/policies");
+  revalidatePath("/dashboard");
+  return { ok: true, message: "Note saved.", note: note as ActivityNote };
+}
+
+export async function importClientsFromCsvRows(rows: unknown) {
+  const parsed = importClientRowsSchema.safeParse(rows);
+  if (!parsed.success) return { ok: false, message: parsed.error.issues[0]?.message ?? "Check your CSV rows." };
+  const { supabase, agentId } = await currentUserId();
+  const policyNumbers = parsed.data.map((row) => row.policy_number);
+  const { data: existingPolicies, error: duplicateError } = await supabase
+    .from("policies")
+    .select("policy_number")
+    .in("policy_number", policyNumbers);
+  if (duplicateError) return { ok: false, message: "We could not check policy numbers before importing." };
+  const existingPolicyNumbers = new Set((existingPolicies ?? []).map((row) => row.policy_number));
+  const duplicatePolicyNumber = policyNumbers.find((policyNumber, index) => policyNumbers.indexOf(policyNumber) !== index || existingPolicyNumbers.has(policyNumber));
+  if (duplicatePolicyNumber) return { ok: false, message: `Policy number ${duplicatePolicyNumber} already exists or appears twice.` };
+
+  for (const row of parsed.data) {
+    const company = findInsuranceCompany(row.insurer_name);
+    const insuranceCategory = insuranceCategoryForPolicyType(row.policy_type);
+    if (!company) return { ok: false, message: `Choose an approved insurer for ${row.policy_number}.` };
+    if (company.category !== insuranceCategory) return { ok: false, message: `${company.name} does not match the ${insuranceCategory} business class for ${row.policy_number}.` };
+    if (row.policy_type === "Motor" && !row.vehicle_number?.trim()) return { ok: false, message: `Vehicle number is required for motor policy ${row.policy_number}.` };
+    if (row.policy_type === "Property" && !row.property_location?.trim()) return { ok: false, message: `Property location is required for property policy ${row.policy_number}.` };
+  }
+
+  const importedClients: Client[] = [];
+  const importedPolicies: PolicyWithClient[] = [];
+  const importedCommissions: Commission[] = [];
+
+  for (const row of parsed.data) {
+    const { data: client, error: clientError } = await supabase
+      .from("clients")
+      .insert({
+        agent_id: agentId,
+        full_name: row.client_name,
+        phone_number: row.phone_number,
+        email: row.email || null,
+        date_of_birth: row.date_of_birth || null,
+        address: null
+      })
+      .select(clientColumns)
+      .single();
+    if (clientError || !client) return { ok: false, message: `Import stopped at ${row.client_name}. We could not save this client.` };
+
+    const company = findInsuranceCompany(row.insurer_name)!;
+    const insuranceCategory = insuranceCategoryForPolicyType(row.policy_type);
+    const { data: policy, error: policyError } = await supabase
+      .from("policies")
+      .insert({
+        agent_id: agentId,
+        client_id: client.id,
+        policy_number: row.policy_number,
+        policy_type: row.policy_type,
+        insurance_category: insuranceCategory,
+        vehicle_number: row.policy_type === "Motor" ? row.vehicle_number?.trim() : null,
+        property_location: row.policy_type === "Property" ? row.property_location?.trim() : null,
+        insurer_name: company.name,
+        start_date: row.policy_start_date,
+        expiry_date: row.policy_end_date,
+        premium_amount: row.premium ?? 0,
+        currency: "GHS",
+        status: "Active",
+        renewal_status: "Upcoming",
+        notes: row.notes || null
+      })
+      .select(policyColumns)
+      .single();
+    if (policyError || !policy) return { ok: false, message: `Import stopped at ${row.policy_number}. We could not save this policy.` };
+
+    const { data: commission, error: commissionError } = await supabase
+      .from("commissions")
+      .insert({
+        agent_id: agentId,
+        policy_id: policy.id,
+        commission_rate: 10,
+        payment_status: "Pending",
+        payment_date: null
+      })
+      .select(commissionColumns)
+      .single();
+    if (commissionError || !commission) return { ok: false, message: `Policy ${row.policy_number} imported, but commission setup failed.` };
+
+    importedClients.push(client as Client);
+    importedCommissions.push(commission as Commission);
+    importedPolicies.push({ ...(policy as Omit<PolicyWithClient, "client" | "commission">), client: client as Client, commission: commission as Commission });
+  }
+
+  revalidatePath("/clients");
+  revalidatePath("/policies");
+  revalidatePath("/dashboard");
+  return {
+    ok: true,
+    message: `${importedClients.length} client${importedClients.length === 1 ? "" : "s"} imported.`,
+    clients: importedClients,
+    policies: importedPolicies,
+    commissions: importedCommissions
+  };
 }
 
 export async function markCommissionPaid(input: { commission_id: string }) {

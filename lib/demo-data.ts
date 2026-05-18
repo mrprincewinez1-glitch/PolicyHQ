@@ -1,6 +1,6 @@
 import { addDays, formatISO, startOfMonth, startOfWeek, subDays } from "date-fns";
 import { insuranceCategoryForPolicyType } from "@/lib/insurance";
-import type { AppData, Client, Commission, PolicyWithClient, Profile } from "@/lib/types";
+import type { ActivityNote, AppData, Client, Commission, PolicyWithClient, Profile } from "@/lib/types";
 
 const today = new Date();
 const date = (offset: number) => formatISO(addDays(today, offset), { representation: "date" });
@@ -60,7 +60,7 @@ export const demoClients: Client[] = [
   phone_number,
   email,
   date_of_birth: [
-    "1984-05-08",
+    formatISO(today, { representation: "date" }),
     "1990-02-14",
     "1978-09-21",
     "1993-12-03",
@@ -78,21 +78,21 @@ export const demoClients: Client[] = [
 }));
 
 const policyRows: Array<[string, string, string, PolicyWithClient["policy_type"], string, string, number, PolicyWithClient["renewal_status"], number, Commission["payment_status"]]> = [
-  ["p1", "c1", "POL-GH-MOT-1001", "Motor", "Enterprise Insurance LTD", demoExpiryDates[0], 1800, "Reminder Sent", 10, "Pending"],
-  ["p2", "c2", "POL-GH-LIF-1002", "Life", "GLICO Life Insurance LTD", demoExpiryDates[1], 12000, "Under Renewal", 12, "Paid"],
-  ["p3", "c3", "POL-GH-HEA-1003", "Health", "GLICO Healthcare Limited", demoExpiryDates[2], 4200, "Not Started", 8, "Pending"],
-  ["p4", "c4", "POL-GH-FIR-1004", "Fire", "SIC Insurance PLC", demoExpiryDates[3], 7600, "Reminder Sent", 15, "Paid"],
-  ["p5", "c5", "POL-GH-PRO-1005", "Property", "Star Assurance Limited Company", demoExpiryDates[4], 9800, "Under Renewal", 11, "Pending"],
-  ["p6", "c6", "POL-GH-MOT-1006", "Motor", "SIC Insurance PLC", demoExpiryDates[5], 2400, "Not Started", 7, "Pending"],
-  ["p7", "c7", "POL-GH-HEA-1007", "Health", "Acacia Health Insurance Limited", demoExpiryDates[6], 5100, "Reminder Sent", 9, "Paid"],
-  ["p8", "c8", "POL-GH-LIF-1008", "Life", "Enterprise Life Assurance LTD", demoExpiryDates[7], 9000, "Not Started", 10, "Pending"],
-  ["p9", "c9", "POL-GH-FIR-1009", "Fire", "Sanlam Allianz General Insurance Ghana LTD", demoExpiryDates[8], 6900, "Reminder Sent", 13, "Paid"],
-  ["p10", "c10", "POL-GH-PRO-1010", "Property", "Star Assurance Limited Company", demoExpiryDates[9], 11100, "Under Renewal", 14, "Pending"],
-  ["p11", "c1", "POL-GH-HEA-1011", "Health", "Kaiser Global Health Limited", demoExpiryDates[10], 3200, "Not Started", 6, "Paid"],
-  ["p12", "c2", "POL-GH-MOT-1012", "Motor", "Enterprise Insurance LTD", demoExpiryDates[11], 1500, "Not Started", 5, "Pending"],
-  ["p13", "c3", "POL-GH-LIF-1013", "Life", "GLICO Life Insurance LTD", demoExpiryDates[12], 11800, "Not Started", 12, "Paid"],
-  ["p14", "c4", "POL-GH-FIR-1014", "Fire", "Star Assurance Limited Company", demoExpiryDates[13], 8600, "Not Started", 9, "Pending"],
-  ["p15", "c5", "POL-GH-PRO-1015", "Property", "Sanlam Allianz General Insurance Ghana LTD", demoExpiryDates[14], 10400, "Not Started", 15, "Paid"]
+  ["p1", "c1", "POL-GH-MOT-1001", "Motor", "Enterprise Insurance LTD", demoExpiryDates[0], 1800, "Contacted", 10, "Pending"],
+  ["p2", "c2", "POL-GH-LIF-1002", "Life", "GLICO Life Insurance LTD", demoExpiryDates[1], 12000, "Payment Pending", 12, "Paid"],
+  ["p3", "c3", "POL-GH-HEA-1003", "Health", "GLICO Healthcare Limited", demoExpiryDates[2], 4200, "Upcoming", 8, "Pending"],
+  ["p4", "c4", "POL-GH-FIR-1004", "Fire", "SIC Insurance PLC", demoExpiryDates[3], 7600, "Renewed", 15, "Paid"],
+  ["p5", "c5", "POL-GH-PRO-1005", "Property", "Star Assurance Limited Company", demoExpiryDates[4], 9800, "Quote Requested", 11, "Pending"],
+  ["p6", "c6", "POL-GH-MOT-1006", "Motor", "SIC Insurance PLC", demoExpiryDates[5], 2400, "Upcoming", 7, "Pending"],
+  ["p7", "c7", "POL-GH-HEA-1007", "Health", "Acacia Health Insurance Limited", demoExpiryDates[6], 5100, "Renewed", 9, "Paid"],
+  ["p8", "c8", "POL-GH-LIF-1008", "Life", "Enterprise Life Assurance LTD", demoExpiryDates[7], 9000, "Lost", 10, "Pending"],
+  ["p9", "c9", "POL-GH-FIR-1009", "Fire", "Sanlam Allianz General Insurance Ghana LTD", demoExpiryDates[8], 6900, "Contacted", 13, "Paid"],
+  ["p10", "c10", "POL-GH-PRO-1010", "Property", "Star Assurance Limited Company", demoExpiryDates[9], 11100, "Quote Requested", 14, "Pending"],
+  ["p11", "c1", "POL-GH-HEA-1011", "Health", "Kaiser Global Health Limited", demoExpiryDates[10], 3200, "Upcoming", 6, "Paid"],
+  ["p12", "c2", "POL-GH-MOT-1012", "Motor", "Enterprise Insurance LTD", demoExpiryDates[11], 1500, "Upcoming", 5, "Pending"],
+  ["p13", "c3", "POL-GH-LIF-1013", "Life", "GLICO Life Insurance LTD", demoExpiryDates[12], 11800, "Upcoming", 12, "Paid"],
+  ["p14", "c4", "POL-GH-FIR-1014", "Fire", "Star Assurance Limited Company", demoExpiryDates[13], 8600, "Upcoming", 9, "Pending"],
+  ["p15", "c5", "POL-GH-PRO-1015", "Property", "Sanlam Allianz General Insurance Ghana LTD", demoExpiryDates[14], 10400, "Upcoming", 15, "Paid"]
 ];
 
 export const demoPolicies: PolicyWithClient[] = policyRows.map(([id, clientId, policy_number, policy_type, insurer_name, expiryDate, premium_amount, renewal_status], index) => {
@@ -131,14 +131,39 @@ export const demoCommissions: Commission[] = policyRows.map(([policyId, , , , , 
   created_at: subDays(today, 20 - index).toISOString()
 }));
 
+const demoActivityNotes: ActivityNote[] = [
+  {
+    id: "an1",
+    agent_id: "demo-agent",
+    client_id: "c1",
+    policy_id: "p1",
+    note_text: "Client prefers WhatsApp follow-up after 5pm.",
+    created_by: "demo-agent",
+    author_name: "Agent",
+    created_at: subDays(today, 2).toISOString()
+  },
+  {
+    id: "an2",
+    agent_id: "demo-agent",
+    client_id: "c5",
+    policy_id: "p5",
+    note_text: "Waiting for updated property valuation before renewal quote.",
+    created_by: "demo-agent",
+    author_name: "Agent",
+    created_at: subDays(today, 1).toISOString()
+  }
+];
+
 export const demoData: AppData = {
   profile: demoProfile,
   clients: demoClients,
   policies: demoPolicies.map((policy) => ({
     ...policy,
-    commission: demoCommissions.find((commission) => commission.policy_id === policy.id)
+    commission: demoCommissions.find((commission) => commission.policy_id === policy.id),
+    activity_notes: demoActivityNotes.filter((note) => note.policy_id === policy.id)
   })),
   commissions: demoCommissions,
+  activity_notes: demoActivityNotes,
   notifications: [
     {
       id: "n1",

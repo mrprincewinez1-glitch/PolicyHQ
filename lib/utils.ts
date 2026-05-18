@@ -43,11 +43,42 @@ export function daysUntil(date: string) {
   return Math.ceil((target.getTime() - today.getTime()) / 86_400_000);
 }
 
-export function urgency(date: string) {
+export function renewalUrgency(date: string, renewalStatus?: string) {
   const days = daysUntil(date);
-  if (days >= 0 && days <= 3) return "urgent";
-  if (days >= 4 && days <= 7) return "soon";
+  if (days < 0 && renewalStatus !== "Renewed") return "Overdue";
+  if (days >= 0 && days <= 7) return "Critical";
+  if (days >= 8 && days <= 29) return "Urgent";
+  if (days >= 30 && days <= 60) return "Watch";
+  return "Safe";
+}
+
+export function urgency(date: string) {
+  const level = renewalUrgency(date);
+  if (level === "Critical") return "urgent";
+  if (level === "Urgent") return "soon";
   return "normal";
+}
+
+export function isBirthdayToday(dateOfBirth: string | null, today = new Date()) {
+  if (!dateOfBirth) return false;
+  const [, month, day] = dateOfBirth.split("-");
+  const todayMonth = String(today.getMonth() + 1).padStart(2, "0");
+  const todayDay = String(today.getDate()).padStart(2, "0");
+  return month === todayMonth && day === todayDay;
+}
+
+export function normalizeGhanaPhoneNumber(value: string) {
+  const digits = value.replace(/\D/g, "");
+  if (digits.startsWith("233") && digits.length === 12) return `+${digits}`;
+  if (digits.startsWith("0") && digits.length === 10) return `+233${digits.slice(1)}`;
+  if (digits.length === 9) return `+233${digits}`;
+  if (value.trim().startsWith("+")) return value.trim();
+  return value.trim();
+}
+
+export function whatsAppUrl(phoneNumber: string, message: string) {
+  const normalized = normalizeGhanaPhoneNumber(phoneNumber).replace(/\D/g, "");
+  return `https://wa.me/${normalized}?text=${encodeURIComponent(message)}`;
 }
 
 export function renewalWindows(today = new Date()) {

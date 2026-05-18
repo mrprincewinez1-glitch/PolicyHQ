@@ -842,9 +842,9 @@ Deno.serve(async (req) => {
         }
       }
 
-      if (policy.renewal_status === "Not Started") {
+      if (policy.renewal_status === "Upcoming") {
         try {
-          const update = await supabase.from("policies").update({ renewal_status: "Reminder Sent" }).eq("id", policy.id);
+          const update = await supabase.from("policies").update({ renewal_status: "Contacted" }).eq("id", policy.id);
           if (update.error) {
             console.error("Renewal status update failed", update.error.message);
           }
