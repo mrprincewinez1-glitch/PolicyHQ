@@ -633,7 +633,10 @@ export function AppShell({
       {demo ? (
         <div className="fixed inset-x-0 top-0 z-50 flex items-center justify-between gap-3 bg-primary px-3 py-2 text-xs font-semibold leading-5 text-white sm:px-4 sm:py-3 sm:text-sm">
           <span><span className="sm:hidden">Live demo. Fictional data only.</span><span className="hidden sm:inline">🔍 You are viewing a live demo. All data shown is fictional. Sign up free to manage your real policies.</span></span>
-          <Button asChild size="sm" className="shrink-0 whitespace-nowrap px-3"><Link href="/sign-up">Sign Up Free</Link></Button>
+          <div className="flex shrink-0 items-center gap-2">
+            <Button asChild size="sm" variant="outline" className="border-white/40 bg-transparent px-3 text-white hover:bg-white hover:text-primary"><Link href="/sign-in">Sign In</Link></Button>
+            <Button asChild size="sm" className="whitespace-nowrap px-3"><Link href="/sign-up">Sign Up Free</Link></Button>
+          </div>
         </div>
       ) : null}
       <div className={demo ? "pt-14" : ""}>
@@ -705,7 +708,12 @@ export function AppShell({
                 <Avatar profile={data.profile} />
                 <strong className="text-sm">{data.profile.full_name}</strong>
               </button>
-              {demo ? <Button asChild size="sm" className="whitespace-nowrap px-3"><Link href="/sign-up"><span className="sm:hidden">Sign Up</span><span className="hidden sm:inline">Sign Up Free</span></Link></Button> : <form action={signOut}><Button variant="ghost" size="sm"><LogOut className="h-4 w-4" /> Sign Out</Button></form>}
+              {demo ? (
+                <div className="flex items-center gap-2">
+                  <Button asChild size="sm" variant="outline" className="whitespace-nowrap px-3"><Link href="/sign-in">Sign In</Link></Button>
+                  <Button asChild size="sm" className="whitespace-nowrap px-3"><Link href="/sign-up"><span className="sm:hidden">Sign Up</span><span className="hidden sm:inline">Sign Up Free</span></Link></Button>
+                </div>
+              ) : <form action={signOut}><Button variant="ghost" size="sm"><LogOut className="h-4 w-4" /> Sign Out</Button></form>}
             </div>
           </header>
           <div className="p-4 lg:p-8">{content}</div>
