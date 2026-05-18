@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { PolicyHqLogo } from "@/components/brand/policyhq-logo";
+import { feedbackMailto, supportEmail } from "@/lib/site";
 
 const sections = [
   {
@@ -48,6 +49,9 @@ export default function TermsPage() {
           </div>
           <p className="mt-8 text-sm leading-6 text-slate-500">
             Continued use of PolicyHQ means you accept these beta terms.
+          </p>
+          <p className="mt-4 text-sm leading-6 text-slate-500">
+            Beta support: <a className="font-semibold text-accent" href={feedbackMailto()}>{supportEmail}</a>
           </p>
         </div>
       </div>

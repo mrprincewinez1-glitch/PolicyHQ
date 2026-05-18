@@ -19,10 +19,32 @@ export function ResetPasswordForm() {
 
     async function prepareResetSession() {
       const params = new URLSearchParams(window.location.search);
+      const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ""));
       const code = params.get("code");
+      const accessToken = hashParams.get("access_token");
+      const refreshToken = hashParams.get("refresh_token");
 
       if (code) {
         const { error } = await supabase.auth.exchangeCodeForSession(code);
+        if (!isMounted) return;
+
+        if (error) {
+          setState("invalid");
+          setMessage("This password reset link is invalid or has expired. Please request a new one.");
+          return;
+        }
+
+        window.history.replaceState({}, document.title, "/reset-password");
+        setState("ready");
+        setMessage("Enter your new password.");
+        return;
+      }
+
+      if (accessToken && refreshToken) {
+        const { error } = await supabase.auth.setSession({
+          access_token: accessToken,
+          refresh_token: refreshToken
+        });
         if (!isMounted) return;
 
         if (error) {

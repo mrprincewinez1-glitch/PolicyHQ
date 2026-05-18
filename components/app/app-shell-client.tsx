@@ -22,6 +22,7 @@ import {
   Upload,
   Users,
   X,
+  MessageCircle,
   type LucideIcon
 } from "lucide-react";
 import {
@@ -45,6 +46,7 @@ import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Input, Select, Textarea } from "@/components/ui/input";
 import { findInsuranceCompany, findInsuranceCompanyCategory, insuranceCategoryForPolicyType, insuranceCompanies } from "@/lib/insurance";
 import { isValidPolicyNumber, normalizePolicyNumber, policyNumberHelpText } from "@/lib/policy-number";
+import { feedbackMailto } from "@/lib/site";
 import { createClient } from "@/lib/supabase/client";
 import type { AppData, Client, Commission, InsuranceCategory, Policy, PolicyStatus, PolicyType, PolicyWithClient, RenewalStatus } from "@/lib/types";
 import {
@@ -597,8 +599,14 @@ export function AppShell({
                 <Icon className="h-5 w-5" /> {label}
               </Link>
             ))}
-          </nav>
-        </aside>
+            </nav>
+            <div className="mt-6 border-t border-white/10 pt-4">
+              <a href={feedbackMailto()} className="flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-semibold text-slate-200 hover:bg-white/10">
+                <MessageCircle className="h-4 w-4" />
+                Send Feedback
+              </a>
+            </div>
+          </aside>
         <main className="min-h-screen lg:pl-72">
           <header className="sticky top-0 z-20 flex h-16 items-center justify-between border-b border-slate-200 bg-white px-4 lg:px-8">
             <button className="lg:hidden" onClick={() => setMobileOpen(true)} aria-label="Open menu"><Menu /></button>
@@ -715,7 +723,29 @@ function Clients({ clients, policies, base, onAdd, onEdit, onDelete, onExport }:
   return (
     <Card>
       <CardHeader className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between"><h1 className="text-2xl font-extrabold">Clients</h1><div className="flex flex-wrap gap-2"><Select value={sort} onChange={(e) => setSort(e.target.value as "name" | "date")}><option value="name">Sort by Name</option><option value="date">Sort by Date Added</option></Select><Button variant="outline" onClick={onExport}><Download className="h-4 w-4" /> Export to CSV</Button><Button onClick={onAdd}><Plus className="h-4 w-4" /> Add New Client</Button></div></CardHeader>
-      <div className="overflow-auto"><table className="w-full min-w-[1050px] text-sm"><thead className="sticky top-0 bg-slate-50"><tr>{["Full Name", "Phone Number", "Email", "Date of Birth", "Address", "Number of Policies", "Date Added", "Actions"].map((h) => <th className="px-4 py-3 text-left" key={h}>{h}</th>)}</tr></thead><tbody>{sorted.map((c) => <tr key={c.id} className="border-t odd:bg-white even:bg-slate-50"><td className="px-4 py-3 font-bold"><Link href={`${base}/clients/${c.id}`}>{c.full_name}</Link></td><td className="px-4 py-3">{c.phone_number}</td><td className="px-4 py-3">{c.email || "—"}</td><td className="px-4 py-3">{c.date_of_birth ? formatDate(c.date_of_birth) : "—"}</td><td className="px-4 py-3">{c.address || "—"}</td><td className="px-4 py-3">{policies.filter((p) => p.client_id === c.id).length}</td><td className="px-4 py-3">{formatDate(c.created_at)}</td><td className="px-4 py-3"><Button variant="ghost" size="sm" onClick={() => onEdit(c)}>Edit</Button><Button variant="ghost" size="sm" onClick={() => onDelete(c)}><Trash2 className="h-4 w-4 text-danger" /></Button></td></tr>)}</tbody></table></div>
+      <div className="space-y-3 border-t p-4 md:hidden">
+        {sorted.map((client) => (
+          <div key={client.id} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <Link href={`${base}/clients/${client.id}`} className="text-base font-extrabold text-primary">{client.full_name}</Link>
+                <p className="mt-1 text-sm font-semibold text-slate-600">{client.phone_number}</p>
+              </div>
+              <Badge tone="slate">{policies.filter((policy) => policy.client_id === client.id).length} policies</Badge>
+            </div>
+            <div className="mt-3 space-y-1 text-sm text-slate-600">
+              <p>{client.email || "No email recorded"}</p>
+              <p>{client.address || "No address recorded"}</p>
+              <p>Added {formatDate(client.created_at)}</p>
+            </div>
+            <div className="mt-4 flex gap-2">
+              <Button variant="outline" size="sm" className="flex-1" onClick={() => onEdit(client)}>Edit</Button>
+              <Button variant="ghost" size="sm" className="h-11 w-11" aria-label={`Archive ${client.full_name}`} onClick={() => onDelete(client)}><Trash2 className="h-4 w-4 text-danger" /></Button>
+            </div>
+          </div>
+        ))}
+      </div>
+      <div className="hidden overflow-auto md:block"><table className="w-full min-w-[1050px] text-sm"><thead className="sticky top-0 bg-slate-50"><tr>{["Full Name", "Phone Number", "Email", "Date of Birth", "Address", "Number of Policies", "Date Added", "Actions"].map((h) => <th className="px-4 py-3 text-left" key={h}>{h}</th>)}</tr></thead><tbody>{sorted.map((c) => <tr key={c.id} className="border-t odd:bg-white even:bg-slate-50"><td className="px-4 py-3 font-bold"><Link href={`${base}/clients/${c.id}`}>{c.full_name}</Link></td><td className="px-4 py-3">{c.phone_number}</td><td className="px-4 py-3">{c.email || "—"}</td><td className="px-4 py-3">{c.date_of_birth ? formatDate(c.date_of_birth) : "—"}</td><td className="px-4 py-3">{c.address || "—"}</td><td className="px-4 py-3">{policies.filter((p) => p.client_id === c.id).length}</td><td className="px-4 py-3">{formatDate(c.created_at)}</td><td className="px-4 py-3"><Button variant="ghost" size="sm" onClick={() => onEdit(c)}>Edit</Button><Button variant="ghost" size="sm" onClick={() => onDelete(c)}><Trash2 className="h-4 w-4 text-danger" /></Button></td></tr>)}</tbody></table></div>
     </Card>
   );
 }
@@ -760,7 +790,36 @@ function Policies({ policies, clients, onAdd, onEdit, onDelete, onExport, update
     <Card>
       <CardHeader className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between"><h1 className="text-2xl font-extrabold">Policies</h1><div className="flex flex-wrap gap-2"><Button variant="outline" onClick={onExport}><Download className="h-4 w-4" /> Export to CSV</Button><Button onClick={onAdd}><Plus className="h-4 w-4" /> Add New Policy</Button></div></CardHeader>
       <div className="flex flex-wrap gap-3 p-4"><Select value={status} onChange={(e) => setStatus(e.target.value)}><option>All</option>{policyStatuses.map((item) => <option key={item}>{item}</option>)}</Select><Select value={type} onChange={(e) => setType(e.target.value)}><option>All</option>{policyTypes.map((item) => <option key={item}>{item}</option>)}</Select></div>
-      <div className="overflow-auto"><table className="w-full min-w-[1100px] text-sm"><thead className="sticky top-0 bg-slate-50"><tr>{["Client Name", "Policy Number", "Type", "Insurer", "Start Date", "Expiry Date", "Premium (GHS)", "Status", "Renewal Status", "Actions"].map((h) => <th className="px-4 py-3 text-left" key={h}>{h}</th>)}</tr></thead><tbody>{filtered.map((p) => <tr key={p.id} onClick={() => openPolicy(p)} className={`cursor-pointer border-t ${urgency(p.expiry_date) === "urgent" ? "bg-red-50" : urgency(p.expiry_date) === "soon" ? "bg-amber-50" : "odd:bg-white even:bg-slate-50"}`}><td className="px-4 py-3 font-bold">{p.client.full_name}</td><td className="px-4 py-3">{p.policy_number}</td><td className="px-4 py-3">{p.policy_type}</td><td className="px-4 py-3">{p.insurer_name}</td><td className="px-4 py-3">{formatDate(p.start_date)}</td><td className="px-4 py-3">{formatDate(p.expiry_date)} {UrgencyBadge(p.expiry_date)}</td><td className="px-4 py-3">{formatCurrency(p.premium_amount)}</td><td className="px-4 py-3"><Badge tone={p.status === "Active" ? "green" : "slate"}>{p.status}</Badge></td><td className="px-4 py-3" onClick={(e) => e.stopPropagation()}><Select value={p.renewal_status} onChange={(e) => updateRenewal(p.id, e.target.value as RenewalStatus)}>{renewalStatuses.map((s) => <option key={s}>{s}</option>)}</Select></td><td className="px-4 py-3" onClick={(e) => e.stopPropagation()}><Button variant="ghost" size="sm" onClick={() => onEdit(p)}>Edit</Button><Button variant="ghost" size="sm" onClick={() => onDelete(p)}><Trash2 className="h-4 w-4 text-danger" /></Button></td></tr>)}</tbody></table></div>
+      <div className="space-y-3 border-t p-4 md:hidden">
+        {filtered.map((policy) => (
+          <div key={policy.id} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+            <button type="button" onClick={() => openPolicy(policy)} className="block w-full text-left">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="font-extrabold text-primary">{policy.client.full_name}</p>
+                  <p className="mt-1 font-mono text-sm font-bold text-slate-500">{policy.policy_number}</p>
+                </div>
+                <Badge tone={policy.status === "Active" ? "green" : "slate"}>{policy.status}</Badge>
+              </div>
+              <p className="mt-3 text-sm font-semibold text-slate-600">{policy.insurer_name}</p>
+              <div className="mt-3 grid grid-cols-2 gap-3 text-sm">
+                <Info label="Type" value={policy.policy_type} />
+                <Info label="Premium" value={formatCurrency(policy.premium_amount)} />
+                <Info label="Expiry" value={formatDate(policy.expiry_date)} />
+                <div>{UrgencyBadge(policy.expiry_date)}</div>
+              </div>
+            </button>
+            <div className="mt-4 grid gap-2" onClick={(event) => event.stopPropagation()}>
+              <Select value={policy.renewal_status} onChange={(event) => updateRenewal(policy.id, event.target.value as RenewalStatus)}>{renewalStatuses.map((item) => <option key={item}>{item}</option>)}</Select>
+              <div className="flex gap-2">
+                <Button variant="outline" size="sm" className="flex-1" onClick={() => onEdit(policy)}>Edit</Button>
+                <Button variant="ghost" size="sm" className="h-11 w-11" aria-label={`Delete ${policy.policy_number}`} onClick={() => onDelete(policy)}><Trash2 className="h-4 w-4 text-danger" /></Button>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+      <div className="hidden overflow-auto md:block"><table className="w-full min-w-[1100px] text-sm"><thead className="sticky top-0 bg-slate-50"><tr>{["Client Name", "Policy Number", "Type", "Insurer", "Start Date", "Expiry Date", "Premium (GHS)", "Status", "Renewal Status", "Actions"].map((h) => <th className="px-4 py-3 text-left" key={h}>{h}</th>)}</tr></thead><tbody>{filtered.map((p) => <tr key={p.id} onClick={() => openPolicy(p)} className={`cursor-pointer border-t ${urgency(p.expiry_date) === "urgent" ? "bg-red-50" : urgency(p.expiry_date) === "soon" ? "bg-amber-50" : "odd:bg-white even:bg-slate-50"}`}><td className="px-4 py-3 font-bold">{p.client.full_name}</td><td className="px-4 py-3">{p.policy_number}</td><td className="px-4 py-3">{p.policy_type}</td><td className="px-4 py-3">{p.insurer_name}</td><td className="px-4 py-3">{formatDate(p.start_date)}</td><td className="px-4 py-3">{formatDate(p.expiry_date)} {UrgencyBadge(p.expiry_date)}</td><td className="px-4 py-3">{formatCurrency(p.premium_amount)}</td><td className="px-4 py-3"><Badge tone={p.status === "Active" ? "green" : "slate"}>{p.status}</Badge></td><td className="px-4 py-3" onClick={(e) => e.stopPropagation()}><Select value={p.renewal_status} onChange={(e) => updateRenewal(p.id, e.target.value as RenewalStatus)}>{renewalStatuses.map((s) => <option key={s}>{s}</option>)}</Select></td><td className="px-4 py-3" onClick={(e) => e.stopPropagation()}><Button variant="ghost" size="sm" onClick={() => onEdit(p)}>Edit</Button><Button variant="ghost" size="sm" onClick={() => onDelete(p)}><Trash2 className="h-4 w-4 text-danger" /></Button></td></tr>)}</tbody></table></div>
     </Card>
   );
 }
@@ -1032,7 +1091,7 @@ function Profile({ data, saveProfile, saveNotificationSettings, uploadAvatar, ch
             <form action={changePassword} className="border-t pt-4"><h3 className="font-bold">Change Password</h3><Input name="current_password" className="mt-3" type="password" placeholder="Current Password" /><Input name="new_password" className="mt-3" type="password" placeholder="New Password" /><Input name="confirm_password" className="mt-3" type="password" placeholder="Confirm New Password" /><Button className="mt-4">Update Password</Button></form>
           </div>
         ) : (
-          <form action={saveNotificationSettings} className="max-w-2xl space-y-4"><label className="flex items-center justify-between gap-4 font-semibold">Enable WhatsApp Notifications <input name="whatsapp_enabled" type="checkbox" defaultChecked={data.profile.whatsapp_enabled} /></label><label className="flex items-center justify-between gap-4 font-semibold">Send me daily WhatsApp renewal summary <input name="agent_whatsapp_summary_enabled" type="checkbox" defaultChecked={data.profile.agent_whatsapp_summary_enabled} /></label><label className="flex items-center justify-between gap-4 font-semibold">Enable Email Notifications <input name="email_notifications_enabled" type="checkbox" defaultChecked={data.profile.email_notifications_enabled} /></label><label className="flex items-center justify-between gap-4 font-semibold">Enable Birthday WhatsApp Messages <input name="birthday_messages_enabled" type="checkbox" defaultChecked={data.profile.birthday_messages_enabled} /></label><div className="rounded-xl bg-slate-50 p-4"><p className="font-bold text-primary">Renewal reminder schedule</p><div className="mt-3 space-y-3"><label className="flex items-center gap-3"><input name="reminder_30_enabled" type="checkbox" defaultChecked={data.profile.reminder_30_enabled} /> 30 Days Before Expiry</label><label className="flex items-center gap-3"><input name="reminder_14_enabled" type="checkbox" defaultChecked={data.profile.reminder_14_enabled} /> 14 Days Before Expiry</label><label className="flex items-center gap-3"><input name="reminder_7_enabled" type="checkbox" defaultChecked={data.profile.reminder_7_enabled} /> 7 Days Before Expiry</label></div></div><Button>Save Settings</Button></form>
+          <form action={saveNotificationSettings} className="max-w-2xl space-y-4"><p className="rounded-xl bg-orange-50 p-3 text-sm font-semibold text-orange-700">WhatsApp delivery requires approved Meta templates and production credentials. Email and in-app renewal tracking remain available during beta.</p><label className="flex items-center justify-between gap-4 font-semibold">Enable WhatsApp Notifications <input name="whatsapp_enabled" type="checkbox" defaultChecked={data.profile.whatsapp_enabled} /></label><label className="flex items-center justify-between gap-4 font-semibold">Send me daily WhatsApp renewal summary <input name="agent_whatsapp_summary_enabled" type="checkbox" defaultChecked={data.profile.agent_whatsapp_summary_enabled} /></label><label className="flex items-center justify-between gap-4 font-semibold">Enable Email Notifications <input name="email_notifications_enabled" type="checkbox" defaultChecked={data.profile.email_notifications_enabled} /></label><label className="flex items-center justify-between gap-4 font-semibold">Enable Birthday WhatsApp Messages <input name="birthday_messages_enabled" type="checkbox" defaultChecked={data.profile.birthday_messages_enabled} /></label><div className="rounded-xl bg-slate-50 p-4"><p className="font-bold text-primary">Renewal reminder schedule</p><div className="mt-3 space-y-3"><label className="flex items-center gap-3"><input name="reminder_30_enabled" type="checkbox" defaultChecked={data.profile.reminder_30_enabled} /> 30 Days Before Expiry</label><label className="flex items-center gap-3"><input name="reminder_14_enabled" type="checkbox" defaultChecked={data.profile.reminder_14_enabled} /> 14 Days Before Expiry</label><label className="flex items-center gap-3"><input name="reminder_7_enabled" type="checkbox" defaultChecked={data.profile.reminder_7_enabled} /> 7 Days Before Expiry</label></div></div><Button>Save Settings</Button></form>
         )}
       </CardContent>
     </Card>

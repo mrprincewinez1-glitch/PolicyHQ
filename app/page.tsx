@@ -3,13 +3,14 @@ import { Bell, Calculator, FileDown, MessageCircle, ShieldCheck, Users, Workflow
 import { PolicyHqLogo } from "@/components/brand/policyhq-logo";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { feedbackMailto, supportEmail } from "@/lib/site";
 
 const features = [
   [Bell, "Renewal Alerts", "Never lose a client to an expired policy again"],
   [Users, "Client Management", "Keep all your client information organised and searchable"],
   [ShieldCheck, "Policy Tracker", "Track every policy across all insurers in one dashboard"],
   [Calculator, "Commission Tracker", "Know exactly what you've earned and what's pending"],
-  [MessageCircle, "WhatsApp Reminders", "Automatically notify clients before their policy expires"],
+  [MessageCircle, "WhatsApp-Ready Follow-Up", "Prepare renewal follow-ups for WhatsApp workflows as your agency grows"],
   [FileDown, "Reports & Exports", "Review renewal, policy, and commission activity in one place"]
 ];
 
@@ -26,6 +27,7 @@ export default function LandingPage() {
             <a href="#how">How It Works</a>
             <a href="#pricing">Pricing</a>
             <Link href="/demo">Try Live Demo</Link>
+            <Link href="/feedback">Feedback</Link>
           </nav>
           <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
             <Button asChild size="sm" variant="ghost" className="whitespace-nowrap px-2.5 sm:px-3">
@@ -132,8 +134,9 @@ export default function LandingPage() {
           <div>
             <PolicyHqLogo variant="dark" className="h-11 w-auto" />
             <p className="mt-3 text-sm text-slate-300">Built for insurance agents across West Africa</p>
+            <p className="mt-2 text-sm text-slate-300">Beta support: <a className="font-semibold text-white" href={feedbackMailto()}>{supportEmail}</a></p>
           </div>
-          <div className="flex gap-5 text-sm text-slate-300"><Link href="/privacy">Privacy Policy</Link><Link href="/terms">Terms of Service</Link></div>
+          <div className="flex flex-wrap gap-5 text-sm text-slate-300"><Link href="/privacy">Privacy Policy</Link><Link href="/terms">Terms of Service</Link><Link href="/feedback">Feedback</Link></div>
           <p className="text-sm text-slate-300">© 2026 PolicyHQ. All rights reserved.</p>
         </div>
       </footer>

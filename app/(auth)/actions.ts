@@ -27,6 +27,10 @@ function ensureSupabase(path: string) {
   }
 }
 
+function siteUrl() {
+  return (process.env.NEXT_PUBLIC_SITE_URL ?? "https://policy-hq-beta.vercel.app").replace(/\/$/, "");
+}
+
 export async function signUp(formData: FormData) {
   const fullName = value(formData, "full_name");
   const email = value(formData, "email");
@@ -44,7 +48,7 @@ export async function signUp(formData: FormData) {
     email,
     password,
     options: {
-      emailRedirectTo: `${process.env.NEXT_PUBLIC_SITE_URL}/dashboard`,
+      emailRedirectTo: `${siteUrl()}/dashboard`,
       data: profileData
     }
   });
@@ -77,11 +81,17 @@ export async function signOut() {
 
 export async function forgotPassword(formData: FormData) {
   const email = value(formData, "email");
+  if (!email) {
+    authRedirect("/forgot-password", "error", "Enter the email address on your PolicyHQ account.");
+  }
   ensureSupabase("/forgot-password");
   const supabase = createClient();
-  await supabase.auth.resetPasswordForEmail(email, {
-    redirectTo: `${process.env.NEXT_PUBLIC_SITE_URL}/reset-password`
+  const { error } = await supabase.auth.resetPasswordForEmail(email, {
+    redirectTo: `${siteUrl()}/reset-password`
   });
+  if (error) {
+    authRedirect("/forgot-password", "error", "We could not send the reset email. Please check the address and try again.");
+  }
   authRedirect("/forgot-password", "success", "Check your email for a password reset link.");
 }
 

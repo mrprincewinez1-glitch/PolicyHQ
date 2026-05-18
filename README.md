@@ -13,7 +13,7 @@ Insurance agents in Ghana and across West Africa manage too much of their busine
 | Feature | Description |
 |---|---|
 | Renewal Alerts Dashboard | Track policies expiring this week, next week, and this month |
-| WhatsApp Notifications | Automated renewal reminders and birthday messages via Meta WhatsApp Business Cloud API |
+| WhatsApp-Ready Notifications | Renewal and birthday workflows prepared for Meta WhatsApp Business Cloud API once approved templates are configured |
 | Client Database | Centralised client records with contact details and policy history |
 | Policy Tracker | Active, expiring, cancelled, and renewed policy visibility |
 | Commission Tracker | Paid, pending, overdue, monthly, yearly, and all-time commission views |

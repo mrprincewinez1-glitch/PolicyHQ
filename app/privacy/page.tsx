@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { PolicyHqLogo } from "@/components/brand/policyhq-logo";
+import { feedbackMailto, supportEmail } from "@/lib/site";
 
 const sections = [
   {
@@ -48,6 +49,9 @@ export default function PrivacyPage() {
           </div>
           <p className="mt-8 text-sm leading-6 text-slate-500">
             This beta privacy policy is not a substitute for formal legal advice. It should be reviewed before a full commercial launch.
+          </p>
+          <p className="mt-4 text-sm leading-6 text-slate-500">
+            Questions or data requests: <a className="font-semibold text-accent" href={feedbackMailto()}>{supportEmail}</a>
           </p>
         </div>
       </div>
