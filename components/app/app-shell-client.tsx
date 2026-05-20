@@ -94,6 +94,10 @@ type ImportClientRow = {
   vehicle_number?: string;
   property_location?: string;
   premium?: number;
+  commission_rate?: number;
+  commission_amount?: number;
+  commission_status?: "Paid" | "Pending";
+  commission_payment_date?: string;
   email?: string;
   date_of_birth?: string;
   notes?: string;
@@ -1438,7 +1442,19 @@ function ImportClientsModal({ onClose, onImport }: { onClose: () => void; onImpo
       if (rowIndex !== index) return row;
       if (field === "premium") {
         const premium = parseImportMoney(value);
-        return { ...row, premium };
+        const commissionRate = row.commission_amount && premium ? roundPercent(row.commission_amount / premium * 100) : row.commission_rate;
+        return { ...row, premium, commission_rate: commissionRate };
+      }
+      if (field === "commission_amount") {
+        const commissionAmount = parseImportMoney(value);
+        const commissionRate = commissionAmount && row.premium ? roundPercent(commissionAmount / row.premium * 100) : row.commission_rate;
+        return { ...row, commission_amount: commissionAmount, commission_rate: commissionRate };
+      }
+      if (field === "commission_rate") {
+        const commissionRate = Number(value);
+        const safeRate = Number.isFinite(commissionRate) && commissionRate >= 0 ? commissionRate : undefined;
+        const commissionAmount = safeRate !== undefined && row.premium ? Number((row.premium * safeRate / 100).toFixed(2)) : row.commission_amount;
+        return { ...row, commission_rate: safeRate, commission_amount: commissionAmount };
       }
       if (field === "phone_number") return { ...row, phone_number: normalizeGhanaPhoneNumber(value) };
       if (field === "policy_number") return { ...row, policy_number: normalizePolicyNumber(value) };
@@ -1466,7 +1482,7 @@ function ImportClientsModal({ onClose, onImport }: { onClose: () => void; onImpo
         <div className="rounded-xl bg-slate-50 p-4 text-sm text-slate-600">
           <p className="font-bold text-primary">Upload a CSV with clients and policies.</p>
           <p className="mt-1">Required columns: client_name, phone_number, policy_number, policy_type, insurer_name, policy_start_date, policy_end_date. Add vehicle_number for Motor and property_location for Property.</p>
-          <p className="mt-2 font-semibold text-slate-700">Enterprise exports are accepted after saving as CSV. PolicyHQ will read columns like Insured Name, Policy No., Insurance, Start Date, and Expiry Date automatically.</p>
+          <p className="mt-2 font-semibold text-slate-700">Enterprise exports are accepted after saving as CSV. PolicyHQ reads columns like Insured Name, Policy No., Insurance, Start Date, Expiry Date, and Commission Due automatically.</p>
         </div>
         <div className="flex flex-wrap gap-3">
           <Button type="button" variant="outline" onClick={downloadClientImportTemplate}><Download className="h-4 w-4" /> Download Template</Button>
@@ -1494,8 +1510,8 @@ function ImportClientsModal({ onClose, onImport }: { onClose: () => void; onImpo
               <div className="rounded-xl bg-green-50 p-4 text-sm font-semibold text-green-700">All rows look ready to import.</div>
             )}
             <div className="max-h-72 overflow-auto rounded-xl border border-slate-200">
-              <table className="w-full min-w-[1180px] text-sm">
-                <thead className="sticky top-0 bg-slate-50"><tr>{["Client", "Phone", "Policy No.", "Type", "Insurer", "Start", "End", "Vehicle/Property", "Premium"].map((header) => <th key={header} className="px-3 py-2 text-left">{header}</th>)}</tr></thead>
+              <table className="w-full min-w-[1560px] text-sm">
+                <thead className="sticky top-0 bg-slate-50"><tr>{["Client", "Phone", "Policy No.", "Type", "Insurer", "Start", "End", "Vehicle/Property", "Premium", "Commission", "Rate", "Status", "Payment Date"].map((header) => <th key={header} className="px-3 py-2 text-left">{header}</th>)}</tr></thead>
                 <tbody>{rows.map((row, index) => <tr key={`${row.policy_number}-${index}`} className="border-t align-top">
                   <td className="px-3 py-2"><ImportInput value={row.client_name} onChange={(value) => updateImportRow(index, "client_name", value)} required /></td>
                   <td className="px-3 py-2"><ImportInput value={row.phone_number} onChange={(value) => updateImportRow(index, "phone_number", value)} required /></td>
@@ -1515,6 +1531,15 @@ function ImportClientsModal({ onClose, onImport }: { onClose: () => void; onImpo
                     {row.policy_type !== "Motor" && row.policy_type !== "Property" ? <span className="text-slate-400">—</span> : null}
                   </td>
                   <td className="px-3 py-2"><ImportInput type="number" value={row.premium ? String(row.premium) : ""} onChange={(value) => updateImportRow(index, "premium", value)} /></td>
+                  <td className="px-3 py-2"><ImportInput type="number" value={row.commission_amount ? String(row.commission_amount) : ""} onChange={(value) => updateImportRow(index, "commission_amount", value)} /></td>
+                  <td className="px-3 py-2"><ImportInput type="number" value={row.commission_rate !== undefined ? String(row.commission_rate) : ""} onChange={(value) => updateImportRow(index, "commission_rate", value)} required /></td>
+                  <td className="px-3 py-2">
+                    <Select value={row.commission_status ?? "Pending"} onChange={(event) => updateImportRow(index, "commission_status", event.target.value)}>
+                      <option>Paid</option>
+                      <option>Pending</option>
+                    </Select>
+                  </td>
+                  <td className="px-3 py-2"><ImportInput type="date" value={row.commission_payment_date ?? ""} onChange={(value) => updateImportRow(index, "commission_payment_date", value)} /></td>
                 </tr>)}</tbody>
               </table>
             </div>
@@ -1904,8 +1929,8 @@ function renewalManagerMetrics(policies: PolicyWithClient[], birthdaysToday: num
 }
 
 function downloadClientImportTemplate() {
-  const headers = ["client_name", "phone_number", "policy_number", "policy_type", "insurer_name", "policy_start_date", "policy_end_date", "vehicle_number", "property_location", "premium", "email", "date_of_birth", "notes"];
-  const example = ["Ama Mensah", "+233241234567", "POL-GH-MOT-2026-001", "Motor", "Enterprise Insurance LTD", "2026-01-01", "2026-12-31", "GR-4421-26", "", "1200", "ama@example.com", "1990-05-18", "Imported client"];
+  const headers = ["client_name", "phone_number", "policy_number", "policy_type", "insurer_name", "policy_start_date", "policy_end_date", "vehicle_number", "property_location", "premium", "commission_rate", "commission_status", "commission_payment_date", "email", "date_of_birth", "notes"];
+  const example = ["Ama Mensah", "+233241234567", "POL-GH-MOT-2026-001", "Motor", "Enterprise Insurance LTD", "2026-01-01", "2026-12-31", "GR-4421-26", "", "1200", "7.5", "Paid", "2026-02-07", "ama@example.com", "1990-05-18", "Imported client"];
   const csv = `${headers.join(",")}\n${example.map((value) => `"${value}"`).join(",")}`;
   const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
   const anchor = document.createElement("a");
@@ -1919,7 +1944,7 @@ function parseClientCsv(text: string) {
   const lines = text.split(/\r?\n/).filter((line) => line.trim());
   if (lines.length < 2) return { rows: [], errors: ["CSV needs a header row and at least one client row."] };
   const headers = splitCsvLine(lines[0]).map((header) => normalizeImportHeader(header));
-  const recognizedHeaders = ["client_name", "phone_number", "policy_number", "policy_type", "insurer_name", "policy_start_date", "policy_end_date", "premium", "email", "date_of_birth", "notes", "vehicle_number", "property_location"];
+  const recognizedHeaders = ["client_name", "phone_number", "policy_number", "policy_type", "insurer_name", "policy_start_date", "policy_end_date", "premium", "email", "date_of_birth", "notes", "vehicle_number", "property_location", "commission_rate", "commission_amount", "commission_status", "commission_payment_date", "commission_released"];
   if (!headers.some((header) => recognizedHeaders.includes(header))) {
     return { rows: [], errors: ["PolicyHQ could not recognise this file's column names. Use the template or rename the first row to include client/policy fields."] };
   }
@@ -1933,6 +1958,15 @@ function parseClientCsv(text: string) {
     record.policy_end_date = normalizeImportDate(record.policy_end_date);
     record.date_of_birth = normalizeImportDate(record.date_of_birth);
     const premium = parseImportMoney(record.premium);
+    const commissionAmount = parseImportMoney(record.commission_amount);
+    const explicitRate = record.commission_rate ? Number(record.commission_rate) : undefined;
+    const commissionRate = Number.isFinite(explicitRate) && explicitRate !== undefined
+      ? roundPercent(explicitRate)
+      : commissionAmount && premium
+        ? roundPercent(commissionAmount / premium * 100)
+        : 10;
+    const commissionStatus = importCommissionStatus(record, isEnterprisePolicyExport(headers));
+    const commissionPaymentDate = importCommissionPaymentDate(record, commissionStatus);
     rows.push({
       client_name: record.client_name ?? "",
       phone_number: record.phone_number ? normalizeGhanaPhoneNumber(record.phone_number) : "",
@@ -1944,6 +1978,10 @@ function parseClientCsv(text: string) {
       vehicle_number: record.vehicle_number || undefined,
       property_location: record.property_location || undefined,
       premium,
+      commission_rate: commissionRate,
+      commission_amount: commissionAmount ?? (premium ? Number((premium * commissionRate / 100).toFixed(2)) : undefined),
+      commission_status: commissionStatus,
+      commission_payment_date: commissionPaymentDate,
       email: record.email || undefined,
       date_of_birth: record.date_of_birth || undefined,
       notes: record.notes || undefined
@@ -1971,6 +2009,8 @@ function validateImportRows(rows: ImportClientRow[]) {
     if (row.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(row.email)) errors.push(`Row ${rowNumber}: email is invalid.`);
     if (row.policy_type === "Motor" && !row.vehicle_number?.trim()) errors.push(`Row ${rowNumber}: add the vehicle number for this motor policy.`);
     if (row.policy_type === "Property" && !row.property_location?.trim()) errors.push(`Row ${rowNumber}: add the property location.`);
+    if (row.commission_rate === undefined || row.commission_rate < 0) errors.push(`Row ${rowNumber}: add a valid commission rate.`);
+    if (row.commission_status === "Paid" && row.commission_payment_date && !/^\d{4}-\d{2}-\d{2}$/.test(row.commission_payment_date)) errors.push(`Row ${rowNumber}: commission payment date must be YYYY-MM-DD.`);
   });
   return errors;
 }
@@ -2019,6 +2059,16 @@ function normalizeImportHeader(header: string) {
     policy_expiry_date: "policy_end_date",
     premium: "premium",
     premium_amount: "premium",
+    commission_due: "commission_amount",
+    commission: "commission_amount",
+    commission_amount: "commission_amount",
+    commission_rate: "commission_rate",
+    rate: "commission_rate",
+    commission_status: "commission_status",
+    payment_status: "commission_status",
+    commission_payment_date: "commission_payment_date",
+    payment_date: "commission_payment_date",
+    released: "commission_released",
     date_of_birth: "date_of_birth",
     dob: "date_of_birth",
     notes: "notes",
@@ -2035,7 +2085,46 @@ function normalizeImportHeader(header: string) {
 }
 
 function isEnterprisePolicyExport(headers: string[]) {
-  return headers.includes("trans_date") && headers.includes("commission_due") && headers.includes("policy_number");
+  return headers.includes("trans_date") && headers.includes("commission_amount") && headers.includes("policy_number");
+}
+
+function importCommissionStatus(record: Record<string, string>, enterpriseExport: boolean): "Paid" | "Pending" {
+  const explicitStatus = record.commission_status?.trim().toLowerCase();
+  if (["paid", "released", "yes"].includes(explicitStatus)) return "Paid";
+  if (["pending", "unpaid", "no"].includes(explicitStatus)) return "Pending";
+
+  const released = record.commission_released?.trim().toLowerCase();
+  if (released && released !== "no" && released !== "pending") return "Paid";
+
+  if (!enterpriseExport || !record.policy_start_date) return "Pending";
+  return isPastPolicyMonth(record.policy_start_date) ? "Paid" : "Pending";
+}
+
+function importCommissionPaymentDate(record: Record<string, string>, status: "Paid" | "Pending") {
+  if (status !== "Paid") return "";
+  const explicitPaymentDate = normalizeImportDate(record.commission_payment_date || record.commission_released);
+  if (explicitPaymentDate) return explicitPaymentDate;
+  return seventhDayOfNextMonth(record.policy_start_date);
+}
+
+function isPastPolicyMonth(value: string) {
+  const date = new Date(`${value}T00:00:00Z`);
+  if (Number.isNaN(date.getTime())) return false;
+  const today = new Date();
+  const thisMonth = Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), 1);
+  const policyMonth = Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), 1);
+  return policyMonth < thisMonth;
+}
+
+function seventhDayOfNextMonth(value: string) {
+  const date = new Date(`${value}T00:00:00Z`);
+  if (Number.isNaN(date.getTime())) return "";
+  const paymentDate = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + 1, 7));
+  return paymentDate.toISOString().slice(0, 10);
+}
+
+function roundPercent(value: number) {
+  return Number(value.toFixed(2));
 }
 
 function dateOfBirthForDisplay(value: string | null | undefined) {
@@ -2075,7 +2164,8 @@ function parseImportMoney(value: string | undefined) {
   const trimmed = value?.trim();
   if (!trimmed) return undefined;
   const amount = Number(trimmed.replace(/[^0-9.-]/g, ""));
-  return Number.isFinite(amount) && amount > 0 ? amount : undefined;
+  if (!Number.isFinite(amount) || amount === 0) return undefined;
+  return Math.abs(amount);
 }
 
 function splitCsvLine(line: string) {

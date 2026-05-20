@@ -65,6 +65,10 @@ const importClientRowSchema = z.object({
   vehicle_number: z.string().trim().optional().or(z.literal("")),
   property_location: z.string().trim().optional().or(z.literal("")),
   premium: z.coerce.number().positive("Premium must be greater than zero").optional(),
+  commission_rate: z.coerce.number().nonnegative("Commission rate cannot be negative").optional(),
+  commission_amount: z.coerce.number().nonnegative("Commission amount cannot be negative").optional(),
+  commission_status: z.enum(["Paid", "Pending"]).optional(),
+  commission_payment_date: z.string().refine(isValidDateInput, "Commission payment date is invalid").optional().or(z.literal("")),
   email: z.string().email().optional().or(z.literal("")),
   date_of_birth: z.string().refine(isValidDateInput, "Date of birth is invalid").optional().or(z.literal("")),
   notes: z.string().max(500, "Notes are too long").optional().or(z.literal(""))
@@ -413,9 +417,9 @@ export async function importClientsFromCsvRows(rows: unknown) {
       .insert({
         agent_id: agentId,
         policy_id: policy.id,
-        commission_rate: 10,
-        payment_status: "Pending",
-        payment_date: null
+        commission_rate: row.commission_rate ?? 10,
+        payment_status: row.commission_status ?? "Pending",
+        payment_date: row.commission_status === "Paid" ? row.commission_payment_date || new Date().toISOString().slice(0, 10) : null
       })
       .select(commissionColumns)
       .single();
