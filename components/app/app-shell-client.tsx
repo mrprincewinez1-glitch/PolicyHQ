@@ -1477,7 +1477,7 @@ function ImportClientsModal({ onClose, onImport }: { onClose: () => void; onImpo
   }
 
   return (
-    <ModalFrame title="Import Clients" onClose={onClose}>
+    <ModalFrame title="Import Clients" onClose={onClose} wide>
       <div className="space-y-5">
         <div className="rounded-xl bg-slate-50 p-4 text-sm text-slate-600">
           <p className="font-bold text-primary">Upload a CSV with clients and policies.</p>
@@ -1509,48 +1509,72 @@ function ImportClientsModal({ onClose, onImport }: { onClose: () => void; onImpo
             ) : (
               <div className="rounded-xl bg-green-50 p-4 text-sm font-semibold text-green-700">All rows look ready to import.</div>
             )}
-            <div className="max-h-72 overflow-auto rounded-xl border border-slate-200">
-              <table className="w-full min-w-[1560px] text-sm">
-                <thead className="sticky top-0 bg-slate-50"><tr>{["Client", "Phone", "Policy No.", "Type", "Insurer", "Start", "End", "Vehicle/Property", "Premium", "Commission", "Rate", "Status", "Payment Date"].map((header) => <th key={header} className="px-3 py-2 text-left">{header}</th>)}</tr></thead>
-                <tbody>{rows.map((row, index) => <tr key={`${row.policy_number}-${index}`} className="border-t align-top">
-                  <td className="px-3 py-2"><ImportInput value={row.client_name} onChange={(value) => updateImportRow(index, "client_name", value)} required /></td>
-                  <td className="px-3 py-2"><ImportInput value={row.phone_number} onChange={(value) => updateImportRow(index, "phone_number", value)} required /></td>
-                  <td className="px-3 py-2"><ImportInput value={row.policy_number} onChange={(value) => updateImportRow(index, "policy_number", value)} required /></td>
-                  <td className="px-3 py-2">
-                    <Select value={row.policy_type} onChange={(event) => updateImportRow(index, "policy_type", event.target.value)} className={!row.policy_type ? "border-amber-400 bg-amber-50" : ""}>
-                      <option value="">Choose type</option>
-                      {policyTypes.map((type) => <option key={type}>{type}</option>)}
-                    </Select>
-                  </td>
-                  <td className="px-3 py-2"><ImportInput value={row.insurer_name} onChange={(value) => updateImportRow(index, "insurer_name", value)} required /></td>
-                  <td className="px-3 py-2"><ImportInput type="date" value={row.policy_start_date} onChange={(value) => updateImportRow(index, "policy_start_date", value)} required /></td>
-                  <td className="px-3 py-2"><ImportInput type="date" value={row.policy_end_date} onChange={(value) => updateImportRow(index, "policy_end_date", value)} required /></td>
-                  <td className="px-3 py-2">
-                    {row.policy_type === "Motor" ? <ImportInput value={row.vehicle_number ?? ""} onChange={(value) => updateImportRow(index, "vehicle_number", value)} required /> : null}
-                    {row.policy_type === "Property" ? <ImportInput value={row.property_location ?? ""} onChange={(value) => updateImportRow(index, "property_location", value)} required /> : null}
-                    {row.policy_type !== "Motor" && row.policy_type !== "Property" ? <span className="text-slate-400">—</span> : null}
-                  </td>
-                  <td className="px-3 py-2"><ImportInput type="number" value={row.premium ? String(row.premium) : ""} onChange={(value) => updateImportRow(index, "premium", value)} /></td>
-                  <td className="px-3 py-2"><ImportInput type="number" value={row.commission_amount ? String(row.commission_amount) : ""} onChange={(value) => updateImportRow(index, "commission_amount", value)} /></td>
-                  <td className="px-3 py-2"><ImportInput type="number" value={row.commission_rate !== undefined ? String(row.commission_rate) : ""} onChange={(value) => updateImportRow(index, "commission_rate", value)} required /></td>
-                  <td className="px-3 py-2">
-                    <Select value={row.commission_status ?? "Pending"} onChange={(event) => updateImportRow(index, "commission_status", event.target.value)}>
-                      <option>Paid</option>
-                      <option>Pending</option>
-                    </Select>
-                  </td>
-                  <td className="px-3 py-2"><ImportInput type="date" value={row.commission_payment_date ?? ""} onChange={(value) => updateImportRow(index, "commission_payment_date", value)} /></td>
-                </tr>)}</tbody>
-              </table>
+            <div className="max-h-[64vh] space-y-4 overflow-y-auto pr-1">
+              {rows.map((row, index) => (
+                <ImportRowCard
+                  key={`${row.policy_number}-${index}`}
+                  row={row}
+                  index={index}
+                  onUpdate={(field, value) => updateImportRow(index, field, value)}
+                />
+              ))}
             </div>
           </div>
         ) : null}
-        <div className="flex justify-end gap-3">
+        <div className="sticky bottom-0 -mx-6 flex justify-end gap-3 border-t border-slate-200 bg-white px-6 py-4">
           <Button type="button" variant="outline" onClick={onClose}>Cancel</Button>
           <Button type="button" disabled={!canImport} onClick={() => onImport(rows)}>Import Valid Rows</Button>
         </div>
       </div>
     </ModalFrame>
+  );
+}
+
+function ImportRowCard({ row, index, onUpdate }: { row: ImportClientRow; index: number; onUpdate: (field: keyof ImportClientRow, value: string) => void }) {
+  return (
+    <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+      <div className="mb-4 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+        <h3 className="font-extrabold text-primary">Row {index + 2}</h3>
+        <p className="text-sm font-semibold text-slate-500">{row.client_name || "Client name needed"} · {row.policy_number || "Policy number needed"}</p>
+      </div>
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <ImportField label="Client" value={row.client_name} onChange={(value) => onUpdate("client_name", value)} required />
+        <ImportField label="Phone" value={row.phone_number} onChange={(value) => onUpdate("phone_number", value)} required />
+        <ImportField label="Policy No." value={row.policy_number} onChange={(value) => onUpdate("policy_number", value)} required />
+        <label className="block text-sm font-semibold">
+          Type
+          <Select value={row.policy_type} onChange={(event) => onUpdate("policy_type", event.target.value)} className={`mt-1 ${!row.policy_type ? "border-amber-400 bg-amber-50" : ""}`}>
+            <option value="">Choose type</option>
+            {policyTypes.map((type) => <option key={type}>{type}</option>)}
+          </Select>
+        </label>
+        <ImportField label="Insurer" value={row.insurer_name} onChange={(value) => onUpdate("insurer_name", value)} required />
+        <ImportField label="Start Date" type="date" value={row.policy_start_date} onChange={(value) => onUpdate("policy_start_date", value)} required />
+        <ImportField label="End Date" type="date" value={row.policy_end_date} onChange={(value) => onUpdate("policy_end_date", value)} required />
+        {row.policy_type === "Motor" ? <ImportField label="Vehicle Number" value={row.vehicle_number ?? ""} onChange={(value) => onUpdate("vehicle_number", value)} required /> : null}
+        {row.policy_type === "Property" ? <ImportField label="Property Location" value={row.property_location ?? ""} onChange={(value) => onUpdate("property_location", value)} required /> : null}
+        <ImportField label="Premium" type="number" value={row.premium ? String(row.premium) : ""} onChange={(value) => onUpdate("premium", value)} />
+        <ImportField label="Commission Amount" type="number" value={row.commission_amount ? String(row.commission_amount) : ""} onChange={(value) => onUpdate("commission_amount", value)} />
+        <ImportField label="Commission Rate" type="number" value={row.commission_rate !== undefined ? String(row.commission_rate) : ""} onChange={(value) => onUpdate("commission_rate", value)} required />
+        <label className="block text-sm font-semibold">
+          Commission Status
+          <Select value={row.commission_status ?? "Pending"} onChange={(event) => onUpdate("commission_status", event.target.value)} className="mt-1">
+            <option>Paid</option>
+            <option>Pending</option>
+          </Select>
+        </label>
+        <ImportField label="Payment Date" type="date" value={row.commission_payment_date ?? ""} onChange={(value) => onUpdate("commission_payment_date", value)} />
+      </div>
+    </div>
+  );
+}
+
+function ImportField({ label, value, onChange, required = false, type = "text" }: { label: string; value: string; onChange: (value: string) => void; required?: boolean; type?: "text" | "date" | "number" }) {
+  return (
+    <label className="block text-sm font-semibold">
+      {label}
+      <ImportInput type={type} value={value} onChange={onChange} required={required} />
+    </label>
   );
 }
 
@@ -1560,7 +1584,7 @@ function ImportInput({ value, onChange, required = false, type = "text" }: { val
       type={type}
       value={value}
       onChange={(event) => onChange(event.target.value)}
-      className={required && !value.trim() ? "border-amber-400 bg-amber-50" : ""}
+      className={`mt-1 ${required && !value.trim() ? "border-amber-400 bg-amber-50" : ""}`}
     />
   );
 }
@@ -1672,8 +1696,9 @@ function DemoModal({ onClose }: { onClose: () => void }) {
   return <ModalFrame title="Create your free account" onClose={onClose} narrow><p className="text-slate-600">This feature is available to registered agents. Create your free PolicyHQ account to get started.</p><div className="mt-6 flex flex-wrap gap-3"><Button asChild><Link href="/sign-up">Sign Up Free</Link></Button><Button variant="outline" onClick={onClose}>Continue Browsing Demo</Button></div></ModalFrame>;
 }
 
-function ModalFrame({ title, children, onClose, narrow = false }: { title: string; children: ReactNode; onClose: () => void; narrow?: boolean }) {
-  return <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/50 p-4"><Card className={`max-h-[92vh] w-full overflow-y-auto ${narrow ? "max-w-md" : "max-w-3xl"}`}><CardHeader className="flex flex-row items-center justify-between"><h2 className="text-xl font-extrabold">{title}</h2><Button variant="ghost" size="icon" onClick={onClose}><X className="h-5 w-5" /></Button></CardHeader><CardContent>{children}</CardContent></Card></div>;
+function ModalFrame({ title, children, onClose, narrow = false, wide = false }: { title: string; children: ReactNode; onClose: () => void; narrow?: boolean; wide?: boolean }) {
+  const width = narrow ? "max-w-md" : wide ? "max-w-6xl" : "max-w-3xl";
+  return <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/50 p-3 sm:p-4"><Card className={`max-h-[94vh] w-full overflow-y-auto ${width}`}><CardHeader className="flex flex-row items-center justify-between"><h2 className="text-xl font-extrabold">{title}</h2><Button variant="ghost" size="icon" onClick={onClose}><X className="h-5 w-5" /></Button></CardHeader><CardContent>{children}</CardContent></Card></div>;
 }
 
 function Avatar({ profile, large = false }: { profile: AppData["profile"]; large?: boolean }) {
