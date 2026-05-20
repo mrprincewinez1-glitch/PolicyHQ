@@ -1292,11 +1292,11 @@ function ClientModal({ client, onClose, onSave }: { client?: Client; onClose: ()
       full_name: String(form.get("full_name") ?? ""),
       phone_number: String(form.get("phone_number") ?? ""),
       email: String(form.get("email") ?? ""),
-      date_of_birth: String(form.get("date_of_birth") ?? ""),
+      date_of_birth: dateOfBirthToIso(String(form.get("date_of_birth") ?? "")),
       address: String(form.get("address") ?? "")
     });
   }
-  return <ModalFrame title={client ? "Edit Client" : "Add New Client"} onClose={onClose}><form onSubmit={submit} className="grid gap-4 md:grid-cols-2"><label className="block text-sm font-semibold">Full Name<Input name="full_name" required defaultValue={client?.full_name} className="mt-1" /></label><label className="block text-sm font-semibold">Phone Number<Input name="phone_number" required defaultValue={client?.phone_number} className="mt-1" /></label><label className="block text-sm font-semibold">Email<Input name="email" type="email" defaultValue={client?.email ?? ""} className="mt-1" /></label><label className="block text-sm font-semibold">Date of Birth<Input name="date_of_birth" type="date" defaultValue={client?.date_of_birth ?? ""} className="mt-1" /></label><label className="block text-sm font-semibold md:col-span-2">Address<Input name="address" defaultValue={client?.address ?? ""} className="mt-1" /></label><div className="md:col-span-2 mt-2 flex justify-end gap-3"><Button type="button" variant="outline" onClick={onClose}>Cancel</Button><Button>Save Client</Button></div></form></ModalFrame>;
+  return <ModalFrame title={client ? "Edit Client" : "Add New Client"} onClose={onClose}><form onSubmit={submit} className="grid gap-4 md:grid-cols-2"><label className="block text-sm font-semibold">Full Name<Input name="full_name" required defaultValue={client?.full_name} className="mt-1" /></label><label className="block text-sm font-semibold">Phone Number<Input name="phone_number" required defaultValue={client?.phone_number} className="mt-1" /></label><label className="block text-sm font-semibold">Email<Input name="email" type="email" defaultValue={client?.email ?? ""} className="mt-1" /></label><label className="block text-sm font-semibold">Date of Birth<Input name="date_of_birth" inputMode="numeric" placeholder="DD/MM/YYYY" defaultValue={dateOfBirthForDisplay(client?.date_of_birth)} pattern="(0?[1-9]|[12][0-9]|3[01])[/.-](0?[1-9]|1[0-2])[/.-](19|20)\\d\\d|\\d{4}-\\d{2}-\\d{2}" title="Use DD/MM/YYYY, for example 23/04/1993" className="mt-1" /><span className="mt-1 block text-xs font-medium text-slate-500">Type it like 23/04/1993. No calendar needed.</span></label><label className="block text-sm font-semibold md:col-span-2">Address<Input name="address" defaultValue={client?.address ?? ""} className="mt-1" /></label><div className="md:col-span-2 mt-2 flex justify-end gap-3"><Button type="button" variant="outline" onClick={onClose}>Cancel</Button><Button>Save Client</Button></div></form></ModalFrame>;
 }
 
 function PolicyModal({ policy, clients, onClose, onSave }: { policy?: PolicyWithClient; clients: Client[]; onClose: () => void; onSave: (payload: PolicySavePayload) => void }) {
@@ -1339,7 +1339,7 @@ function PolicyModal({ policy, clients, onClose, onSave }: { policy?: PolicyWith
         full_name: String(form.get("client_full_name") ?? ""),
         phone_number: String(form.get("client_phone_number") ?? ""),
         email: String(form.get("client_email") ?? ""),
-        date_of_birth: String(form.get("client_date_of_birth") ?? ""),
+        date_of_birth: dateOfBirthToIso(String(form.get("client_date_of_birth") ?? "")),
         address: String(form.get("client_address") ?? "")
       } : undefined,
       policy_number: normalizedPolicyNumber,
@@ -1379,7 +1379,7 @@ function PolicyModal({ policy, clients, onClose, onSave }: { policy?: PolicyWith
               <label className="block text-sm font-semibold">Full Name<Input name="client_full_name" required className="mt-1 bg-white" /></label>
               <label className="block text-sm font-semibold">Phone Number<Input name="client_phone_number" required className="mt-1 bg-white" /></label>
               <label className="block text-sm font-semibold">Email<Input name="client_email" type="email" className="mt-1 bg-white" /></label>
-              <label className="block text-sm font-semibold">Date of Birth<Input name="client_date_of_birth" type="date" className="mt-1 bg-white" /></label>
+              <label className="block text-sm font-semibold">Date of Birth<Input name="client_date_of_birth" inputMode="numeric" placeholder="DD/MM/YYYY" pattern="(0?[1-9]|[12][0-9]|3[01])[/.-](0?[1-9]|1[0-2])[/.-](19|20)\\d\\d|\\d{4}-\\d{2}-\\d{2}" title="Use DD/MM/YYYY, for example 23/04/1993" className="mt-1 bg-white" /><span className="mt-1 block text-xs font-medium text-slate-500">Type it like 23/04/1993.</span></label>
               <label className="block text-sm font-semibold">Address<Input name="client_address" className="mt-1 bg-white" /></label>
             </div>
           )}
@@ -2036,6 +2036,24 @@ function normalizeImportHeader(header: string) {
 
 function isEnterprisePolicyExport(headers: string[]) {
   return headers.includes("trans_date") && headers.includes("commission_due") && headers.includes("policy_number");
+}
+
+function dateOfBirthForDisplay(value: string | null | undefined) {
+  if (!value) return "";
+  const match = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return value;
+  const [, year, month, day] = match;
+  return `${day}/${month}/${year}`;
+}
+
+function dateOfBirthToIso(value: string) {
+  const trimmed = value.trim();
+  if (!trimmed) return "";
+  if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return trimmed;
+  const match = trimmed.match(/^(\d{1,2})[/.-](\d{1,2})[/.-](\d{4})$/);
+  if (!match) return trimmed;
+  const [, day, month, year] = match;
+  return `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`;
 }
 
 function normalizeImportDate(value: string | undefined) {
