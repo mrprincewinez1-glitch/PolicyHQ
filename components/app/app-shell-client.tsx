@@ -103,6 +103,9 @@ type CommissionDisplayStatus = "Pending" | "Overdue" | "Paid";
 type CommissionClassFilter = "All" | InsuranceCategory;
 type CommissionPeriodMode = "Monthly" | "Yearly" | "All Time";
 type NavItem = readonly [Section | "admin", LucideIcon, string];
+type GlobalSearchResult =
+  | { type: "client"; id: string; title: string; subtitle: string; href: string }
+  | { type: "policy"; id: string; title: string; subtitle: string; policy: PolicyWithClient };
 
 const nav = [
   ["dashboard", LayoutDashboard, "Dashboard"],
@@ -556,6 +559,35 @@ export function AppShell({
     return data.policies.filter((policy) => [policy.client.full_name, policy.policy_number, policy.insurer_name].some((value) => value.toLowerCase().includes(q)));
   }, [data.policies, query]);
 
+  const globalSearchResults = useMemo<GlobalSearchResult[]>(() => {
+    const q = query.trim().toLowerCase();
+    if (q.length < 2) return [];
+
+    const clientResults = data.clients
+      .filter((client) => [client.full_name, client.phone_number, client.email ?? ""].some((value) => value.toLowerCase().includes(q)))
+      .slice(0, 4)
+      .map((client) => ({
+        type: "client" as const,
+        id: client.id,
+        title: client.full_name,
+        subtitle: client.phone_number || client.email || "Client record",
+        href: `${base}/clients/${client.id}`
+      }));
+
+    const policyResults = data.policies
+      .filter((policy) => [policy.client.full_name, policy.policy_number, policy.insurer_name, policy.policy_type].some((value) => value.toLowerCase().includes(q)))
+      .slice(0, 5)
+      .map((policy) => ({
+        type: "policy" as const,
+        id: policy.id,
+        title: policy.policy_number,
+        subtitle: `${policy.client.full_name} · ${policy.insurer_name} · ${formatDate(policy.expiry_date)}`,
+        policy
+      }));
+
+    return [...clientResults, ...policyResults].slice(0, 8);
+  }, [base, data.clients, data.policies, query]);
+
   const totalEarned = commissionTotal(data.commissions, data.policies);
   const totalPaid = commissionTotal(data.commissions.filter((item) => item.payment_status === "Paid"), data.policies);
   const totalPaidThisMonth = commissionTotal(data.commissions.filter((item) => item.payment_status === "Paid" && isCurrentMonth(commissionEarnedDate(item))), data.policies);
@@ -688,9 +720,64 @@ export function AppShell({
             >
               <PolicyHqLogo className="h-9 w-auto max-w-[132px]" />
             </Link>
-            <div className="hidden max-w-md flex-1 items-center gap-2 rounded-xl border border-slate-200 px-3 lg:flex">
-              <Search className="h-4 w-4 text-slate-400" />
-              <input value={query} onChange={(event) => setQuery(event.target.value)} className="h-10 w-full outline-none" placeholder="Search clients, policies, or insurers" />
+            <div className="relative hidden max-w-md flex-1 lg:block">
+              <div className="flex items-center gap-2 rounded-xl border border-slate-200 px-3">
+                <Search className="h-4 w-4 text-slate-400" />
+                <input
+                  value={query}
+                  onChange={(event) => setQuery(event.target.value)}
+                  className="h-10 w-full outline-none"
+                  placeholder="Search clients, policies, or insurers"
+                />
+                {query ? (
+                  <button type="button" onClick={() => setQuery("")} className="rounded-full p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700" aria-label="Clear search">
+                    <X className="h-4 w-4" />
+                  </button>
+                ) : null}
+              </div>
+              {query.trim().length >= 2 ? (
+                <div className="absolute left-0 right-0 top-full z-50 mt-2 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-soft">
+                  {globalSearchResults.length ? (
+                    <div className="max-h-96 overflow-auto p-2">
+                      {globalSearchResults.map((result) => result.type === "client" ? (
+                        <Link
+                          key={`client-${result.id}`}
+                          href={result.href}
+                          onClick={() => {
+                            setActive("clients");
+                            setQuery("");
+                          }}
+                          className="flex w-full items-center justify-between gap-3 rounded-lg px-3 py-2 text-left hover:bg-slate-50"
+                        >
+                          <span>
+                            <span className="block text-sm font-bold text-primary">{result.title}</span>
+                            <span className="block text-xs text-slate-500">{result.subtitle}</span>
+                          </span>
+                          <Badge tone="orange">Client</Badge>
+                        </Link>
+                      ) : (
+                        <button
+                          key={`policy-${result.id}`}
+                          type="button"
+                          onClick={() => {
+                            setDetailPolicy(result.policy);
+                            setQuery("");
+                          }}
+                          className="flex w-full items-center justify-between gap-3 rounded-lg px-3 py-2 text-left hover:bg-slate-50"
+                        >
+                          <span>
+                            <span className="block font-mono text-sm font-bold text-primary">{result.title}</span>
+                            <span className="block text-xs text-slate-500">{result.subtitle}</span>
+                          </span>
+                          <Badge>Policy</Badge>
+                        </button>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="px-4 py-5 text-sm font-semibold text-slate-500">No clients or policies match that search.</div>
+                  )}
+                </div>
+              ) : null}
             </div>
             <div className="ml-auto flex items-center gap-2 sm:gap-4">
               <Link
