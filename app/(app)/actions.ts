@@ -350,14 +350,8 @@ export async function importClientsFromCsvRows(rows: unknown) {
   if (!parsed.success) return { ok: false, message: parsed.error.issues[0]?.message ?? "Check your CSV rows." };
   const { supabase, agentId } = await currentUserId();
   const policyNumbers = parsed.data.map((row) => row.policy_number);
-  const { data: existingPolicies, error: duplicateError } = await supabase
-    .from("policies")
-    .select("policy_number")
-    .in("policy_number", policyNumbers);
-  if (duplicateError) return { ok: false, message: "We could not check policy numbers before importing." };
-  const existingPolicyNumbers = new Set((existingPolicies ?? []).map((row) => row.policy_number));
-  const duplicatePolicyNumber = policyNumbers.find((policyNumber, index) => policyNumbers.indexOf(policyNumber) !== index || existingPolicyNumbers.has(policyNumber));
-  if (duplicatePolicyNumber) return { ok: false, message: `Policy number ${duplicatePolicyNumber} already exists or appears twice.` };
+  const duplicatePolicyNumber = policyNumbers.find((policyNumber, index) => policyNumbers.indexOf(policyNumber) !== index);
+  if (duplicatePolicyNumber) return { ok: false, message: `Policy number ${duplicatePolicyNumber} appears twice in this file.` };
 
   for (const row of parsed.data) {
     const company = findInsuranceCompany(row.insurer_name);
@@ -373,25 +367,51 @@ export async function importClientsFromCsvRows(rows: unknown) {
   const importedCommissions: Commission[] = [];
 
   for (const row of parsed.data) {
-    const { data: client, error: clientError } = await supabase
-      .from("clients")
-      .insert({
-        agent_id: agentId,
-        full_name: row.client_name,
-        phone_number: normalizeGhanaPhoneNumber(row.phone_number),
-        email: row.email || null,
-        date_of_birth: row.date_of_birth || null,
-        address: null
-      })
-      .select(clientColumns)
-      .single();
+    const { data: existingPolicy, error: existingPolicyError } = await supabase
+      .from("policies")
+      .select(policyColumns)
+      .eq("policy_number", row.policy_number)
+      .eq("agent_id", agentId)
+      .maybeSingle();
+    if (existingPolicyError) return { ok: false, message: `We could not check existing policy ${row.policy_number}.` };
+
+    const clientPayload = {
+      agent_id: agentId,
+      full_name: row.client_name,
+      phone_number: normalizeGhanaPhoneNumber(row.phone_number),
+      email: row.email || null,
+      date_of_birth: row.date_of_birth || null,
+      address: null,
+      deleted_at: null
+    };
+
+    const clientQuery = existingPolicy
+      ? supabase
+        .from("clients")
+        .update(clientPayload)
+        .eq("id", existingPolicy.client_id)
+        .eq("agent_id", agentId)
+        .select(clientColumns)
+        .single()
+      : supabase
+        .from("clients")
+        .insert({
+          agent_id: clientPayload.agent_id,
+          full_name: clientPayload.full_name,
+          phone_number: clientPayload.phone_number,
+          email: clientPayload.email,
+          date_of_birth: clientPayload.date_of_birth,
+          address: clientPayload.address
+        })
+        .select(clientColumns)
+        .single();
+
+    const { data: client, error: clientError } = await clientQuery;
     if (clientError || !client) return { ok: false, message: `Import stopped at ${row.client_name}. We could not save this client.` };
 
     const company = findInsuranceCompany(row.insurer_name)!;
     const insuranceCategory = insuranceCategoryForPolicyType(row.policy_type);
-    const { data: policy, error: policyError } = await supabase
-      .from("policies")
-      .insert({
+    const policyPayload = {
         agent_id: agentId,
         client_id: client.id,
         policy_number: row.policy_number,
@@ -404,25 +424,60 @@ export async function importClientsFromCsvRows(rows: unknown) {
         expiry_date: row.policy_end_date,
         premium_amount: row.premium ?? 0,
         currency: "GHS",
-        status: "Active",
-        renewal_status: "Upcoming",
+        status: "Active" as const,
+        renewal_status: "Upcoming" as const,
         notes: row.notes || null
-      })
-      .select(policyColumns)
-      .single();
-    if (policyError || !policy) return { ok: false, message: `Import stopped at ${row.policy_number}. We could not save this policy.` };
+    };
 
-    const { data: commission, error: commissionError } = await supabase
+    const policyQuery = existingPolicy
+      ? supabase
+        .from("policies")
+        .update(policyPayload)
+        .eq("id", existingPolicy.id)
+        .eq("agent_id", agentId)
+        .select(policyColumns)
+        .single()
+      : supabase
+        .from("policies")
+        .insert(policyPayload)
+        .select(policyColumns)
+        .single();
+
+    const { data: policy, error: policyError } = await policyQuery;
+    if (policyError || !policy) {
+      return { ok: false, message: `Import stopped at ${row.policy_number}. This policy number may still exist in archived data.` };
+    }
+
+    const { data: existingCommission } = await supabase
       .from("commissions")
-      .insert({
-        agent_id: agentId,
-        policy_id: policy.id,
-        commission_rate: row.commission_rate ?? 10,
-        payment_status: row.commission_status ?? "Pending",
-        payment_date: row.commission_status === "Paid" ? row.commission_payment_date || new Date().toISOString().slice(0, 10) : null
-      })
-      .select(commissionColumns)
-      .single();
+      .select("id")
+      .eq("policy_id", policy.id)
+      .eq("agent_id", agentId)
+      .maybeSingle();
+
+    const commissionPayload = {
+      agent_id: agentId,
+      policy_id: policy.id,
+      commission_rate: row.commission_rate ?? 10,
+      payment_status: row.commission_status ?? "Pending",
+      payment_date: row.commission_status === "Paid" ? row.commission_payment_date || new Date().toISOString().slice(0, 10) : null
+    };
+
+    const commissionQuery = existingCommission?.id
+      ? supabase
+        .from("commissions")
+        .update(commissionPayload)
+        .eq("id", existingCommission.id)
+        .eq("agent_id", agentId)
+        .select(commissionColumns)
+        .single()
+      : supabase
+        .from("commissions")
+        .insert(commissionPayload)
+        .select(commissionColumns)
+        .single();
+
+    const { data: commission, error: commissionError } = await commissionQuery;
     if (commissionError || !commission) return { ok: false, message: `Policy ${row.policy_number} imported, but commission setup failed.` };
 
     importedClients.push(client as Client);
