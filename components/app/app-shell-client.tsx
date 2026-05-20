@@ -1928,6 +1928,7 @@ function parseClientCsv(text: string) {
   lines.slice(1).forEach((line) => {
     const values = splitCsvLine(line);
     const record = Object.fromEntries(headers.map((header, headerIndex) => [header, values[headerIndex]?.trim() ?? ""])) as Record<string, string>;
+    if (!record.insurer_name && isEnterprisePolicyExport(headers)) record.insurer_name = "Enterprise Insurance LTD";
     record.policy_start_date = normalizeImportDate(record.policy_start_date);
     record.policy_end_date = normalizeImportDate(record.policy_end_date);
     record.date_of_birth = normalizeImportDate(record.date_of_birth);
@@ -1982,7 +1983,7 @@ function normalizeImportPolicyType(value: string | undefined): PolicyType | "" {
 }
 
 function normalizeImportHeader(header: string) {
-  const normalized = header.trim().toLowerCase().replace(/[\s./-]+/g, "_").replace(/^_+|_+$/g, "");
+  const normalized = header.replace(/^\uFEFF/, "").trim().toLowerCase().replace(/[\s./-]+/g, "_").replace(/^_+|_+$/g, "");
   const aliases: Record<string, string> = {
     client_name: "client_name",
     client: "client_name",
@@ -2031,6 +2032,10 @@ function normalizeImportHeader(header: string) {
     address: "property_location"
   };
   return aliases[normalized] ?? normalized;
+}
+
+function isEnterprisePolicyExport(headers: string[]) {
+  return headers.includes("trans_date") && headers.includes("commission_due") && headers.includes("policy_number");
 }
 
 function normalizeImportDate(value: string | undefined) {
