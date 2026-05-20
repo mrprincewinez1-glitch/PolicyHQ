@@ -5,6 +5,7 @@ import { z } from "zod";
 import { isValidPolicyNumber, normalizePolicyNumber, policyNumberHelpText } from "@/lib/policy-number";
 import { createClient } from "@/lib/supabase/server";
 import { findInsuranceCompany, insuranceCategoryForPolicyType } from "@/lib/insurance";
+import { normalizeGhanaPhoneNumber } from "@/lib/utils";
 import type { ActivityNote, Client, Commission, PolicyWithClient, RenewalStatus } from "@/lib/types";
 
 const renewalStatusValues = ["Upcoming", "Contacted", "Quote Requested", "Payment Pending", "Renewed", "Lost"] as const;
@@ -141,7 +142,13 @@ export async function upsertClient(_: unknown, formData: FormData) {
   const parsed = clientSchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) return { ok: false, message: parsed.error.issues[0]?.message ?? "Check client details." };
   const { supabase, agentId } = await currentUserId();
-  const payload = { ...parsed.data, agent_id: agentId, email: parsed.data.email || null, date_of_birth: parsed.data.date_of_birth || null };
+  const payload = {
+    ...parsed.data,
+    agent_id: agentId,
+    phone_number: normalizeGhanaPhoneNumber(parsed.data.phone_number),
+    email: parsed.data.email || null,
+    date_of_birth: parsed.data.date_of_birth || null
+  };
   const query = parsed.data.id
     ? supabase.from("clients").update(payload).eq("id", parsed.data.id).eq("agent_id", agentId).is("deleted_at", null).select(clientColumns).single()
     : supabase.from("clients").insert(payload).select(clientColumns).single();
@@ -212,7 +219,7 @@ export async function upsertPolicy(_: unknown, formData: FormData) {
       .insert({
         agent_id: agentId,
         full_name: parsed.data.client_full_name!.trim(),
-        phone_number: parsed.data.client_phone_number!.trim(),
+        phone_number: normalizeGhanaPhoneNumber(parsed.data.client_phone_number!),
         email: parsed.data.client_email || null,
         date_of_birth: parsed.data.client_date_of_birth || null,
         address: parsed.data.client_address || null
@@ -367,7 +374,7 @@ export async function importClientsFromCsvRows(rows: unknown) {
       .insert({
         agent_id: agentId,
         full_name: row.client_name,
-        phone_number: row.phone_number,
+        phone_number: normalizeGhanaPhoneNumber(row.phone_number),
         email: row.email || null,
         date_of_birth: row.date_of_birth || null,
         address: null
@@ -479,7 +486,7 @@ export async function updateProfile(formData: FormData) {
     .from("profiles")
     .update({
       full_name: parsed.data.full_name,
-      phone_number: parsed.data.phone_number || null,
+      phone_number: parsed.data.phone_number ? normalizeGhanaPhoneNumber(parsed.data.phone_number) : null,
       company_name: parsed.data.company_name || null
     })
     .eq("id", agentId)

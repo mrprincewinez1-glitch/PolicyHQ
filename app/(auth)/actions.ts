@@ -2,6 +2,7 @@
 
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { normalizeGhanaPhoneNumber } from "@/lib/utils";
 
 function value(formData: FormData, key: string) {
   return String(formData.get(key) ?? "").trim();
@@ -12,13 +13,7 @@ function authRedirect(path: string, key: "error" | "success", message: string): 
 }
 
 function normalizePhone(input: string) {
-  if (!input) return "";
-  if (input.startsWith("+")) return `+${input.replace(/\D/g, "")}`;
-
-  const digits = input.replace(/\D/g, "");
-  if (digits.startsWith("0")) return `+233${digits.slice(1)}`;
-  if (digits.startsWith("233")) return `+${digits}`;
-  return `+233${digits}`;
+  return normalizeGhanaPhoneNumber(input);
 }
 
 function ensureSupabase(path: string) {

@@ -68,12 +68,19 @@ export function isBirthdayToday(dateOfBirth: string | null, today = new Date()) 
 }
 
 export function normalizeGhanaPhoneNumber(value: string) {
-  const digits = value.replace(/\D/g, "");
-  if (digits.startsWith("233") && digits.length === 12) return `+${digits}`;
-  if (digits.startsWith("0") && digits.length === 10) return `+233${digits.slice(1)}`;
+  const trimmed = value.trim();
+  const digits = trimmed.replace(/\D/g, "");
+  if (!digits) return "";
+
+  if (digits.startsWith("233")) {
+    const nationalNumber = digits.slice(3).replace(/^0/, "");
+    return `+233${nationalNumber}`;
+  }
+
+  if (digits.startsWith("0")) return `+233${digits.slice(1)}`;
   if (digits.length === 9) return `+233${digits}`;
-  if (value.trim().startsWith("+")) return value.trim();
-  return value.trim();
+  if (trimmed.startsWith("+")) return `+${digits}`;
+  return trimmed;
 }
 
 export function whatsAppUrl(phoneNumber: string, message: string) {
