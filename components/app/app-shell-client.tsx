@@ -87,7 +87,7 @@ type ImportClientRow = {
   client_name: string;
   phone_number: string;
   policy_number: string;
-  policy_type: PolicyType;
+  policy_type: PolicyType | "";
   insurer_name: string;
   policy_start_date: string;
   policy_end_date: string;
@@ -1429,10 +1429,31 @@ function PolicyModal({ policy, clients, onClose, onSave }: { policy?: PolicyWith
 function ImportClientsModal({ onClose, onImport }: { onClose: () => void; onImport: (rows: ImportClientRow[]) => void }) {
   const [rows, setRows] = useState<ImportClientRow[]>([]);
   const [errors, setErrors] = useState<string[]>([]);
+  const rowErrors = useMemo(() => validateImportRows(rows), [rows]);
+  const importErrors = [...errors, ...rowErrors];
+  const canImport = rows.length > 0 && importErrors.length === 0;
+
+  function updateImportRow(index: number, field: keyof ImportClientRow, value: string) {
+    setRows((current) => current.map((row, rowIndex) => {
+      if (rowIndex !== index) return row;
+      if (field === "premium") {
+        const premium = parseImportMoney(value);
+        return { ...row, premium };
+      }
+      if (field === "phone_number") return { ...row, phone_number: normalizeGhanaPhoneNumber(value) };
+      if (field === "policy_number") return { ...row, policy_number: normalizePolicyNumber(value) };
+      return { ...row, [field]: value };
+    }));
+  }
 
   async function handleFile(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
     if (!file) return;
+    if (!file.name.toLowerCase().endsWith(".csv")) {
+      setRows([]);
+      setErrors(["PolicyHQ currently imports CSV files. Open the Excel file, save/download it as CSV, then upload that CSV here."]);
+      return;
+    }
     const text = await file.text();
     const parsed = parseClientCsv(text);
     setRows(parsed.rows);
@@ -1445,6 +1466,7 @@ function ImportClientsModal({ onClose, onImport }: { onClose: () => void; onImpo
         <div className="rounded-xl bg-slate-50 p-4 text-sm text-slate-600">
           <p className="font-bold text-primary">Upload a CSV with clients and policies.</p>
           <p className="mt-1">Required columns: client_name, phone_number, policy_number, policy_type, insurer_name, policy_start_date, policy_end_date. Add vehicle_number for Motor and property_location for Property.</p>
+          <p className="mt-2 font-semibold text-slate-700">Enterprise exports are accepted after saving as CSV. PolicyHQ will read columns like Insured Name, Policy No., Insurance, Start Date, and Expiry Date automatically.</p>
         </div>
         <div className="flex flex-wrap gap-3">
           <Button type="button" variant="outline" onClick={downloadClientImportTemplate}><Download className="h-4 w-4" /> Download Template</Button>
@@ -1460,21 +1482,61 @@ function ImportClientsModal({ onClose, onImport }: { onClose: () => void; onImpo
         ) : null}
         {rows.length ? (
           <div className="space-y-3">
-            <p className="text-sm font-bold text-slate-600">{rows.length} valid row{rows.length === 1 ? "" : "s"} ready to import.</p>
+            <p className="text-sm font-bold text-slate-600">
+              {rows.length} row{rows.length === 1 ? "" : "s"} loaded. Fill the highlighted blanks, then import.
+            </p>
+            {rowErrors.length ? (
+              <div className="rounded-xl bg-amber-50 p-4 text-sm font-semibold text-amber-800">
+                {rowErrors.slice(0, 8).map((error) => <p key={error}>{error}</p>)}
+                {rowErrors.length > 8 ? <p>Plus {rowErrors.length - 8} more item{rowErrors.length - 8 === 1 ? "" : "s"} to fix.</p> : null}
+              </div>
+            ) : (
+              <div className="rounded-xl bg-green-50 p-4 text-sm font-semibold text-green-700">All rows look ready to import.</div>
+            )}
             <div className="max-h-72 overflow-auto rounded-xl border border-slate-200">
-              <table className="w-full min-w-[860px] text-sm">
+              <table className="w-full min-w-[1180px] text-sm">
                 <thead className="sticky top-0 bg-slate-50"><tr>{["Client", "Phone", "Policy No.", "Type", "Insurer", "Start", "End", "Vehicle/Property", "Premium"].map((header) => <th key={header} className="px-3 py-2 text-left">{header}</th>)}</tr></thead>
-                <tbody>{rows.map((row) => <tr key={row.policy_number} className="border-t"><td className="px-3 py-2 font-bold">{row.client_name}</td><td className="px-3 py-2">{row.phone_number}</td><td className="px-3 py-2">{row.policy_number}</td><td className="px-3 py-2">{row.policy_type}</td><td className="px-3 py-2">{row.insurer_name}</td><td className="px-3 py-2">{row.policy_start_date}</td><td className="px-3 py-2">{row.policy_end_date}</td><td className="px-3 py-2">{row.vehicle_number || row.property_location || "—"}</td><td className="px-3 py-2">{row.premium ? formatCurrency(row.premium) : "—"}</td></tr>)}</tbody>
+                <tbody>{rows.map((row, index) => <tr key={`${row.policy_number}-${index}`} className="border-t align-top">
+                  <td className="px-3 py-2"><ImportInput value={row.client_name} onChange={(value) => updateImportRow(index, "client_name", value)} required /></td>
+                  <td className="px-3 py-2"><ImportInput value={row.phone_number} onChange={(value) => updateImportRow(index, "phone_number", value)} required /></td>
+                  <td className="px-3 py-2"><ImportInput value={row.policy_number} onChange={(value) => updateImportRow(index, "policy_number", value)} required /></td>
+                  <td className="px-3 py-2">
+                    <Select value={row.policy_type} onChange={(event) => updateImportRow(index, "policy_type", event.target.value)} className={!row.policy_type ? "border-amber-400 bg-amber-50" : ""}>
+                      <option value="">Choose type</option>
+                      {policyTypes.map((type) => <option key={type}>{type}</option>)}
+                    </Select>
+                  </td>
+                  <td className="px-3 py-2"><ImportInput value={row.insurer_name} onChange={(value) => updateImportRow(index, "insurer_name", value)} required /></td>
+                  <td className="px-3 py-2"><ImportInput type="date" value={row.policy_start_date} onChange={(value) => updateImportRow(index, "policy_start_date", value)} required /></td>
+                  <td className="px-3 py-2"><ImportInput type="date" value={row.policy_end_date} onChange={(value) => updateImportRow(index, "policy_end_date", value)} required /></td>
+                  <td className="px-3 py-2">
+                    {row.policy_type === "Motor" ? <ImportInput value={row.vehicle_number ?? ""} onChange={(value) => updateImportRow(index, "vehicle_number", value)} required /> : null}
+                    {row.policy_type === "Property" ? <ImportInput value={row.property_location ?? ""} onChange={(value) => updateImportRow(index, "property_location", value)} required /> : null}
+                    {row.policy_type !== "Motor" && row.policy_type !== "Property" ? <span className="text-slate-400">—</span> : null}
+                  </td>
+                  <td className="px-3 py-2"><ImportInput type="number" value={row.premium ? String(row.premium) : ""} onChange={(value) => updateImportRow(index, "premium", value)} /></td>
+                </tr>)}</tbody>
               </table>
             </div>
           </div>
         ) : null}
         <div className="flex justify-end gap-3">
           <Button type="button" variant="outline" onClick={onClose}>Cancel</Button>
-          <Button type="button" disabled={!rows.length || Boolean(errors.length)} onClick={() => onImport(rows)}>Import Valid Rows</Button>
+          <Button type="button" disabled={!canImport} onClick={() => onImport(rows)}>Import Valid Rows</Button>
         </div>
       </div>
     </ModalFrame>
+  );
+}
+
+function ImportInput({ value, onChange, required = false, type = "text" }: { value: string; onChange: (value: string) => void; required?: boolean; type?: "text" | "date" | "number" }) {
+  return (
+    <Input
+      type={type}
+      value={value}
+      onChange={(event) => onChange(event.target.value)}
+      className={required && !value.trim() ? "border-amber-400 bg-amber-50" : ""}
+    />
   );
 }
 
@@ -1856,48 +1918,141 @@ function downloadClientImportTemplate() {
 function parseClientCsv(text: string) {
   const lines = text.split(/\r?\n/).filter((line) => line.trim());
   if (lines.length < 2) return { rows: [], errors: ["CSV needs a header row and at least one client row."] };
-  const headers = splitCsvLine(lines[0]).map((header) => header.trim());
-  const required = ["client_name", "phone_number", "policy_number", "policy_type", "insurer_name", "policy_start_date", "policy_end_date"];
-  const missingHeaders = required.filter((header) => !headers.includes(header));
-  if (missingHeaders.length) return { rows: [], errors: [`Missing columns: ${missingHeaders.join(", ")}`] };
+  const headers = splitCsvLine(lines[0]).map((header) => normalizeImportHeader(header));
+  const recognizedHeaders = ["client_name", "phone_number", "policy_number", "policy_type", "insurer_name", "policy_start_date", "policy_end_date", "premium", "email", "date_of_birth", "notes", "vehicle_number", "property_location"];
+  if (!headers.some((header) => recognizedHeaders.includes(header))) {
+    return { rows: [], errors: ["PolicyHQ could not recognise this file's column names. Use the template or rename the first row to include client/policy fields."] };
+  }
 
   const rows: ImportClientRow[] = [];
-  const errors: string[] = [];
-  lines.slice(1).forEach((line, index) => {
+  lines.slice(1).forEach((line) => {
     const values = splitCsvLine(line);
-    const record = Object.fromEntries(headers.map((header, headerIndex) => [header, values[headerIndex]?.trim() ?? ""]));
-    const rowNumber = index + 2;
-    for (const field of required) {
-      if (!record[field]) errors.push(`Row ${rowNumber}: ${field} is required.`);
-    }
-    if (record.policy_type && !policyTypes.includes(record.policy_type as PolicyType)) errors.push(`Row ${rowNumber}: policy_type must be one of ${policyTypes.join(", ")}.`);
-    if (record.policy_type === "Motor" && !record.vehicle_number) errors.push(`Row ${rowNumber}: vehicle_number is required for Motor.`);
-    if (record.policy_type === "Property" && !record.property_location) errors.push(`Row ${rowNumber}: property_location is required for Property.`);
-    if (record.policy_start_date && !/^\d{4}-\d{2}-\d{2}$/.test(record.policy_start_date)) errors.push(`Row ${rowNumber}: policy_start_date must be YYYY-MM-DD.`);
-    if (record.policy_end_date && !/^\d{4}-\d{2}-\d{2}$/.test(record.policy_end_date)) errors.push(`Row ${rowNumber}: policy_end_date must be YYYY-MM-DD.`);
-    if (record.date_of_birth && !/^\d{4}-\d{2}-\d{2}$/.test(record.date_of_birth)) errors.push(`Row ${rowNumber}: date_of_birth must be YYYY-MM-DD.`);
-    if (record.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(record.email)) errors.push(`Row ${rowNumber}: email is invalid.`);
-    const premium = record.premium ? Number(record.premium) : undefined;
-    if (record.premium && (!premium || premium <= 0)) errors.push(`Row ${rowNumber}: premium must be a positive number.`);
-    if (!errors.some((error) => error.startsWith(`Row ${rowNumber}:`))) {
-      rows.push({
-        client_name: record.client_name,
-        phone_number: normalizeGhanaPhoneNumber(record.phone_number),
-        policy_number: normalizePolicyNumber(record.policy_number),
-        policy_type: record.policy_type as PolicyType,
-        insurer_name: record.insurer_name,
-        policy_start_date: record.policy_start_date,
-        policy_end_date: record.policy_end_date,
-        vehicle_number: record.vehicle_number || undefined,
-        property_location: record.property_location || undefined,
-        premium,
-        email: record.email || undefined,
-        date_of_birth: record.date_of_birth || undefined,
-        notes: record.notes || undefined
-      });
-    }
+    const record = Object.fromEntries(headers.map((header, headerIndex) => [header, values[headerIndex]?.trim() ?? ""])) as Record<string, string>;
+    record.policy_start_date = normalizeImportDate(record.policy_start_date);
+    record.policy_end_date = normalizeImportDate(record.policy_end_date);
+    record.date_of_birth = normalizeImportDate(record.date_of_birth);
+    const premium = parseImportMoney(record.premium);
+    rows.push({
+      client_name: record.client_name ?? "",
+      phone_number: record.phone_number ? normalizeGhanaPhoneNumber(record.phone_number) : "",
+      policy_number: record.policy_number ? normalizePolicyNumber(record.policy_number) : "",
+      policy_type: normalizeImportPolicyType(record.policy_type),
+      insurer_name: record.insurer_name ?? "",
+      policy_start_date: record.policy_start_date ?? "",
+      policy_end_date: record.policy_end_date ?? "",
+      vehicle_number: record.vehicle_number || undefined,
+      property_location: record.property_location || undefined,
+      premium,
+      email: record.email || undefined,
+      date_of_birth: record.date_of_birth || undefined,
+      notes: record.notes || undefined
+    });
   });
-  return { rows: errors.length ? [] : rows, errors };
+  return { rows, errors: [] };
+}
+
+function validateImportRows(rows: ImportClientRow[]) {
+  const errors: string[] = [];
+  rows.forEach((row, index) => {
+    const rowNumber = index + 2;
+    if (!row.client_name.trim()) errors.push(`Row ${rowNumber}: add the client name.`);
+    if (!row.phone_number.trim()) errors.push(`Row ${rowNumber}: add the client phone number.`);
+    if (!row.policy_number.trim()) errors.push(`Row ${rowNumber}: add the policy number.`);
+    if (row.policy_number && !isValidPolicyNumber(row.policy_number)) errors.push(`Row ${rowNumber}: policy number format needs checking.`);
+    if (!row.policy_type) errors.push(`Row ${rowNumber}: choose the policy type.`);
+    if (!row.insurer_name.trim()) errors.push(`Row ${rowNumber}: add the insurer name.`);
+    if (row.insurer_name && !findInsuranceCompany(row.insurer_name)) errors.push(`Row ${rowNumber}: choose an approved insurer name.`);
+    if (!row.policy_start_date) errors.push(`Row ${rowNumber}: add the policy start date.`);
+    if (!row.policy_end_date) errors.push(`Row ${rowNumber}: add the policy end date.`);
+    if (row.policy_start_date && !/^\d{4}-\d{2}-\d{2}$/.test(row.policy_start_date)) errors.push(`Row ${rowNumber}: start date must be YYYY-MM-DD.`);
+    if (row.policy_end_date && !/^\d{4}-\d{2}-\d{2}$/.test(row.policy_end_date)) errors.push(`Row ${rowNumber}: end date must be YYYY-MM-DD.`);
+    if (row.date_of_birth && !/^\d{4}-\d{2}-\d{2}$/.test(row.date_of_birth)) errors.push(`Row ${rowNumber}: date of birth must be YYYY-MM-DD.`);
+    if (row.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(row.email)) errors.push(`Row ${rowNumber}: email is invalid.`);
+    if (row.policy_type === "Motor" && !row.vehicle_number?.trim()) errors.push(`Row ${rowNumber}: add the vehicle number for this motor policy.`);
+    if (row.policy_type === "Property" && !row.property_location?.trim()) errors.push(`Row ${rowNumber}: add the property location.`);
+  });
+  return errors;
+}
+
+function normalizeImportPolicyType(value: string | undefined): PolicyType | "" {
+  const normalized = value?.trim().toLowerCase();
+  if (!normalized) return "";
+  const match = policyTypes.find((type) => type.toLowerCase() === normalized);
+  return match ?? "";
+}
+
+function normalizeImportHeader(header: string) {
+  const normalized = header.trim().toLowerCase().replace(/[\s./-]+/g, "_").replace(/^_+|_+$/g, "");
+  const aliases: Record<string, string> = {
+    client_name: "client_name",
+    client: "client_name",
+    customer_name: "client_name",
+    insured_name: "client_name",
+    policyholder_name: "client_name",
+    phone_number: "phone_number",
+    phone: "phone_number",
+    telephone: "phone_number",
+    mobile: "phone_number",
+    mobile_number: "phone_number",
+    contact_number: "phone_number",
+    policy_number: "policy_number",
+    policy_no: "policy_number",
+    policy: "policy_number",
+    policy_type: "policy_type",
+    insurance: "policy_type",
+    insurance_type: "policy_type",
+    class: "policy_type",
+    business_class: "policy_type",
+    insurer_name: "insurer_name",
+    insurer: "insurer_name",
+    insurance_company: "insurer_name",
+    company: "insurer_name",
+    policy_start_date: "policy_start_date",
+    start_date: "policy_start_date",
+    effective_date: "policy_start_date",
+    inception_date: "policy_start_date",
+    policy_end_date: "policy_end_date",
+    expiry_date: "policy_end_date",
+    expiration_date: "policy_end_date",
+    end_date: "policy_end_date",
+    policy_expiry_date: "policy_end_date",
+    premium: "premium",
+    premium_amount: "premium",
+    date_of_birth: "date_of_birth",
+    dob: "date_of_birth",
+    notes: "notes",
+    note: "notes",
+    vehicle_number: "vehicle_number",
+    vehicle_no: "vehicle_number",
+    registration_number: "vehicle_number",
+    reg_no: "vehicle_number",
+    property_location: "property_location",
+    property_address: "property_location",
+    address: "property_location"
+  };
+  return aliases[normalized] ?? normalized;
+}
+
+function normalizeImportDate(value: string | undefined) {
+  const trimmed = value?.trim();
+  if (!trimmed) return "";
+  if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return trimmed;
+  const slashDate = trimmed.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$/);
+  if (slashDate) {
+    const [, day, month, year] = slashDate;
+    return `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`;
+  }
+  const withoutOrdinals = trimmed.replace(/\b(\d{1,2})(st|nd|rd|th)\b/gi, "$1");
+  const parsed = new Date(`${withoutOrdinals} UTC`);
+  if (Number.isNaN(parsed.getTime())) return trimmed;
+  return parsed.toISOString().slice(0, 10);
+}
+
+function parseImportMoney(value: string | undefined) {
+  const trimmed = value?.trim();
+  if (!trimmed) return undefined;
+  const amount = Number(trimmed.replace(/[^0-9.-]/g, ""));
+  return Number.isFinite(amount) && amount > 0 ? amount : undefined;
 }
 
 function splitCsvLine(line: string) {
