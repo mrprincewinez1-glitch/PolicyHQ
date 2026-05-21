@@ -892,7 +892,7 @@ function RenewalList({ title, policies, base, updateRenewal, openPolicy, onBack 
   return (
     <div className="space-y-5">
       <Button asChild variant="outline"><Link href={navHref(base, "dashboard")} onClick={onBack}>Back to dashboard</Link></Button>
-      <Card><CardHeader><h1 className="text-2xl font-extrabold">{title}</h1></CardHeader><div className="overflow-auto"><table className="w-full min-w-[1120px] text-sm"><thead className="sticky top-0 bg-slate-50"><tr>{["Client Name", "Phone Number", "Policy Number", "Policy Type", "Insurer", "Expiry Date", "Premium Amount (GHS)", "Renewal Status", "Urgency", "Action"].map((h) => <th className="px-4 py-3 text-left" key={h}>{h}</th>)}</tr></thead><tbody>{[...policies].sort(sortByExpiry).map((p) => <tr key={p.id} onClick={() => openPolicy(p)} className={`cursor-pointer border-t ${urgency(p.expiry_date) === "urgent" ? "bg-red-50" : urgency(p.expiry_date) === "soon" ? "bg-amber-50" : "odd:bg-white even:bg-slate-50"}`}><td className="px-4 py-3 font-semibold">{p.client.full_name}</td><td className="px-4 py-3">{p.client.phone_number}</td><td className="px-4 py-3">{p.policy_number}</td><td className="px-4 py-3">{p.policy_type}</td><td className="px-4 py-3">{p.insurer_name}</td><td className="px-4 py-3">{formatDate(p.expiry_date)}</td><td className="px-4 py-3">{formatCurrency(p.premium_amount)}</td><td className="px-4 py-3" onClick={(e) => e.stopPropagation()}><Select value={p.renewal_status} onChange={(e) => updateRenewal(p.id, e.target.value as RenewalStatus)}>{renewalStatuses.map((s) => <option key={s}>{s}</option>)}</Select></td><td className="px-4 py-3"><UrgencyBadge date={p.expiry_date} status={p.renewal_status} /></td><td className="px-4 py-3" onClick={(e) => e.stopPropagation()}><WhatsAppButton href={renewalWhatsAppHref(p)} label="WhatsApp" /></td></tr>)}</tbody></table></div></Card>
+      <Card><CardHeader><h1 className="text-2xl font-extrabold">{title}</h1></CardHeader><div className="overflow-auto"><table className="w-full min-w-[1120px] text-sm"><thead className="sticky top-0 bg-slate-50"><tr>{["Client Name", "Phone Number", "Policy Number", "Policy Type", "Insurer", "Expiry Date", "Premium Amount (GHS)", "Renewal Status", "Urgency", "Action"].map((h) => <th className="px-4 py-3 text-left" key={h}>{h}</th>)}</tr></thead><tbody>{[...policies].sort(sortByExpiry).map((p) => <tr key={p.id} onClick={() => openPolicy(p)} className={`cursor-pointer border-t ${urgency(p.expiry_date) === "urgent" ? "bg-red-50" : urgency(p.expiry_date) === "soon" ? "bg-amber-50" : "odd:bg-white even:bg-slate-50"}`}><td className="px-4 py-3 font-semibold">{p.client.full_name}</td><td className="px-4 py-3">{p.client.phone_number}</td><td className="px-4 py-3"><div className="flex flex-wrap items-center gap-2"><span>{p.policy_number}</span><NeedsReviewBadge policy={p} /></div></td><td className="px-4 py-3">{p.policy_type}</td><td className="px-4 py-3">{p.insurer_name}</td><td className="px-4 py-3">{formatDate(p.expiry_date)}</td><td className="px-4 py-3">{formatCurrency(p.premium_amount)}</td><td className="px-4 py-3" onClick={(e) => e.stopPropagation()}><Select value={p.renewal_status} onChange={(e) => updateRenewal(p.id, e.target.value as RenewalStatus)}>{renewalStatuses.map((s) => <option key={s}>{s}</option>)}</Select></td><td className="px-4 py-3"><UrgencyBadge date={p.expiry_date} status={p.renewal_status} /></td><td className="px-4 py-3" onClick={(e) => e.stopPropagation()}><WhatsAppButton href={renewalWhatsAppHref(p)} label="WhatsApp" /></td></tr>)}</tbody></table></div></Card>
     </div>
   );
 }
@@ -958,7 +958,7 @@ function ClientDetail({ client, policies, base, openPolicy, notes, saveNote }: {
           <div className="overflow-auto">
             <table className="w-full min-w-[900px] text-sm">
               <thead className="sticky top-0 bg-slate-50"><tr>{["Policy Number", "Type", "Insurer", "Expiry Date", "Premium", "Status", "Renewal Status"].map((h) => <th className="px-4 py-3 text-left" key={h}>{h}</th>)}</tr></thead>
-              <tbody>{policies.map((policy) => <tr key={policy.id} onClick={() => openPolicy(policy)} className="cursor-pointer border-t odd:bg-white even:bg-slate-50"><td className="px-4 py-3 font-bold">{policy.policy_number}</td><td className="px-4 py-3">{policy.policy_type}</td><td className="px-4 py-3">{policy.insurer_name}</td><td className="px-4 py-3">{formatDate(policy.expiry_date)} <UrgencyBadge date={policy.expiry_date} status={policy.renewal_status} /></td><td className="px-4 py-3">{formatCurrency(policy.premium_amount)}</td><td className="px-4 py-3"><Badge tone={policy.status === "Active" ? "green" : "slate"}>{policy.status}</Badge></td><td className="px-4 py-3">{policy.renewal_status}</td></tr>)}</tbody>
+              <tbody>{policies.map((policy) => <tr key={policy.id} onClick={() => openPolicy(policy)} className="cursor-pointer border-t odd:bg-white even:bg-slate-50"><td className="px-4 py-3 font-bold"><div className="flex flex-wrap items-center gap-2"><span>{policy.policy_number}</span><NeedsReviewBadge policy={policy} /></div></td><td className="px-4 py-3">{policy.policy_type}</td><td className="px-4 py-3">{policy.insurer_name}</td><td className="px-4 py-3">{formatDate(policy.expiry_date)} <UrgencyBadge date={policy.expiry_date} status={policy.renewal_status} /></td><td className="px-4 py-3">{formatCurrency(policy.premium_amount)}</td><td className="px-4 py-3"><Badge tone={policy.status === "Active" ? "green" : "slate"}>{policy.status}</Badge></td><td className="px-4 py-3">{policy.renewal_status}</td></tr>)}</tbody>
             </table>
           </div>
         ) : (
@@ -986,6 +986,7 @@ function Policies({ policies, clients, onAdd, onEdit, onDelete, onExport, update
                 <div>
                   <p className="font-extrabold text-primary">{policy.client.full_name}</p>
                   <p className="mt-1 font-mono text-sm font-bold text-slate-500">{policy.policy_number}</p>
+                  <div className="mt-2"><NeedsReviewBadge policy={policy} /></div>
                 </div>
                 <Badge tone={policy.status === "Active" ? "green" : "slate"}>{policy.status}</Badge>
               </div>
@@ -1008,7 +1009,7 @@ function Policies({ policies, clients, onAdd, onEdit, onDelete, onExport, update
           </div>
         ))}
       </div>
-      <div className="hidden overflow-auto md:block"><table className="w-full min-w-[1200px] text-sm"><thead className="sticky top-0 bg-slate-50"><tr>{["Client Name", "Policy Number", "Type", "Insurer", "Start Date", "Expiry Date", "Premium (GHS)", "Status", "Renewal Status", "Actions"].map((h) => <th className="px-4 py-3 text-left" key={h}>{h}</th>)}</tr></thead><tbody>{filtered.map((p) => <tr key={p.id} onClick={() => openPolicy(p)} className={`cursor-pointer border-t ${urgency(p.expiry_date) === "urgent" ? "bg-red-50" : urgency(p.expiry_date) === "soon" ? "bg-amber-50" : "odd:bg-white even:bg-slate-50"}`}><td className="px-4 py-3 font-bold">{p.client.full_name}</td><td className="px-4 py-3">{p.policy_number}</td><td className="px-4 py-3">{p.policy_type}</td><td className="px-4 py-3">{p.insurer_name}</td><td className="px-4 py-3">{formatDate(p.start_date)}</td><td className="px-4 py-3">{formatDate(p.expiry_date)} <UrgencyBadge date={p.expiry_date} status={p.renewal_status} /></td><td className="px-4 py-3">{formatCurrency(p.premium_amount)}</td><td className="px-4 py-3"><Badge tone={p.status === "Active" ? "green" : "slate"}>{p.status}</Badge></td><td className="px-4 py-3" onClick={(e) => e.stopPropagation()}><Select value={p.renewal_status} onChange={(e) => updateRenewal(p.id, e.target.value as RenewalStatus)}>{renewalStatuses.map((s) => <option key={s}>{s}</option>)}</Select></td><td className="px-4 py-3" onClick={(e) => e.stopPropagation()}><WhatsAppButton href={renewalWhatsAppHref(p)} label="WhatsApp" /><Button variant="ghost" size="sm" onClick={() => onEdit(p)}>Edit</Button><Button variant="ghost" size="sm" onClick={() => onDelete(p)}><Trash2 className="h-4 w-4 text-danger" /></Button></td></tr>)}</tbody></table></div>
+      <div className="hidden overflow-auto md:block"><table className="w-full min-w-[1200px] text-sm"><thead className="sticky top-0 bg-slate-50"><tr>{["Client Name", "Policy Number", "Type", "Insurer", "Start Date", "Expiry Date", "Premium (GHS)", "Status", "Renewal Status", "Actions"].map((h) => <th className="px-4 py-3 text-left" key={h}>{h}</th>)}</tr></thead><tbody>{filtered.map((p) => <tr key={p.id} onClick={() => openPolicy(p)} className={`cursor-pointer border-t ${urgency(p.expiry_date) === "urgent" ? "bg-red-50" : urgency(p.expiry_date) === "soon" ? "bg-amber-50" : "odd:bg-white even:bg-slate-50"}`}><td className="px-4 py-3 font-bold">{p.client.full_name}</td><td className="px-4 py-3"><div className="flex flex-wrap items-center gap-2"><span>{p.policy_number}</span><NeedsReviewBadge policy={p} /></div></td><td className="px-4 py-3">{p.policy_type}</td><td className="px-4 py-3">{p.insurer_name}</td><td className="px-4 py-3">{formatDate(p.start_date)}</td><td className="px-4 py-3">{formatDate(p.expiry_date)} <UrgencyBadge date={p.expiry_date} status={p.renewal_status} /></td><td className="px-4 py-3">{formatCurrency(p.premium_amount)}</td><td className="px-4 py-3"><Badge tone={p.status === "Active" ? "green" : "slate"}>{p.status}</Badge></td><td className="px-4 py-3" onClick={(e) => e.stopPropagation()}><Select value={p.renewal_status} onChange={(e) => updateRenewal(p.id, e.target.value as RenewalStatus)}>{renewalStatuses.map((s) => <option key={s}>{s}</option>)}</Select></td><td className="px-4 py-3" onClick={(e) => e.stopPropagation()}><WhatsAppButton href={renewalWhatsAppHref(p)} label="WhatsApp" /><Button variant="ghost" size="sm" onClick={() => onEdit(p)}>Edit</Button><Button variant="ghost" size="sm" onClick={() => onDelete(p)}><Trash2 className="h-4 w-4 text-danger" /></Button></td></tr>)}</tbody></table></div>
     </Card>
   );
 }
@@ -1434,6 +1435,7 @@ function ImportClientsModal({ onClose, onImport }: { onClose: () => void; onImpo
   const [rows, setRows] = useState<ImportClientRow[]>([]);
   const [errors, setErrors] = useState<string[]>([]);
   const rowErrors = useMemo(() => validateImportRows(rows), [rows]);
+  const reviewWarnings = useMemo(() => importReviewWarnings(rows), [rows]);
   const importErrors = [...errors, ...rowErrors];
   const canImport = rows.length > 0 && importErrors.length === 0;
 
@@ -1481,7 +1483,7 @@ function ImportClientsModal({ onClose, onImport }: { onClose: () => void; onImpo
       <div className="space-y-5">
         <div className="rounded-xl bg-slate-50 p-4 text-sm text-slate-600">
           <p className="font-bold text-primary">Upload a CSV with clients and policies.</p>
-          <p className="mt-1">Required columns: client_name, phone_number, policy_number, policy_type, insurer_name, policy_start_date, policy_end_date. Add vehicle_number for Motor and property_location for Property.</p>
+          <p className="mt-1">Minimum required columns: client_name, policy_number, policy_type, insurer_name, policy_end_date. Missing phone, start date, premium, commission, vehicle, or property fields will import as Needs Review.</p>
           <p className="mt-2 font-semibold text-slate-700">Enterprise exports are accepted after saving as CSV. PolicyHQ reads columns like Insured Name, Policy No., Insurance, Start Date, Expiry Date, and Commission Due automatically.</p>
         </div>
         <div className="flex flex-wrap gap-3">
@@ -1499,12 +1501,18 @@ function ImportClientsModal({ onClose, onImport }: { onClose: () => void; onImpo
         {rows.length ? (
           <div className="space-y-3">
             <p className="text-sm font-bold text-slate-600">
-              {rows.length} row{rows.length === 1 ? "" : "s"} loaded. Fill the highlighted blanks, then import.
+              {rows.length} row{rows.length === 1 ? "" : "s"} loaded. Fix blocking items, then import. Amber fields can be cleaned later.
             </p>
             {rowErrors.length ? (
               <div className="rounded-xl bg-amber-50 p-4 text-sm font-semibold text-amber-800">
                 {rowErrors.slice(0, 8).map((error) => <p key={error}>{error}</p>)}
                 {rowErrors.length > 8 ? <p>Plus {rowErrors.length - 8} more item{rowErrors.length - 8 === 1 ? "" : "s"} to fix.</p> : null}
+              </div>
+            ) : reviewWarnings.length ? (
+              <div className="rounded-xl bg-amber-50 p-4 text-sm font-semibold text-amber-800">
+                <p>{reviewWarnings.length} row{reviewWarnings.length === 1 ? "" : "s"} will be imported as Needs Review.</p>
+                {reviewWarnings.slice(0, 5).map((warning) => <p key={warning}>{warning}</p>)}
+                {reviewWarnings.length > 5 ? <p>Plus {reviewWarnings.length - 5} more review note{reviewWarnings.length - 5 === 1 ? "" : "s"}.</p> : null}
               </div>
             ) : (
               <div className="rounded-xl bg-green-50 p-4 text-sm font-semibold text-green-700">All rows look ready to import.</div>
@@ -1523,7 +1531,7 @@ function ImportClientsModal({ onClose, onImport }: { onClose: () => void; onImpo
         ) : null}
         <div className="sticky bottom-0 -mx-6 flex justify-end gap-3 border-t border-slate-200 bg-white px-6 py-4">
           <Button type="button" variant="outline" onClick={onClose}>Cancel</Button>
-          <Button type="button" disabled={!canImport} onClick={() => onImport(rows)}>Import Valid Rows</Button>
+          <Button type="button" disabled={!canImport} onClick={() => onImport(rows)}>Import Rows</Button>
         </div>
       </div>
     </ModalFrame>
@@ -1539,7 +1547,7 @@ function ImportRowCard({ row, index, onUpdate }: { row: ImportClientRow; index: 
       </div>
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <ImportField label="Client" value={row.client_name} onChange={(value) => onUpdate("client_name", value)} required />
-        <ImportField label="Phone" value={row.phone_number} onChange={(value) => onUpdate("phone_number", value)} required />
+        <ImportField label="Phone" value={row.phone_number} onChange={(value) => onUpdate("phone_number", value)} review={!row.phone_number.trim()} />
         <ImportField label="Policy No." value={row.policy_number} onChange={(value) => onUpdate("policy_number", value)} required />
         <label className="block text-sm font-semibold">
           Type
@@ -1549,13 +1557,13 @@ function ImportRowCard({ row, index, onUpdate }: { row: ImportClientRow; index: 
           </Select>
         </label>
         <ImportField label="Insurer" value={row.insurer_name} onChange={(value) => onUpdate("insurer_name", value)} required />
-        <ImportField label="Start Date" type="date" value={row.policy_start_date} onChange={(value) => onUpdate("policy_start_date", value)} required />
+        <ImportField label="Start Date" type="date" value={row.policy_start_date} onChange={(value) => onUpdate("policy_start_date", value)} review={!row.policy_start_date} />
         <ImportField label="End Date" type="date" value={row.policy_end_date} onChange={(value) => onUpdate("policy_end_date", value)} required />
-        {row.policy_type === "Motor" ? <ImportField label="Vehicle Number" value={row.vehicle_number ?? ""} onChange={(value) => onUpdate("vehicle_number", value)} required /> : null}
-        {row.policy_type === "Property" ? <ImportField label="Property Location" value={row.property_location ?? ""} onChange={(value) => onUpdate("property_location", value)} required /> : null}
-        <ImportField label="Premium" type="number" value={row.premium ? String(row.premium) : ""} onChange={(value) => onUpdate("premium", value)} />
+        {row.policy_type === "Motor" ? <ImportField label="Vehicle Number" value={row.vehicle_number ?? ""} onChange={(value) => onUpdate("vehicle_number", value)} review={!row.vehicle_number?.trim()} /> : null}
+        {row.policy_type === "Property" ? <ImportField label="Property Location" value={row.property_location ?? ""} onChange={(value) => onUpdate("property_location", value)} review={!row.property_location?.trim()} /> : null}
+        <ImportField label="Premium" type="number" value={row.premium ? String(row.premium) : ""} onChange={(value) => onUpdate("premium", value)} review={row.premium === undefined} />
         <ImportField label="Commission Amount" type="number" value={row.commission_amount ? String(row.commission_amount) : ""} onChange={(value) => onUpdate("commission_amount", value)} />
-        <ImportField label="Commission Rate" type="number" value={row.commission_rate !== undefined ? String(row.commission_rate) : ""} onChange={(value) => onUpdate("commission_rate", value)} required />
+        <ImportField label="Commission Rate" type="number" value={row.commission_rate !== undefined ? String(row.commission_rate) : ""} onChange={(value) => onUpdate("commission_rate", value)} review={row.commission_rate === undefined} />
         <label className="block text-sm font-semibold">
           Commission Status
           <Select value={row.commission_status ?? "Pending"} onChange={(event) => onUpdate("commission_status", event.target.value)} className="mt-1">
@@ -1569,22 +1577,22 @@ function ImportRowCard({ row, index, onUpdate }: { row: ImportClientRow; index: 
   );
 }
 
-function ImportField({ label, value, onChange, required = false, type = "text" }: { label: string; value: string; onChange: (value: string) => void; required?: boolean; type?: "text" | "date" | "number" }) {
+function ImportField({ label, value, onChange, required = false, review = false, type = "text" }: { label: string; value: string; onChange: (value: string) => void; required?: boolean; review?: boolean; type?: "text" | "date" | "number" }) {
   return (
     <label className="block text-sm font-semibold">
       {label}
-      <ImportInput type={type} value={value} onChange={onChange} required={required} />
+      <ImportInput type={type} value={value} onChange={onChange} required={required} review={review} />
     </label>
   );
 }
 
-function ImportInput({ value, onChange, required = false, type = "text" }: { value: string; onChange: (value: string) => void; required?: boolean; type?: "text" | "date" | "number" }) {
+function ImportInput({ value, onChange, required = false, review = false, type = "text" }: { value: string; onChange: (value: string) => void; required?: boolean; review?: boolean; type?: "text" | "date" | "number" }) {
   return (
     <Input
       type={type}
       value={value}
       onChange={(event) => onChange(event.target.value)}
-      className={`mt-1 ${required && !value.trim() ? "border-amber-400 bg-amber-50" : ""}`}
+      className={`mt-1 ${(required && !value.trim()) || review ? "border-amber-400 bg-amber-50" : ""}`}
     />
   );
 }
@@ -1644,6 +1652,10 @@ function BusinessClassBadge({ value }: { value: InsuranceCategory }) {
   return <Badge tone={value === "Life" ? "green" : value === "Health" ? "orange" : "slate"}>{value}</Badge>;
 }
 
+function NeedsReviewBadge({ policy }: { policy: PolicyWithClient }) {
+  return needsPolicyReview(policy) ? <Badge tone="amber">Needs Review</Badge> : null;
+}
+
 function ExistingClientDetails({ client }: { client: Client }) {
   return (
     <div className="grid gap-4 rounded-xl border border-slate-200 bg-white p-4 md:grid-cols-2">
@@ -1681,7 +1693,7 @@ function PolicyDetailPanel({ policy, onClose, updateRenewal, saveNote }: { polic
     ["Payment Status", commission?.payment_status ?? "—"],
     ["Payment Date", commission?.payment_date ? formatDate(commission.payment_date) : "—"]
   ];
-  return <div className="fixed inset-y-0 right-0 z-[55] w-full max-w-xl overflow-y-auto border-l border-slate-200 bg-white p-6 shadow-soft"><div className="mb-6 flex items-center justify-between"><h2 className="text-2xl font-extrabold">Policy Detail</h2><Button variant="ghost" size="icon" onClick={onClose}><X className="h-5 w-5" /></Button></div><div className="space-y-5"><Card><CardContent className="space-y-3 p-5"><h3 className="font-bold">{policy.client.full_name}</h3><p>{policy.client.phone_number}</p><p>{policy.client.email || "No email"}</p><p>{policy.client.date_of_birth ? `Birthday: ${formatDate(policy.client.date_of_birth)}` : "Birthday not recorded"}</p><div className="flex flex-wrap gap-2"><WhatsAppButton href={clientWhatsAppHref(policy.client)} label="WhatsApp Client" /><WhatsAppButton href={renewalWhatsAppHref(policy)} label="Send Renewal Reminder" /></div></CardContent></Card><Card><CardContent className="p-4"><label className="block text-sm font-semibold">Renewal Status<Select value={policy.renewal_status} onChange={(event) => updateRenewal(policy.id, event.target.value as RenewalStatus)} className="mt-1">{renewalStatuses.map((status) => <option key={status}>{status}</option>)}</Select></label></CardContent></Card><dl className="grid grid-cols-2 gap-4 text-sm">{rows.map(([label, value]) => <div key={String(label)} className="rounded-xl bg-slate-50 p-3"><dt className="font-bold text-slate-500">{label}</dt><dd className="mt-1 font-semibold">{value}</dd></div>)}</dl><Card><CardHeader><h3 className="font-bold">Policy Notes</h3></CardHeader><CardContent><p className="text-sm leading-6 text-slate-600">{policy.notes || "No policy notes recorded."}</p></CardContent></Card><ActivityNotesCard notes={policy.activity_notes ?? []} value={noteText} onChange={setNoteText} onSubmit={submitNote} /></div></div>;
+  return <div className="fixed inset-y-0 right-0 z-[55] w-full max-w-xl overflow-y-auto border-l border-slate-200 bg-white p-6 shadow-soft"><div className="mb-6 flex items-center justify-between"><div><h2 className="text-2xl font-extrabold">Policy Detail</h2><div className="mt-2"><NeedsReviewBadge policy={policy} /></div></div><Button variant="ghost" size="icon" onClick={onClose}><X className="h-5 w-5" /></Button></div><div className="space-y-5"><Card><CardContent className="space-y-3 p-5"><h3 className="font-bold">{policy.client.full_name}</h3><p>{policy.client.phone_number}</p><p>{policy.client.email || "No email"}</p><p>{policy.client.date_of_birth ? `Birthday: ${formatDate(policy.client.date_of_birth)}` : "Birthday not recorded"}</p><div className="flex flex-wrap gap-2"><WhatsAppButton href={clientWhatsAppHref(policy.client)} label="WhatsApp Client" /><WhatsAppButton href={renewalWhatsAppHref(policy)} label="Send Renewal Reminder" /></div></CardContent></Card><Card><CardContent className="p-4"><label className="block text-sm font-semibold">Renewal Status<Select value={policy.renewal_status} onChange={(event) => updateRenewal(policy.id, event.target.value as RenewalStatus)} className="mt-1">{renewalStatuses.map((status) => <option key={status}>{status}</option>)}</Select></label></CardContent></Card><dl className="grid grid-cols-2 gap-4 text-sm">{rows.map(([label, value]) => <div key={String(label)} className="rounded-xl bg-slate-50 p-3"><dt className="font-bold text-slate-500">{label}</dt><dd className="mt-1 font-semibold">{value}</dd></div>)}</dl><Card><CardHeader><h3 className="font-bold">Policy Notes</h3></CardHeader><CardContent><p className="text-sm leading-6 text-slate-600">{policy.notes || "No policy notes recorded."}</p></CardContent></Card><ActivityNotesCard notes={policy.activity_notes ?? []} value={noteText} onChange={setNoteText} onSubmit={submitNote} /></div></div>;
 }
 
 function Info({ label, value }: { label: string; value: ReactNode }) {
@@ -1897,7 +1909,8 @@ function policyRows(policies: PolicyWithClient[]) {
     "Expiry Date": formatDate(policy.expiry_date),
     Premium: formatCurrency(policy.premium_amount),
     Status: policy.status,
-    "Renewal Status": policy.renewal_status
+    "Renewal Status": policy.renewal_status,
+    Review: needsPolicyReview(policy) ? "Needs Review" : ""
   }));
 }
 
@@ -1927,6 +1940,10 @@ function navHref(base: string, section: Section) {
 
 function policiesForClient(policies: PolicyWithClient[], clientId: string) {
   return policies.filter((policy) => policy.client_id === clientId);
+}
+
+function needsPolicyReview(policy: PolicyWithClient) {
+  return policy.notes?.startsWith("Needs Review:") ?? false;
 }
 
 function renewalWhatsAppHref(policy: PolicyWithClient) {
@@ -1989,7 +2006,7 @@ function parseClientCsv(text: string) {
       ? roundPercent(explicitRate)
       : commissionAmount && premium
         ? roundPercent(commissionAmount / premium * 100)
-        : 10;
+        : undefined;
     const commissionStatus = importCommissionStatus(record, isEnterprisePolicyExport(headers));
     const commissionPaymentDate = importCommissionPaymentDate(record, commissionStatus);
     rows.push({
@@ -2004,7 +2021,7 @@ function parseClientCsv(text: string) {
       property_location: record.property_location || undefined,
       premium,
       commission_rate: commissionRate,
-      commission_amount: commissionAmount ?? (premium ? Number((premium * commissionRate / 100).toFixed(2)) : undefined),
+      commission_amount: commissionAmount ?? (premium && commissionRate !== undefined ? Number((premium * commissionRate / 100).toFixed(2)) : undefined),
       commission_status: commissionStatus,
       commission_payment_date: commissionPaymentDate,
       email: record.email || undefined,
@@ -2020,24 +2037,36 @@ function validateImportRows(rows: ImportClientRow[]) {
   rows.forEach((row, index) => {
     const rowNumber = index + 2;
     if (!row.client_name.trim()) errors.push(`Row ${rowNumber}: add the client name.`);
-    if (!row.phone_number.trim()) errors.push(`Row ${rowNumber}: add the client phone number.`);
     if (!row.policy_number.trim()) errors.push(`Row ${rowNumber}: add the policy number.`);
     if (row.policy_number && !isValidPolicyNumber(row.policy_number)) errors.push(`Row ${rowNumber}: policy number format needs checking.`);
     if (!row.policy_type) errors.push(`Row ${rowNumber}: choose the policy type.`);
     if (!row.insurer_name.trim()) errors.push(`Row ${rowNumber}: add the insurer name.`);
     if (row.insurer_name && !findInsuranceCompany(row.insurer_name)) errors.push(`Row ${rowNumber}: choose an approved insurer name.`);
-    if (!row.policy_start_date) errors.push(`Row ${rowNumber}: add the policy start date.`);
     if (!row.policy_end_date) errors.push(`Row ${rowNumber}: add the policy end date.`);
     if (row.policy_start_date && !/^\d{4}-\d{2}-\d{2}$/.test(row.policy_start_date)) errors.push(`Row ${rowNumber}: start date must be YYYY-MM-DD.`);
     if (row.policy_end_date && !/^\d{4}-\d{2}-\d{2}$/.test(row.policy_end_date)) errors.push(`Row ${rowNumber}: end date must be YYYY-MM-DD.`);
     if (row.date_of_birth && !/^\d{4}-\d{2}-\d{2}$/.test(row.date_of_birth)) errors.push(`Row ${rowNumber}: date of birth must be YYYY-MM-DD.`);
     if (row.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(row.email)) errors.push(`Row ${rowNumber}: email is invalid.`);
-    if (row.policy_type === "Motor" && !row.vehicle_number?.trim()) errors.push(`Row ${rowNumber}: add the vehicle number for this motor policy.`);
-    if (row.policy_type === "Property" && !row.property_location?.trim()) errors.push(`Row ${rowNumber}: add the property location.`);
-    if (row.commission_rate === undefined || row.commission_rate < 0) errors.push(`Row ${rowNumber}: add a valid commission rate.`);
+    if (row.phone_number && !/^\+?[0-9 ()-]{8,20}$/.test(row.phone_number)) errors.push(`Row ${rowNumber}: phone number format needs checking.`);
+    if (row.commission_rate !== undefined && row.commission_rate < 0) errors.push(`Row ${rowNumber}: commission rate cannot be negative.`);
     if (row.commission_status === "Paid" && row.commission_payment_date && !/^\d{4}-\d{2}-\d{2}$/.test(row.commission_payment_date)) errors.push(`Row ${rowNumber}: commission payment date must be YYYY-MM-DD.`);
   });
   return errors;
+}
+
+function importReviewWarnings(rows: ImportClientRow[]) {
+  const warnings: string[] = [];
+  rows.forEach((row, index) => {
+    const missing: string[] = [];
+    if (!row.phone_number.trim()) missing.push("phone");
+    if (!row.policy_start_date) missing.push("start date");
+    if (row.premium === undefined) missing.push("premium");
+    if (row.commission_rate === undefined) missing.push("commission rate");
+    if (row.policy_type === "Motor" && !row.vehicle_number?.trim()) missing.push("vehicle number");
+    if (row.policy_type === "Property" && !row.property_location?.trim()) missing.push("property location");
+    if (missing.length) warnings.push(`Row ${index + 2}: ${missing.join(", ")} missing.`);
+  });
+  return warnings;
 }
 
 function normalizeImportPolicyType(value: string | undefined): PolicyType | "" {

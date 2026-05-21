@@ -56,11 +56,11 @@ const activityNoteSchema = z.object({
 
 const importClientRowSchema = z.object({
   client_name: z.string().trim().min(2, "Client name is required"),
-  phone_number: z.string().trim().regex(/^\+?[0-9 ()-]{8,20}$/, "Phone number is invalid"),
+  phone_number: z.string().trim().regex(/^\+?[0-9 ()-]{8,20}$/, "Phone number is invalid").optional().or(z.literal("")),
   policy_number: z.string().transform(normalizePolicyNumber).refine(isValidPolicyNumber, policyNumberHelpText),
   policy_type: z.enum(["Life", "Health", "Motor", "Property", "Fire", "Marine", "Travel"]),
   insurer_name: z.string().trim().min(2, "Insurer is required"),
-  policy_start_date: z.string().refine(isValidDateInput, "Policy start date is invalid"),
+  policy_start_date: z.string().refine(isValidDateInput, "Policy start date is invalid").optional().or(z.literal("")),
   policy_end_date: z.string().refine(isValidDateInput, "Policy end date is invalid"),
   vehicle_number: z.string().trim().optional().or(z.literal("")),
   property_location: z.string().trim().optional().or(z.literal("")),
@@ -116,6 +116,23 @@ function isValidDateInput(value: string) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
   const date = new Date(`${value}T00:00:00Z`);
   return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value;
+}
+
+function inferImportStartDate(expiryDate: string) {
+  const expiry = new Date(`${expiryDate}T00:00:00Z`);
+  expiry.setUTCFullYear(expiry.getUTCFullYear() - 1);
+  return expiry.toISOString().slice(0, 10);
+}
+
+function importReviewReasons(row: z.infer<typeof importClientRowSchema>) {
+  const reasons: string[] = [];
+  if (!row.phone_number?.trim()) reasons.push("client phone number missing");
+  if (!row.policy_start_date) reasons.push("policy start date inferred from expiry date");
+  if (row.premium === undefined) reasons.push("premium amount missing");
+  if (row.commission_rate === undefined) reasons.push("commission rate defaulted");
+  if (row.policy_type === "Motor" && !row.vehicle_number?.trim()) reasons.push("vehicle number missing");
+  if (row.policy_type === "Property" && !row.property_location?.trim()) reasons.push("property location missing");
+  return reasons;
 }
 
 async function currentUserId() {
@@ -358,8 +375,6 @@ export async function importClientsFromCsvRows(rows: unknown) {
     const insuranceCategory = insuranceCategoryForPolicyType(row.policy_type);
     if (!company) return { ok: false, message: `Choose an approved insurer for ${row.policy_number}.` };
     if (company.category !== insuranceCategory) return { ok: false, message: `${company.name} does not match the ${insuranceCategory} business class for ${row.policy_number}.` };
-    if (row.policy_type === "Motor" && !row.vehicle_number?.trim()) return { ok: false, message: `Vehicle number is required for motor policy ${row.policy_number}.` };
-    if (row.policy_type === "Property" && !row.property_location?.trim()) return { ok: false, message: `Property location is required for property policy ${row.policy_number}.` };
   }
 
   const importedClients: Client[] = [];
@@ -378,7 +393,7 @@ export async function importClientsFromCsvRows(rows: unknown) {
     const clientPayload = {
       agent_id: agentId,
       full_name: row.client_name,
-      phone_number: normalizeGhanaPhoneNumber(row.phone_number),
+      phone_number: row.phone_number ? normalizeGhanaPhoneNumber(row.phone_number) : "Not captured",
       email: row.email || null,
       date_of_birth: row.date_of_birth || null,
       address: null,
@@ -411,6 +426,9 @@ export async function importClientsFromCsvRows(rows: unknown) {
 
     const company = findInsuranceCompany(row.insurer_name)!;
     const insuranceCategory = insuranceCategoryForPolicyType(row.policy_type);
+    const reviewReasons = importReviewReasons(row);
+    const reviewNote = reviewReasons.length ? `Needs Review: ${reviewReasons.join("; ")}.` : "";
+    const notes = [reviewNote, row.notes?.trim()].filter(Boolean).join("\n\n") || null;
     const policyPayload = {
         agent_id: agentId,
         client_id: client.id,
@@ -420,13 +438,13 @@ export async function importClientsFromCsvRows(rows: unknown) {
         vehicle_number: row.policy_type === "Motor" ? row.vehicle_number?.trim() : null,
         property_location: row.policy_type === "Property" ? row.property_location?.trim() : null,
         insurer_name: company.name,
-        start_date: row.policy_start_date,
+        start_date: row.policy_start_date || inferImportStartDate(row.policy_end_date),
         expiry_date: row.policy_end_date,
         premium_amount: row.premium ?? 0,
         currency: "GHS",
         status: "Active" as const,
         renewal_status: "Upcoming" as const,
-        notes: row.notes || null
+        notes
     };
 
     const policyQuery = existingPolicy
