@@ -67,7 +67,7 @@ create table if not exists public.policies (
   agent_id uuid not null references public.profiles(id) on delete cascade,
   client_id uuid not null references public.clients(id) on delete cascade,
   policy_number text not null unique,
-  policy_type text not null check (policy_type in ('Life', 'Health', 'Motor', 'Property', 'Fire', 'Marine', 'Travel')),
+  policy_type text not null check (policy_type in ('Life', 'Health', 'Motor', 'Property', 'Fire', 'Marine', 'Travel', 'Accident')),
   insurance_category text not null default 'Non-Life' check (insurance_category in ('Life', 'Non-Life', 'Health')),
   vehicle_number text,
   property_location text,

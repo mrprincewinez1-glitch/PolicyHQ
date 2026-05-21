@@ -120,7 +120,7 @@ const nav = [
   ["profile", Settings, "Profile"]
 ] as const;
 
-const policyTypes: PolicyType[] = ["Life", "Health", "Motor", "Property", "Fire", "Marine", "Travel"];
+const policyTypes: PolicyType[] = ["Life", "Health", "Motor", "Property", "Fire", "Marine", "Travel", "Accident"];
 const policyStatuses: PolicyStatus[] = ["Active", "Expired", "Cancelled"];
 const renewalStatuses: RenewalStatus[] = ["Upcoming", "Contacted", "Quote Requested", "Payment Pending", "Renewed", "Lost"];
 const commissionBusinessClasses: InsuranceCategory[] = ["Life", "Non-Life", "Health"];
@@ -2073,6 +2073,15 @@ function normalizeImportPolicyType(value: string | undefined): PolicyType | "" {
   const normalized = value?.trim().toLowerCase();
   if (!normalized) return "";
   const match = policyTypes.find((type) => type.toLowerCase() === normalized);
+  if (match) return match;
+  if (normalized.includes("motor") || normalized.includes("vehicle") || normalized.includes("auto")) return "Motor";
+  if (normalized.includes("life")) return "Life";
+  if (normalized.includes("health") || normalized.includes("medical")) return "Health";
+  if (normalized.includes("fire")) return "Fire";
+  if (normalized.includes("marine")) return "Marine";
+  if (normalized.includes("travel")) return "Travel";
+  if (normalized.includes("property") || normalized.includes("building") || normalized.includes("home")) return "Property";
+  if (normalized.includes("accident") || normalized === "pa") return "Accident";
   return match ?? "";
 }
 

@@ -1,4 +1,4 @@
-export type PolicyType = "Life" | "Health" | "Motor" | "Property" | "Fire" | "Marine" | "Travel";
+export type PolicyType = "Life" | "Health" | "Motor" | "Property" | "Fire" | "Marine" | "Travel" | "Accident";
 export type InsuranceCategory = "Life" | "Non-Life" | "Health";
 export type PolicyStatus = "Active" | "Expired" | "Cancelled";
 export type RenewalStatus = "Upcoming" | "Contacted" | "Quote Requested" | "Payment Pending" | "Renewed" | "Lost";
