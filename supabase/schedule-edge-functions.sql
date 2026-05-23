@@ -24,7 +24,8 @@ select cron.schedule(
     url := (select decrypted_secret from vault.decrypted_secrets where name = 'project_url') || '/functions/v1/send-renewal-reminders',
     headers := jsonb_build_object(
       'Content-Type', 'application/json',
-      'Authorization', 'Bearer ' || (select decrypted_secret from vault.decrypted_secrets where name = 'service_role_jwt')
+      'Authorization', 'Bearer ' || (select decrypted_secret from vault.decrypted_secrets where name = 'service_role_jwt'),
+      'x-policyhq-cron-secret', (select decrypted_secret from vault.decrypted_secrets where name = 'policyhq_cron_secret')
     ),
     body := jsonb_build_object('scheduled_at', now())
   );
@@ -39,7 +40,8 @@ select cron.schedule(
     url := (select decrypted_secret from vault.decrypted_secrets where name = 'project_url') || '/functions/v1/send-birthday-messages',
     headers := jsonb_build_object(
       'Content-Type', 'application/json',
-      'Authorization', 'Bearer ' || (select decrypted_secret from vault.decrypted_secrets where name = 'service_role_jwt')
+      'Authorization', 'Bearer ' || (select decrypted_secret from vault.decrypted_secrets where name = 'service_role_jwt'),
+      'x-policyhq-cron-secret', (select decrypted_secret from vault.decrypted_secrets where name = 'policyhq_cron_secret')
     ),
     body := jsonb_build_object('scheduled_at', now())
   );
@@ -54,7 +56,8 @@ select cron.schedule(
     url := (select decrypted_secret from vault.decrypted_secrets where name = 'project_url') || '/functions/v1/backup-weekly-data',
     headers := jsonb_build_object(
       'Content-Type', 'application/json',
-      'Authorization', 'Bearer ' || (select decrypted_secret from vault.decrypted_secrets where name = 'service_role_jwt')
+      'Authorization', 'Bearer ' || (select decrypted_secret from vault.decrypted_secrets where name = 'service_role_jwt'),
+      'x-policyhq-cron-secret', (select decrypted_secret from vault.decrypted_secrets where name = 'policyhq_cron_secret')
     ),
     body := jsonb_build_object('scheduled_at', now())
   );

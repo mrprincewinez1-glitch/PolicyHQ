@@ -109,10 +109,11 @@ const reminderTypes = new Map([
 const approvedTemplateNames = new Set(["renewal_reminder", "birthday_message", "agent_daily_summary"]);
 const dailyRunTemplateName = "renewal_reminder";
 const functionName = "send-renewal-reminders";
+const allowedOrigin = Deno.env.get("POLICYHQ_ALLOWED_ORIGIN")?.trim() || "https://policy-hq-beta.vercel.app";
 
 const corsHeaders = {
-  "Access-Control-Allow-Origin": "https://policyhq.vercel.app",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Origin": allowedOrigin,
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-policyhq-cron-secret",
   "Access-Control-Allow-Methods": "POST, OPTIONS"
 };
 
@@ -148,6 +149,20 @@ function requireTrustedJwt(req: Request) {
   }
 
   return { token };
+}
+
+function requireCronSecret(req: Request) {
+  const expectedSecret = Deno.env.get("POLICYHQ_CRON_SECRET")?.trim();
+  if (!expectedSecret) {
+    return { error: authError("Cron secret is not configured.", 500) };
+  }
+
+  const providedSecret = req.headers.get("x-policyhq-cron-secret")?.trim();
+  if (providedSecret !== expectedSecret) {
+    return { error: authError("Invalid cron secret.", 403) };
+  }
+
+  return { ok: true };
 }
 
 function addDays(date: Date, days: number) {
@@ -259,7 +274,7 @@ function criticalFunctionError(err: unknown): CriticalFunctionError {
 
 async function sendCriticalErrorEmail(error: CriticalFunctionError) {
   const apiKey = Deno.env.get("RESEND_API_KEY")?.trim();
-  const alertEmail = Deno.env.get("FUNCTION_ERROR_ALERT_EMAIL")?.trim() || "mrprincewinez1@gmail.com";
+  const alertEmail = Deno.env.get("FUNCTION_ERROR_ALERT_EMAIL")?.trim();
   if (!apiKey || !alertEmail) return;
 
   try {
@@ -639,6 +654,8 @@ Deno.serve(async (req) => {
 
   const trustedJwt = requireTrustedJwt(req);
   if ("error" in trustedJwt) return trustedJwt.error;
+  const cronSecret = requireCronSecret(req);
+  if ("error" in cronSecret) return cronSecret.error;
 
   try {
   const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";

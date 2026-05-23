@@ -66,7 +66,7 @@ create table if not exists public.policies (
   id uuid primary key default gen_random_uuid(),
   agent_id uuid not null references public.profiles(id) on delete cascade,
   client_id uuid not null references public.clients(id) on delete cascade,
-  policy_number text not null unique,
+  policy_number text not null,
   policy_type text not null check (policy_type in ('Life', 'Health', 'Motor', 'Property', 'Fire', 'Marine', 'Travel', 'Accident')),
   insurance_category text not null default 'Non-Life' check (insurance_category in ('Life', 'Non-Life', 'Health')),
   vehicle_number text,
@@ -344,6 +344,9 @@ where status = 'sent';
 create index if not exists clients_agent_active_idx
 on public.clients (agent_id, deleted_at, created_at desc);
 
+create unique index if not exists policies_agent_policy_number_unique_idx
+on public.policies (agent_id, policy_number);
+
 create index if not exists audit_log_user_timestamp_idx
 on public.audit_log (user_id, "timestamp" desc);
 
@@ -537,11 +540,23 @@ on public.profiles for all
 using (auth.uid() = id)
 with check (auth.uid() = id);
 
+drop policy if exists "profiles_admin_select_all" on public.profiles;
+create policy "profiles_admin_select_all"
+on public.profiles for select
+to authenticated
+using (public.is_admin());
+
 drop policy if exists "Clients are agent scoped" on public.clients;
 create policy "Clients are agent scoped"
 on public.clients for all
 using (auth.uid() = agent_id and deleted_at is null)
 with check (auth.uid() = agent_id);
+
+drop policy if exists "clients_admin_select_all" on public.clients;
+create policy "clients_admin_select_all"
+on public.clients for select
+to authenticated
+using (public.is_admin());
 
 drop policy if exists "Policies are agent scoped" on public.policies;
 create policy "Policies are agent scoped"
@@ -564,6 +579,12 @@ with check (
     and clients.deleted_at is null
   )
 );
+
+drop policy if exists "policies_admin_select_all" on public.policies;
+create policy "policies_admin_select_all"
+on public.policies for select
+to authenticated
+using (public.is_admin());
 
 drop policy if exists "Commissions are agent scoped" on public.commissions;
 create policy "Commissions are agent scoped"
@@ -591,22 +612,46 @@ with check (
   )
 );
 
+drop policy if exists "commissions_admin_select_all" on public.commissions;
+create policy "commissions_admin_select_all"
+on public.commissions for select
+to authenticated
+using (public.is_admin());
+
 drop policy if exists "Notifications are agent scoped" on public.notifications;
 create policy "Notifications are agent scoped"
 on public.notifications for all
 using (auth.uid() = agent_id)
 with check (auth.uid() = agent_id);
 
+drop policy if exists "notifications_admin_select_all" on public.notifications;
+create policy "notifications_admin_select_all"
+on public.notifications for select
+to authenticated
+using (public.is_admin());
+
 drop policy if exists "Notification logs are agent scoped" on public.notification_logs;
 create policy "Notification logs are agent scoped"
 on public.notification_logs for select
 using (auth.uid() = agent_id);
+
+drop policy if exists "notification_logs_admin_select_all" on public.notification_logs;
+create policy "notification_logs_admin_select_all"
+on public.notification_logs for select
+to authenticated
+using (public.is_admin());
 
 drop policy if exists "whatsapp_logs_select_own" on public.whatsapp_logs;
 create policy "whatsapp_logs_select_own"
 on public.whatsapp_logs for select
 to authenticated
 using (auth.uid() = agent_id);
+
+drop policy if exists "whatsapp_logs_admin_select_all" on public.whatsapp_logs;
+create policy "whatsapp_logs_admin_select_all"
+on public.whatsapp_logs for select
+to authenticated
+using (public.is_admin());
 
 drop policy if exists "function_error_logs_admin_select" on public.function_error_logs;
 create policy "function_error_logs_admin_select"

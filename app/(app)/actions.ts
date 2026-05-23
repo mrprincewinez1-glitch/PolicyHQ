@@ -106,6 +106,10 @@ const avatarAllowedTypes = new Map([
   ["image/webp", "webp"]
 ]);
 const maxAvatarSize = 2 * 1024 * 1024;
+const actionRateLimitWindowMs = 60_000;
+const actionRateLimitGlobal = globalThis as typeof globalThis & {
+  policyhqActionRateLimits?: Map<string, { count: number; resetAt: number }>;
+};
 const clientColumns = "id, agent_id, full_name, phone_number, email, date_of_birth, address, deleted_at, created_at, updated_at";
 const policyColumns = "id, agent_id, client_id, policy_number, policy_type, insurance_category, vehicle_number, property_location, insurer_name, start_date, expiry_date, premium_amount, currency, status, renewal_status, notes, created_at, updated_at";
 const commissionColumns = "id, policy_id, agent_id, commission_rate, commission_amount, payment_status, payment_date, created_at";
@@ -142,6 +146,24 @@ async function currentUserId() {
   return { supabase, agentId: data.user.id };
 }
 
+function assertActionRateLimit(agentId: string, action: string, maxRequests: number) {
+  if (!actionRateLimitGlobal.policyhqActionRateLimits) {
+    actionRateLimitGlobal.policyhqActionRateLimits = new Map();
+  }
+
+  const key = `${agentId}:${action}`;
+  const now = Date.now();
+  const bucket = actionRateLimitGlobal.policyhqActionRateLimits.get(key);
+
+  if (!bucket || bucket.resetAt <= now) {
+    actionRateLimitGlobal.policyhqActionRateLimits.set(key, { count: 1, resetAt: now + actionRateLimitWindowMs });
+    return null;
+  }
+
+  bucket.count += 1;
+  return bucket.count > maxRequests ? "Too many requests. Please wait a minute and try again." : null;
+}
+
 async function insertClientAuditLog(
   supabase: ReturnType<typeof createClient>,
   agentId: string,
@@ -163,6 +185,8 @@ export async function upsertClient(_: unknown, formData: FormData) {
   const parsed = clientSchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) return { ok: false, message: parsed.error.issues[0]?.message ?? "Check client details." };
   const { supabase, agentId } = await currentUserId();
+  const limited = assertActionRateLimit(agentId, "upsert-client", 40);
+  if (limited) return { ok: false, message: limited };
   const payload = {
     ...parsed.data,
     agent_id: agentId,
@@ -201,6 +225,8 @@ export async function upsertPolicy(_: unknown, formData: FormData) {
   const parsed = policySchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) return { ok: false, message: parsed.error.issues[0]?.message ?? "Check policy details." };
   const { supabase, agentId } = await currentUserId();
+  const limited = assertActionRateLimit(agentId, "upsert-policy", 40);
+  if (limited) return { ok: false, message: limited };
   if (!parsed.data.client_id && (!parsed.data.client_full_name?.trim() || !parsed.data.client_phone_number?.trim())) {
     return { ok: false, message: "Client name and phone number are required." };
   }
@@ -215,6 +241,7 @@ export async function upsertPolicy(_: unknown, formData: FormData) {
     .from("policies")
     .select("id")
     .eq("policy_number", parsed.data.policy_number)
+    .eq("agent_id", agentId)
     .neq("id", parsed.data.id ?? "00000000-0000-0000-0000-000000000000")
     .maybeSingle();
 
@@ -366,6 +393,8 @@ export async function importClientsFromCsvRows(rows: unknown) {
   const parsed = importClientRowsSchema.safeParse(rows);
   if (!parsed.success) return { ok: false, message: parsed.error.issues[0]?.message ?? "Check your CSV rows." };
   const { supabase, agentId } = await currentUserId();
+  const limited = assertActionRateLimit(agentId, "import-clients", 5);
+  if (limited) return { ok: false, message: limited };
   const policyNumbers = parsed.data.map((row) => row.policy_number);
   const duplicatePolicyNumber = policyNumbers.find((policyNumber, index) => policyNumbers.indexOf(policyNumber) !== index);
   if (duplicatePolicyNumber) return { ok: false, message: `Policy number ${duplicatePolicyNumber} appears twice in this file.` };
@@ -604,6 +633,8 @@ export async function uploadProfileAvatar(formData: FormData) {
   }
 
   const { supabase, agentId } = await currentUserId();
+  const limited = assertActionRateLimit(agentId, "upload-avatar", 10);
+  if (limited) return { ok: false, message: limited };
   const path = `${agentId}/avatar.${extension}`;
   const upload = await supabase.storage.from("avatars").upload(path, file, {
     cacheControl: "3600",
