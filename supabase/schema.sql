@@ -32,6 +32,17 @@ create table if not exists public.clients (
   updated_at timestamptz
 );
 
+create table if not exists public.prospects (
+  id uuid primary key default gen_random_uuid(),
+  agent_id uuid not null references auth.users(id) on delete cascade,
+  full_name text not null,
+  phone_number text not null,
+  status text not null default 'New' check (status in ('New', 'Interested', 'Not Interested', 'Call Back', 'Converted')),
+  follow_up_date date,
+  notes text,
+  created_at timestamptz default now()
+);
+
 alter table public.profiles
 add column if not exists birthday_messages_enabled boolean default true;
 
@@ -344,6 +355,9 @@ where status = 'sent';
 create index if not exists clients_agent_active_idx
 on public.clients (agent_id, deleted_at, created_at desc);
 
+create index if not exists prospects_agent_status_followup_idx
+on public.prospects (agent_id, status, follow_up_date, created_at desc);
+
 create unique index if not exists policies_agent_policy_number_unique_idx
 on public.policies (agent_id, policy_number);
 
@@ -504,6 +518,7 @@ for each row execute function public.handle_new_user();
 
 alter table public.profiles enable row level security;
 alter table public.clients enable row level security;
+alter table public.prospects enable row level security;
 alter table public.policies enable row level security;
 alter table public.commissions enable row level security;
 alter table public.notifications enable row level security;
@@ -518,6 +533,7 @@ grant usage on schema public to authenticated;
 
 grant select, insert, update, delete on public.profiles to authenticated;
 grant select, insert, update, delete on public.clients to authenticated;
+grant select, insert, update, delete on public.prospects to authenticated;
 grant select, insert, update, delete on public.policies to authenticated;
 grant select, insert, update, delete on public.commissions to authenticated;
 grant select, insert, update, delete on public.notifications to authenticated;
@@ -555,6 +571,19 @@ with check (auth.uid() = agent_id);
 drop policy if exists "clients_admin_select_all" on public.clients;
 create policy "clients_admin_select_all"
 on public.clients for select
+to authenticated
+using (public.is_admin());
+
+drop policy if exists "Prospects are agent scoped" on public.prospects;
+create policy "Prospects are agent scoped"
+on public.prospects for all
+to authenticated
+using (auth.uid() = agent_id)
+with check (auth.uid() = agent_id);
+
+drop policy if exists "prospects_admin_select_all" on public.prospects;
+create policy "prospects_admin_select_all"
+on public.prospects for select
 to authenticated
 using (public.is_admin());
 

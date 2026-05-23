@@ -5,10 +5,11 @@ import type { AppData } from "@/lib/types";
 
 type AppShellProps = {
   initialData: AppData;
-  section?: "dashboard" | "clients" | "policies" | "commissions" | "notifications" | "profile";
+  section?: "dashboard" | "clients" | "prospects" | "policies" | "commissions" | "notifications" | "profile";
   demo?: boolean;
   renewalRange?: "week" | "next-week" | "month";
   clientId?: string;
+  prospectFilter?: "today";
 };
 
 const AppShellClient = dynamic(

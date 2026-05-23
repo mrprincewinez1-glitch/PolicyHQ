@@ -4,6 +4,7 @@ export type PolicyStatus = "Active" | "Expired" | "Cancelled";
 export type RenewalStatus = "Upcoming" | "Contacted" | "Quote Requested" | "Payment Pending" | "Renewed" | "Lost";
 export type PaymentStatus = "Paid" | "Pending";
 export type UserRole = "admin" | "agent";
+export type ProspectStatus = "New" | "Interested" | "Not Interested" | "Call Back" | "Converted";
 
 export type Profile = {
   id: string;
@@ -78,6 +79,17 @@ export type Notification = {
   created_at: string;
 };
 
+export type Prospect = {
+  id: string;
+  agent_id: string;
+  full_name: string;
+  phone_number: string;
+  status: ProspectStatus;
+  follow_up_date: string | null;
+  notes: string | null;
+  created_at: string;
+};
+
 export type ActivityNote = {
   id: string;
   agent_id: string;
@@ -100,6 +112,7 @@ export type AppData = {
   clients: Client[];
   policies: PolicyWithClient[];
   commissions: Commission[];
+  prospects: Prospect[];
   notifications: Notification[];
   activity_notes: ActivityNote[];
 };

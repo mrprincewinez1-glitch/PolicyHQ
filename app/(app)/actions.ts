@@ -6,9 +6,10 @@ import { isValidPolicyNumber, normalizePolicyNumber, policyNumberHelpText } from
 import { createClient } from "@/lib/supabase/server";
 import { findInsuranceCompany, insuranceCategoryForPolicyType } from "@/lib/insurance";
 import { normalizeGhanaPhoneNumber } from "@/lib/utils";
-import type { ActivityNote, Client, Commission, PolicyWithClient, RenewalStatus } from "@/lib/types";
+import type { ActivityNote, Client, Commission, PolicyWithClient, Prospect, RenewalStatus } from "@/lib/types";
 
 const renewalStatusValues = ["Upcoming", "Contacted", "Quote Requested", "Payment Pending", "Renewed", "Lost"] as const;
+const prospectStatusValues = ["New", "Interested", "Not Interested", "Call Back", "Converted"] as const;
 
 const clientSchema = z.object({
   id: z.string().uuid().optional(),
@@ -53,6 +54,15 @@ const activityNoteSchema = z.object({
   policy_id: z.string().uuid("Policy is invalid").optional().or(z.literal("")),
   note_text: z.string().trim().min(2, "Write a short note before saving.").max(500, "Keep notes under 500 characters.")
 }).refine((value) => value.client_id || value.policy_id, "Choose a client or policy for this note.");
+
+const prospectSchema = z.object({
+  id: z.string().uuid().optional(),
+  full_name: z.string().trim().min(2, "Full name is required").max(120, "Full name is too long"),
+  phone_number: z.string().trim().regex(/^\+?[0-9 ()-]{8,20}$/, "Phone number is invalid"),
+  status: z.enum(prospectStatusValues),
+  follow_up_date: z.string().refine(isValidDateInput, "Follow-up date is invalid").optional().or(z.literal("")),
+  notes: z.string().max(500, "Notes are too long").optional().or(z.literal(""))
+});
 
 const importClientRowSchema = z.object({
   client_name: z.string().trim().min(2, "Client name is required"),
@@ -115,6 +125,7 @@ const policyColumns = "id, agent_id, client_id, policy_number, policy_type, insu
 const commissionColumns = "id, policy_id, agent_id, commission_rate, commission_amount, payment_status, payment_date, created_at";
 const profileColumns = "id, role, full_name, email, phone_number, company_name, avatar_url, whatsapp_enabled, email_notifications_enabled, birthday_messages_enabled, agent_whatsapp_summary_enabled, reminder_30_enabled, reminder_14_enabled, reminder_7_enabled";
 const activityNoteColumns = "id, agent_id, client_id, policy_id, note_text, created_by, created_at";
+const prospectColumns = "id, agent_id, full_name, phone_number, status, follow_up_date, notes, created_at";
 
 function isValidDateInput(value: string) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
@@ -128,6 +139,10 @@ function inferImportStartDate(expiryDate: string) {
   return expiry.toISOString().slice(0, 10);
 }
 
+function sanitizeText(value: string | undefined | null) {
+  return String(value ?? "").replace(/[\u0000-\u001F\u007F]/g, "").trim();
+}
+
 function importReviewReasons(row: z.infer<typeof importClientRowSchema>) {
   const reasons: string[] = [];
   if (!row.phone_number?.trim()) reasons.push("client phone number missing");
@@ -137,6 +152,33 @@ function importReviewReasons(row: z.infer<typeof importClientRowSchema>) {
   if (row.policy_type === "Motor" && !row.vehicle_number?.trim()) reasons.push("vehicle number missing");
   if (row.policy_type === "Property" && !row.property_location?.trim()) reasons.push("property location missing");
   return reasons;
+}
+
+export async function upsertProspect(_: unknown, formData: FormData) {
+  const parsed = prospectSchema.safeParse(Object.fromEntries(formData));
+  if (!parsed.success) return { ok: false, message: parsed.error.issues[0]?.message ?? "Check prospect details." };
+  const { supabase, agentId } = await currentUserId();
+  const limited = assertActionRateLimit(agentId, "upsert-prospect", 40);
+  if (limited) return { ok: false, message: limited };
+
+  const payload = {
+    agent_id: agentId,
+    full_name: sanitizeText(parsed.data.full_name),
+    phone_number: normalizeGhanaPhoneNumber(parsed.data.phone_number),
+    status: parsed.data.status,
+    follow_up_date: parsed.data.follow_up_date || null,
+    notes: sanitizeText(parsed.data.notes) || null
+  };
+
+  const query = parsed.data.id
+    ? supabase.from("prospects").update(payload).eq("id", parsed.data.id).eq("agent_id", agentId).select(prospectColumns).single()
+    : supabase.from("prospects").insert(payload).select(prospectColumns).single();
+
+  const { data: prospect, error } = await query;
+  if (error || !prospect) return { ok: false, message: "We could not save this prospect." };
+  revalidatePath("/prospects");
+  revalidatePath("/dashboard");
+  return { ok: true, message: "Prospect saved successfully.", prospect: prospect as Prospect };
 }
 
 async function currentUserId() {

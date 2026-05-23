@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { demoData } from "@/lib/demo-data";
-import type { ActivityNote, AppData, Client, Commission, PolicyWithClient, Profile } from "@/lib/types";
+import type { ActivityNote, AppData, Client, Commission, PolicyWithClient, Profile, Prospect } from "@/lib/types";
 
 const profileColumns = "id, role, full_name, email, phone_number, company_name, avatar_url, whatsapp_enabled, email_notifications_enabled, birthday_messages_enabled, agent_whatsapp_summary_enabled, reminder_30_enabled, reminder_14_enabled, reminder_7_enabled";
 const clientColumns = "id, agent_id, full_name, phone_number, email, date_of_birth, address, deleted_at, created_at, updated_at";
@@ -9,6 +9,7 @@ const policyColumns = "id, agent_id, client_id, policy_number, policy_type, insu
 const commissionColumns = "id, policy_id, agent_id, commission_rate, commission_amount, payment_status, payment_date, created_at";
 const notificationColumns = "id, agent_id, policy_id, client_id, message, type, is_read, created_at";
 const activityNoteColumns = "id, agent_id, client_id, policy_id, note_text, created_by, created_at";
+const prospectColumns = "id, agent_id, full_name, phone_number, status, follow_up_date, notes, created_at";
 
 type RawPolicyWithClient = Omit<PolicyWithClient, "client"> & {
   client: Client | Client[] | null;
@@ -24,13 +25,14 @@ export async function getAuthenticatedAppData(): Promise<AppData> {
   const user = userData.user;
   if (!user) redirect("/sign-in?error=Please sign in again. Your session was not active.");
 
-  const [profileResult, clientsResult, policiesResult, commissionsResult, notificationsResult, activityNotesResult] = await Promise.all([
+  const [profileResult, clientsResult, policiesResult, commissionsResult, notificationsResult, activityNotesResult, prospectsResult] = await Promise.all([
     supabase.from("profiles").select(profileColumns).eq("id", user.id).single(),
     supabase.from("clients").select(clientColumns).eq("agent_id", user.id).is("deleted_at", null).order("created_at", { ascending: false }),
     supabase.from("policies").select(policyColumns).eq("agent_id", user.id).order("expiry_date", { ascending: true }),
     supabase.from("commissions").select(commissionColumns).eq("agent_id", user.id).order("created_at", { ascending: false }),
     supabase.from("notifications").select(notificationColumns).eq("agent_id", user.id).order("created_at", { ascending: false }),
-    supabase.from("activity_notes").select(activityNoteColumns).eq("agent_id", user.id).order("created_at", { ascending: false }).limit(250)
+    supabase.from("activity_notes").select(activityNoteColumns).eq("agent_id", user.id).order("created_at", { ascending: false }).limit(250),
+    supabase.from("prospects").select(prospectColumns).eq("agent_id", user.id).order("created_at", { ascending: false }).limit(250)
   ]);
 
   let profile = profileResult.data;
@@ -82,6 +84,7 @@ export async function getAuthenticatedAppData(): Promise<AppData> {
     clients,
     policies,
     commissions,
+    prospects: (prospectsResult.data ?? []) as Prospect[],
     notifications: notificationsResult.data ?? [],
     activity_notes: activityNotes
   };

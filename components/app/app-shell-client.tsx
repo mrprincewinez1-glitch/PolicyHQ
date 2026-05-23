@@ -15,12 +15,14 @@ import {
   LayoutDashboard,
   LogOut,
   Menu,
+  Phone,
   Plus,
   Search,
   Settings,
   ShieldCheck,
   Trash2,
   Upload,
+  UserPlus,
   Users,
   X,
   MessageCircle,
@@ -34,6 +36,7 @@ import {
   markNotificationRead,
   addActivityNote,
   importClientsFromCsvRows,
+  upsertProspect,
   updateNotificationSettings,
   updatePolicyRenewalStatus,
   updateProfile,
@@ -51,7 +54,7 @@ import { findInsuranceCompany, findInsuranceCompanyCategory, insuranceCategoryFo
 import { isValidPolicyNumber, normalizePolicyNumber, policyNumberHelpText } from "@/lib/policy-number";
 import { feedbackMailto } from "@/lib/site";
 import { createClient } from "@/lib/supabase/client";
-import type { ActivityNote, AppData, Client, Commission, InsuranceCategory, Policy, PolicyStatus, PolicyType, PolicyWithClient, RenewalStatus } from "@/lib/types";
+import type { ActivityNote, AppData, Client, Commission, InsuranceCategory, Policy, PolicyStatus, PolicyType, PolicyWithClient, Prospect, ProspectStatus, RenewalStatus } from "@/lib/types";
 import {
   activePolicies,
   expiringThisMonth,
@@ -70,10 +73,11 @@ import {
   whatsAppUrl
 } from "@/lib/utils";
 
-type Section = "dashboard" | "clients" | "policies" | "commissions" | "notifications" | "profile";
+type Section = "dashboard" | "clients" | "prospects" | "policies" | "commissions" | "notifications" | "profile";
 type ModalState =
   | { type: "demo" }
   | { type: "client"; client?: Client }
+  | { type: "prospect"; prospect?: Prospect }
   | { type: "policy"; policy?: PolicyWithClient }
   | { type: "import" }
   | { type: "confirm"; title: string; body: string; action: () => Promise<void> | void }
@@ -109,11 +113,13 @@ type CommissionPeriodMode = "Monthly" | "Yearly" | "All Time";
 type NavItem = readonly [Section | "admin", LucideIcon, string];
 type GlobalSearchResult =
   | { type: "client"; id: string; title: string; subtitle: string; href: string }
+  | { type: "prospect"; id: string; title: string; subtitle: string; href: string }
   | { type: "policy"; id: string; title: string; subtitle: string; policy: PolicyWithClient };
 
 const nav = [
   ["dashboard", LayoutDashboard, "Dashboard"],
   ["clients", Users, "Clients"],
+  ["prospects", UserPlus, "Prospects"],
   ["policies", ShieldCheck, "Policies"],
   ["commissions", Calculator, "Commissions"],
   ["notifications", Bell, "Renewal Alerts"],
@@ -123,6 +129,7 @@ const nav = [
 const policyTypes: PolicyType[] = ["Life", "Health", "Motor", "Property", "Fire", "Marine", "Travel", "Accident"];
 const policyStatuses: PolicyStatus[] = ["Active", "Expired", "Cancelled"];
 const renewalStatuses: RenewalStatus[] = ["Upcoming", "Contacted", "Quote Requested", "Payment Pending", "Renewed", "Lost"];
+const prospectStatuses: ProspectStatus[] = ["New", "Interested", "Call Back", "Converted", "Not Interested"];
 const commissionBusinessClasses: InsuranceCategory[] = ["Life", "Non-Life", "Health"];
 const monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 
@@ -131,13 +138,15 @@ export function AppShell({
   section = "dashboard",
   demo = false,
   renewalRange,
-  clientId
+  clientId,
+  prospectFilter
 }: {
   initialData: AppData;
   section?: Section;
   demo?: boolean;
   renewalRange?: "week" | "next-week" | "month";
   clientId?: string;
+  prospectFilter?: "today";
 }) {
   const [data, setData] = useState(initialData);
   const [active, setActive] = useState<Section>(section);
@@ -269,6 +278,55 @@ export function AppShell({
     }));
     setModal(null);
     notify("success", "Client saved successfully.");
+  }
+
+  async function saveProspect(payload: Partial<Prospect>) {
+    if (blockWrite()) return;
+    if (!payload.full_name?.trim() || !payload.phone_number?.trim()) {
+      notify("error", "Full name and phone number are required.");
+      return;
+    }
+
+    if (data.profile.id === "demo-agent") {
+      const prospect: Prospect = {
+        id: payload.id ?? `local-prospect-${Date.now()}`,
+        agent_id: data.profile.id,
+        full_name: payload.full_name.trim(),
+        phone_number: normalizeGhanaPhoneNumber(payload.phone_number),
+        status: payload.status ?? "New",
+        follow_up_date: payload.follow_up_date || null,
+        notes: payload.notes?.trim() || null,
+        created_at: payload.id ? data.prospects.find((item) => item.id === payload.id)?.created_at ?? new Date().toISOString() : new Date().toISOString()
+      };
+      setData((current) => ({
+        ...current,
+        prospects: payload.id ? current.prospects.map((item) => item.id === prospect.id ? prospect : item) : [prospect, ...current.prospects]
+      }));
+      setModal(null);
+      notify("success", "Prospect saved in local preview.");
+      return;
+    }
+
+    const formData = payloadToFormData({
+      id: payload.id,
+      full_name: payload.full_name.trim(),
+      phone_number: payload.phone_number.trim(),
+      status: payload.status ?? "New",
+      follow_up_date: payload.follow_up_date || "",
+      notes: payload.notes?.trim() || ""
+    });
+    const result = await upsertProspect(null, formData);
+    if (!result.ok || !result.prospect) {
+      notify("error", result.message);
+      return;
+    }
+    const saved = result.prospect;
+    setData((current) => ({
+      ...current,
+      prospects: payload.id ? current.prospects.map((prospect) => prospect.id === saved.id ? saved : prospect) : [saved, ...current.prospects]
+    }));
+    setModal(null);
+    notify("success", result.message);
   }
 
   async function deleteClient(client: Client) {
@@ -563,6 +621,11 @@ export function AppShell({
     return data.policies.filter((policy) => [policy.client.full_name, policy.policy_number, policy.insurer_name].some((value) => value.toLowerCase().includes(q)));
   }, [data.policies, query]);
 
+  const filteredProspects = useMemo(() => {
+    const q = query.toLowerCase();
+    return data.prospects.filter((prospect) => [prospect.full_name, prospect.phone_number, prospect.status].some((value) => value.toLowerCase().includes(q)));
+  }, [data.prospects, query]);
+
   const globalSearchResults = useMemo<GlobalSearchResult[]>(() => {
     const q = query.trim().toLowerCase();
     if (q.length < 2) return [];
@@ -589,8 +652,19 @@ export function AppShell({
         policy
       }));
 
-    return [...clientResults, ...policyResults].slice(0, 8);
-  }, [base, data.clients, data.policies, query]);
+    const prospectResults = data.prospects
+      .filter((prospect) => [prospect.full_name, prospect.phone_number, prospect.status].some((value) => value.toLowerCase().includes(q)))
+      .slice(0, 3)
+      .map((prospect) => ({
+        type: "prospect" as const,
+        id: prospect.id,
+        title: prospect.full_name,
+        subtitle: `Prospect · ${prospect.phone_number}`,
+        href: `${base}/prospects`
+      }));
+
+    return [...clientResults, ...prospectResults, ...policyResults].slice(0, 8);
+  }, [base, data.clients, data.policies, data.prospects, query]);
 
   const totalEarned = commissionTotal(data.commissions, data.policies);
   const totalPaid = commissionTotal(data.commissions.filter((item) => item.payment_status === "Paid"), data.policies);
@@ -629,6 +703,13 @@ export function AppShell({
       onEdit={(client) => blockWrite() || setModal({ type: "client", client })}
       onDelete={(client) => blockWrite() || setModal({ type: "confirm", title: "Archive client?", body: `This will hide ${client.full_name} from active records while preserving policy and commission history.`, action: () => deleteClient(client) })}
       onExport={() => downloadCsv("policyhq-clients", clientRows(data.clients, data.policies))}
+    />
+  ) : active === "prospects" ? (
+    <Prospects
+      prospects={filteredProspects}
+      dueTodayOnly={prospectFilter === "today"}
+      onAdd={() => blockWrite() || setModal({ type: "prospect" })}
+      onEdit={(prospect) => blockWrite() || setModal({ type: "prospect", prospect })}
     />
   ) : active === "policies" ? (
     <Policies
@@ -743,12 +824,12 @@ export function AppShell({
                 <div className="absolute left-0 right-0 top-full z-50 mt-2 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-soft">
                   {globalSearchResults.length ? (
                     <div className="max-h-96 overflow-auto p-2">
-                      {globalSearchResults.map((result) => result.type === "client" ? (
+                      {globalSearchResults.map((result) => result.type === "client" || result.type === "prospect" ? (
                         <Link
-                          key={`client-${result.id}`}
+                          key={`${result.type}-${result.id}`}
                           href={result.href}
                           onClick={() => {
-                            setActive("clients");
+                            setActive(result.type === "client" ? "clients" : "prospects");
                             setQuery("");
                           }}
                           className="flex w-full items-center justify-between gap-3 rounded-lg px-3 py-2 text-left hover:bg-slate-50"
@@ -757,7 +838,7 @@ export function AppShell({
                             <span className="block text-sm font-bold text-primary">{result.title}</span>
                             <span className="block text-xs text-slate-500">{result.subtitle}</span>
                           </span>
-                          <Badge tone="orange">Client</Badge>
+                          <Badge tone="orange">{result.type === "client" ? "Client" : "Prospect"}</Badge>
                         </Link>
                       ) : (
                         <button
@@ -814,6 +895,7 @@ export function AppShell({
       {mobileOpen ? <button aria-label="Close menu" className="fixed inset-0 z-30 bg-black/40 lg:hidden" onClick={() => setMobileOpen(false)}><X className="ml-auto mr-5 mt-5 text-white" /></button> : null}
       {modal?.type === "demo" ? <DemoModal onClose={() => setModal(null)} /> : null}
       {modal?.type === "client" ? <ClientModal client={modal.client} onClose={() => setModal(null)} onSave={saveClient} /> : null}
+      {modal?.type === "prospect" ? <ProspectModal prospect={modal.prospect} onClose={() => setModal(null)} onSave={saveProspect} /> : null}
       {modal?.type === "policy" ? <PolicyModal policy={modal.policy} clients={data.clients} onClose={() => setModal(null)} onSave={savePolicy} /> : null}
       {modal?.type === "import" ? <ImportClientsModal onClose={() => setModal(null)} onImport={importClients} /> : null}
       {modal?.type === "confirm" ? <ConfirmModal title={modal.title} body={modal.body} onClose={() => setModal(null)} onConfirm={modal.action} /> : null}
@@ -828,15 +910,17 @@ function Dashboard({ data, base, totalPaidThisMonth, openPolicy, todaysBirthdays
   const active = activePolicies(data.policies);
   const premiumDueThisMonth = expiringThisMonth(data.policies).reduce((sum, policy) => sum + policy.premium_amount, 0);
   const managerMetrics = renewalManagerMetrics(data.policies, todaysBirthdays.length);
+  const followUpsDueToday = data.prospects.filter(isProspectDueToday).length;
   return (
     <div className="space-y-6">
       <div><h1 className="text-3xl font-extrabold">{greeting(firstName(data.profile.full_name))}</h1><p className="mt-1 text-slate-600">{fullDate()}</p></div>
-      <div className="grid gap-4 md:grid-cols-4">
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
         {[
           ["Total Clients", data.clients.length, navHref(base, "clients")],
           ["Active Policies", active.length, navHref(base, "policies")],
           ["Commissions Earned This Month", formatCurrency(totalPaidThisMonth), navHref(base, "commissions")],
-          ["Premium Due This Month", formatCurrency(premiumDueThisMonth), `${base}/renewals/month`]
+          ["Premium Due This Month", formatCurrency(premiumDueThisMonth), `${base}/renewals/month`],
+          ["Follow-ups Due Today", followUpsDueToday, `${navHref(base, "prospects")}?filter=today`]
         ].map(([label, value, href]) => (
           <Link key={label} href={href as string} className="rounded-xl focus:outline-none focus:ring-2 focus:ring-accent">
             <Card className="h-full transition hover:-translate-y-0.5 hover:border-orange-200 hover:shadow-md">
@@ -894,6 +978,92 @@ function RenewalList({ title, policies, base, updateRenewal, openPolicy, onBack 
       <Button asChild variant="outline"><Link href={navHref(base, "dashboard")} onClick={onBack}>Back to dashboard</Link></Button>
       <Card><CardHeader><h1 className="text-2xl font-extrabold">{title}</h1></CardHeader><div className="overflow-auto"><table className="w-full min-w-[1120px] text-sm"><thead className="sticky top-0 bg-slate-50"><tr>{["Client Name", "Phone Number", "Policy Number", "Policy Type", "Insurer", "Expiry Date", "Premium Amount (GHS)", "Renewal Status", "Urgency", "Action"].map((h) => <th className="px-4 py-3 text-left" key={h}>{h}</th>)}</tr></thead><tbody>{[...policies].sort(sortByExpiry).map((p) => <tr key={p.id} onClick={() => openPolicy(p)} className={`cursor-pointer border-t ${urgency(p.expiry_date) === "urgent" ? "bg-red-50" : urgency(p.expiry_date) === "soon" ? "bg-amber-50" : "odd:bg-white even:bg-slate-50"}`}><td className="px-4 py-3 font-semibold">{p.client.full_name}</td><td className="px-4 py-3">{p.client.phone_number}</td><td className="px-4 py-3"><div className="flex flex-wrap items-center gap-2"><span>{p.policy_number}</span><NeedsReviewBadge policy={p} /></div></td><td className="px-4 py-3">{p.policy_type}</td><td className="px-4 py-3">{p.insurer_name}</td><td className="px-4 py-3">{formatDate(p.expiry_date)}</td><td className="px-4 py-3">{formatCurrency(p.premium_amount)}</td><td className="px-4 py-3" onClick={(e) => e.stopPropagation()}><Select value={p.renewal_status} onChange={(e) => updateRenewal(p.id, e.target.value as RenewalStatus)}>{renewalStatuses.map((s) => <option key={s}>{s}</option>)}</Select></td><td className="px-4 py-3"><UrgencyBadge date={p.expiry_date} status={p.renewal_status} /></td><td className="px-4 py-3" onClick={(e) => e.stopPropagation()}><WhatsAppButton href={renewalWhatsAppHref(p)} label="WhatsApp" /></td></tr>)}</tbody></table></div></Card>
     </div>
+  );
+}
+
+function Prospects({ prospects, dueTodayOnly, onAdd, onEdit }: { prospects: Prospect[]; dueTodayOnly: boolean; onAdd: () => void; onEdit: (prospect: Prospect) => void }) {
+  const [status, setStatus] = useState<ProspectStatus | "All">("All");
+  const visible = prospects.filter((prospect) => {
+    const matchesStatus = status === "All" || prospect.status === status;
+    const matchesDue = !dueTodayOnly || isProspectDueToday(prospect);
+    return matchesStatus && matchesDue;
+  });
+
+  return (
+    <div className="space-y-5">
+      <Card>
+        <CardHeader className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+          <div>
+            <p className="text-sm font-bold uppercase text-slate-500">Total prospects: {prospects.length}</p>
+            <h1 className="text-2xl font-extrabold">Prospects</h1>
+          </div>
+          <Button onClick={onAdd}><Plus className="h-4 w-4" /> Add Prospect</Button>
+        </CardHeader>
+        <CardContent>
+          <div className="flex flex-wrap gap-2">
+            {(["All", ...prospectStatuses] as Array<ProspectStatus | "All">).map((item) => (
+              <button
+                key={item}
+                type="button"
+                onClick={() => setStatus(item)}
+                className={`min-h-11 rounded-xl px-4 text-sm font-bold ${status === item ? "bg-primary text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"}`}
+              >
+                {item}
+              </button>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+
+      {visible.length ? (
+        <div className="grid gap-4 lg:grid-cols-2 xl:grid-cols-3">
+          {visible.map((prospect) => (
+            <ProspectCard key={prospect.id} prospect={prospect} onEdit={() => onEdit(prospect)} />
+          ))}
+        </div>
+      ) : (
+        <Card>
+          <CardContent className="flex min-h-80 flex-col items-center justify-center text-center">
+            <UserPlus className="h-12 w-12 text-slate-300" />
+            <h2 className="mt-4 text-xl font-bold">{dueTodayOnly ? "No follow-ups due today." : "No prospects yet."}</h2>
+            <p className="mt-2 max-w-md text-sm text-slate-500">Add prospects you are speaking with before they become full clients with policies.</p>
+            <Button className="mt-5" onClick={onAdd}><Plus className="h-4 w-4" /> Add Prospect</Button>
+          </CardContent>
+        </Card>
+      )}
+    </div>
+  );
+}
+
+function ProspectCard({ prospect, onEdit }: { prospect: Prospect; onEdit: () => void }) {
+  const due = prospect.follow_up_date ? isTodayOrPast(prospect.follow_up_date) && !["Converted", "Not Interested"].includes(prospect.status) : false;
+  return (
+    <Card>
+      <CardContent className="space-y-4 p-5">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <h2 className="text-lg font-extrabold text-primary">{prospect.full_name}</h2>
+            <a href={`tel:${normalizeGhanaPhoneNumber(prospect.phone_number)}`} className="mt-1 block text-sm font-semibold text-slate-600">{prospect.phone_number}</a>
+          </div>
+          <ProspectStatusBadge status={prospect.status} />
+        </div>
+        {prospect.follow_up_date ? (
+          <p className={`rounded-xl px-3 py-2 text-sm font-bold ${due ? "bg-orange-50 text-orange-700" : "bg-slate-50 text-slate-600"}`}>
+            Follow-up: {formatDate(prospect.follow_up_date)}
+          </p>
+        ) : null}
+        {prospect.notes ? <p className="line-clamp-3 text-sm leading-6 text-slate-600">{prospect.notes}</p> : null}
+        <div className="grid gap-2 sm:grid-cols-3">
+          <Button asChild variant="outline" className="min-h-11">
+            <a href={`tel:${normalizeGhanaPhoneNumber(prospect.phone_number)}`}><Phone className="h-4 w-4" /> Call</a>
+          </Button>
+          <Button asChild variant="outline" className="min-h-11">
+            <a href={prospectWhatsAppHref(prospect)} target="_blank" rel="noreferrer"><MessageCircle className="h-4 w-4" /> WhatsApp</a>
+          </Button>
+          <Button variant="ghost" className="min-h-11" onClick={onEdit}>Edit</Button>
+        </div>
+      </CardContent>
+    </Card>
   );
 }
 
@@ -1302,6 +1472,34 @@ function ClientModal({ client, onClose, onSave }: { client?: Client; onClose: ()
     });
   }
   return <ModalFrame title={client ? "Edit Client" : "Add New Client"} onClose={onClose}><form onSubmit={submit} className="grid gap-4 md:grid-cols-2"><label className="block text-sm font-semibold">Full Name<Input name="full_name" required defaultValue={client?.full_name} className="mt-1" /></label><label className="block text-sm font-semibold">Phone Number<Input name="phone_number" required defaultValue={client?.phone_number} className="mt-1" /></label><label className="block text-sm font-semibold">Email<Input name="email" type="email" defaultValue={client?.email ?? ""} className="mt-1" /></label><label className="block text-sm font-semibold">Date of Birth<Input name="date_of_birth" inputMode="numeric" placeholder="DD/MM/YYYY" defaultValue={dateOfBirthForDisplay(client?.date_of_birth)} pattern="(0?[1-9]|[12][0-9]|3[01])[/.-](0?[1-9]|1[0-2])[/.-](19|20)\\d\\d|\\d{4}-\\d{2}-\\d{2}" title="Use DD/MM/YYYY, for example 23/04/1993" className="mt-1" /></label><label className="block text-sm font-semibold md:col-span-2">Address<Input name="address" defaultValue={client?.address ?? ""} className="mt-1" /></label><div className="md:col-span-2 mt-2 flex justify-end gap-3"><Button type="button" variant="outline" onClick={onClose}>Cancel</Button><Button>Save Client</Button></div></form></ModalFrame>;
+}
+
+function ProspectModal({ prospect, onClose, onSave }: { prospect?: Prospect; onClose: () => void; onSave: (payload: Partial<Prospect>) => void }) {
+  function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    onSave({
+      id: prospect?.id,
+      full_name: String(form.get("full_name") ?? ""),
+      phone_number: String(form.get("phone_number") ?? ""),
+      status: String(form.get("status") ?? "New") as ProspectStatus,
+      follow_up_date: String(form.get("follow_up_date") ?? ""),
+      notes: String(form.get("notes") ?? "")
+    });
+  }
+
+  return (
+    <ModalFrame title={prospect ? "Edit Prospect" : "Add Prospect"} onClose={onClose}>
+      <form onSubmit={submit} className="grid gap-4 md:grid-cols-2">
+        <label className="block text-sm font-semibold">Full Name<Input name="full_name" required defaultValue={prospect?.full_name} className="mt-1" /></label>
+        <label className="block text-sm font-semibold">Phone Number<Input name="phone_number" required inputMode="tel" pattern="\\+?[0-9 ()-]{8,20}" defaultValue={prospect?.phone_number} className="mt-1" /></label>
+        <label className="block text-sm font-semibold">Status<Select name="status" defaultValue={prospect?.status ?? "New"} className="mt-1">{prospectStatuses.map((item) => <option key={item}>{item}</option>)}</Select></label>
+        <label className="block text-sm font-semibold">Follow-up Date<Input name="follow_up_date" type="date" defaultValue={prospect?.follow_up_date ?? ""} className="mt-1" /></label>
+        <label className="block text-sm font-semibold md:col-span-2">Notes<Textarea name="notes" defaultValue={prospect?.notes ?? ""} className="mt-1" /></label>
+        <div className="md:col-span-2 mt-2 flex justify-end gap-3"><Button type="button" variant="outline" onClick={onClose}>Cancel</Button><Button>Save Prospect</Button></div>
+      </form>
+    </ModalFrame>
+  );
 }
 
 function PolicyModal({ policy, clients, onClose, onSave }: { policy?: PolicyWithClient; clients: Client[]; onClose: () => void; onSave: (payload: PolicySavePayload) => void }) {
@@ -1957,6 +2155,29 @@ function clientWhatsAppHref(client: Client) {
 
 function birthdayWhatsAppHref(client: Client) {
   return whatsAppUrl(client.phone_number, `Happy Birthday ${client.full_name}! Wishing you good health, happiness, and a wonderful year ahead. Thank you for trusting us.`);
+}
+
+function prospectWhatsAppHref(prospect: Prospect) {
+  return whatsAppUrl(prospect.phone_number, `Hello ${prospect.full_name}, thank you for your interest. I am following up to see how I can help with your insurance needs.`);
+}
+
+function isTodayOrPast(value: string) {
+  const today = new Date();
+  const target = new Date(`${value}T00:00:00`);
+  today.setHours(0, 0, 0, 0);
+  target.setHours(0, 0, 0, 0);
+  return target.getTime() <= today.getTime();
+}
+
+function isProspectDueToday(prospect: Prospect) {
+  if (!prospect.follow_up_date || ["Converted", "Not Interested"].includes(prospect.status)) return false;
+  const today = new Date().toISOString().slice(0, 10);
+  return prospect.follow_up_date === today;
+}
+
+function ProspectStatusBadge({ status }: { status: ProspectStatus }) {
+  const tone = status === "Interested" ? "green" : status === "Call Back" ? "amber" : status === "Converted" ? "orange" : status === "Not Interested" ? "red" : "slate";
+  return <Badge tone={tone}>{status}</Badge>;
 }
 
 function renewalManagerMetrics(policies: PolicyWithClient[], birthdaysToday: number) {

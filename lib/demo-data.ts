@@ -1,6 +1,6 @@
 import { addDays, formatISO, startOfMonth, startOfWeek, subDays } from "date-fns";
 import { insuranceCategoryForPolicyType } from "@/lib/insurance";
-import type { ActivityNote, AppData, Client, Commission, PolicyWithClient, Profile } from "@/lib/types";
+import type { ActivityNote, AppData, Client, Commission, PolicyWithClient, Profile, Prospect } from "@/lib/types";
 
 const today = new Date();
 const date = (offset: number) => formatISO(addDays(today, offset), { representation: "date" });
@@ -154,6 +154,49 @@ const demoActivityNotes: ActivityNote[] = [
   }
 ];
 
+const demoProspects: Prospect[] = [
+  {
+    id: "pr1",
+    agent_id: "demo-agent",
+    full_name: "Selina Osei",
+    phone_number: "+233 24 190 4421",
+    status: "New",
+    follow_up_date: formatISO(today, { representation: "date" }),
+    notes: "Asked about comprehensive motor cover.",
+    created_at: subDays(today, 3).toISOString()
+  },
+  {
+    id: "pr2",
+    agent_id: "demo-agent",
+    full_name: "Kojo Ankomah",
+    phone_number: "+233 20 711 2844",
+    status: "Interested",
+    follow_up_date: date(2),
+    notes: "Wants family health cover options.",
+    created_at: subDays(today, 5).toISOString()
+  },
+  {
+    id: "pr3",
+    agent_id: "demo-agent",
+    full_name: "Mavis Nartey",
+    phone_number: "+233 55 430 6120",
+    status: "Call Back",
+    follow_up_date: date(-1),
+    notes: "Call after work about property insurance.",
+    created_at: subDays(today, 8).toISOString()
+  },
+  {
+    id: "pr4",
+    agent_id: "demo-agent",
+    full_name: "Daniel Tetteh",
+    phone_number: "+233 26 892 7710",
+    status: "Converted",
+    follow_up_date: null,
+    notes: "Converted after motor quote.",
+    created_at: subDays(today, 12).toISOString()
+  }
+];
+
 export const demoData: AppData = {
   profile: demoProfile,
   clients: demoClients,
@@ -163,6 +206,7 @@ export const demoData: AppData = {
     activity_notes: demoActivityNotes.filter((note) => note.policy_id === policy.id)
   })),
   commissions: demoCommissions,
+  prospects: demoProspects,
   activity_notes: demoActivityNotes,
   notifications: [
     {
