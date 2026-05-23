@@ -587,6 +587,8 @@ on public.prospects for select
 to authenticated
 using (public.is_admin());
 
+notify pgrst, 'reload schema';
+
 drop policy if exists "Policies are agent scoped" on public.policies;
 create policy "Policies are agent scoped"
 on public.policies for all

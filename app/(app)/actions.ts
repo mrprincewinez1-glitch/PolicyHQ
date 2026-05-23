@@ -175,7 +175,16 @@ export async function upsertProspect(_: unknown, formData: FormData) {
     : supabase.from("prospects").insert(payload).select(prospectColumns).single();
 
   const { data: prospect, error } = await query;
-  if (error || !prospect) return { ok: false, message: "We could not save this prospect." };
+  if (error || !prospect) {
+    console.error("Prospect save failed", { code: error?.code });
+    if (error?.code === "42P01" || error?.code === "PGRST205") {
+      return { ok: false, message: "Prospects setup is not complete yet. Run the prospects SQL in Supabase, then try again." };
+    }
+    if (error?.code === "42501") {
+      return { ok: false, message: "Prospects permissions are not ready yet. Re-run the prospects SQL in Supabase." };
+    }
+    return { ok: false, message: "We could not save this prospect." };
+  }
   revalidatePath("/prospects");
   revalidatePath("/dashboard");
   return { ok: true, message: "Prospect saved successfully.", prospect: prospect as Prospect };

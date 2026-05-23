@@ -33,3 +33,5 @@ on public.prospects
 for select
 to authenticated
 using (public.is_admin());
+
+notify pgrst, 'reload schema';
