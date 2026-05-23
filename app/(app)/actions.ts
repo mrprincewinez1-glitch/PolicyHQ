@@ -183,7 +183,7 @@ export async function upsertProspect(_: unknown, formData: FormData) {
     if (error?.code === "42501") {
       return { ok: false, message: "Prospects permissions are not ready yet. Re-run the prospects SQL in Supabase." };
     }
-    return { ok: false, message: "We could not save this prospect." };
+    return { ok: false, message: `We could not save this prospect. Setup detail: ${error?.code ?? "unknown"}` };
   }
   revalidatePath("/prospects");
   revalidatePath("/dashboard");
