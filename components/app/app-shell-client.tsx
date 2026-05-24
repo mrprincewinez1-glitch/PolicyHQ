@@ -7,7 +7,6 @@ import type { ChangeEvent, FormEvent, ReactNode } from "react";
 import {
   Bell,
   Calculator,
-  CheckCircle2,
   Cake,
   Download,
   FileText,
@@ -951,23 +950,23 @@ function Dashboard({ data, base, totalPaidThisMonth, openPolicy, todaysBirthdays
   }
 
   return (
-    <div className="max-w-[1062px] space-y-8">
+    <div className="max-w-[1062px] space-y-[26px]">
       <div>
-        <h1 className="text-[32px] font-extrabold leading-[44px] text-primary">{greeting(firstName(data.profile.full_name))}</h1>
-        <p className="mt-1 text-base font-medium leading-6 text-slate-600">{fullDate()}</p>
+        <h1 className="text-[30px] font-extrabold leading-[35px] tracking-[-0.04em] text-primary">{greeting(firstName(data.profile.full_name))}</h1>
+        <p className="mt-2 text-[13px] font-semibold leading-5 text-slate-500">{fullDate()}</p>
       </div>
-      <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-[176px_176px_210px_210px_210px]">
+      <div className="grid gap-[13px] md:grid-cols-2 xl:grid-cols-[136px_136px_168px_168px_168px]">
         <DashboardStatLink label="Total Clients" value={data.clients.length} href={navHref(base, "clients")} />
         <DashboardStatLink label="Active Policies" value={active.length} href={navHref(base, "policies")} />
-        <DashboardStatLink label="Commissions Earned This Month" value={formatCurrency(totalPaidThisMonth)} href={navHref(base, "commissions")} wide />
-        <DashboardStatLink label="Premium Due This Month" value={formatCurrency(premiumDueThisMonth)} href={`${base}/renewals/month`} wide />
+        <DashboardStatLink label="Commissions" value={formatCompactCurrency(totalPaidThisMonth)} href={navHref(base, "commissions")} wide />
+        <DashboardStatLink label="Premium Due" value={formatCompactCurrency(premiumDueThisMonth)} href={`${base}/renewals/month`} wide />
         <ProspectsDashboardCard total={data.prospects.length} dueToday={followUpsDueToday} href={navHref(base, "prospects")} />
       </div>
-      <div className="grid gap-[30px] lg:grid-cols-2">
+      <div className="grid gap-6 lg:grid-cols-2">
         <RevenueProtectionPanel mix={dashboardMix} metrics={revenueMetrics} base={base} />
         <RelationshipManagerPanel metrics={relationshipMetrics} birthdays={todaysBirthdays} base={base} />
       </div>
-      <Card className="min-h-[250px]"><CardHeader><h2 className="text-xl font-extrabold text-primary">Recent Activity</h2></CardHeader><DataTable headers={["Client Name", "Policy Number", "Type", "Expiry Date", "Status"]} rows={recent.map((p) => [<button className="font-bold text-primary" onClick={() => openPolicy(p)} key={p.id}>{p.client.full_name}</button>, p.policy_number, p.policy_type, formatDate(p.expiry_date), p.status])} /></Card>
+      <RecentActivityPanel recent={recent} openPolicy={openPolicy} />
     </div>
   );
 }
@@ -982,72 +981,79 @@ type DashboardPanelMetric = {
 
 function NoDataDashboard({ base, profileName }: { base: string; profileName: string }) {
   return (
-    <div className="max-w-[1062px] space-y-8">
+    <div className="max-w-[1062px] space-y-[26px]">
       <div>
-        <h1 className="text-[32px] font-extrabold leading-[44px] text-primary">{greeting(firstName(profileName))}</h1>
-        <p className="mt-1 text-base font-medium leading-6 text-slate-600">Set up your book to activate revenue, renewal, and relationship tracking.</p>
+        <h1 className="text-[30px] font-extrabold leading-[35px] tracking-[-0.04em] text-primary">Welcome to PolicyHQ</h1>
+        <p className="mt-2 text-[13px] font-semibold leading-5 text-slate-500">Set up your book once. PolicyHQ will turn it into daily actions.</p>
       </div>
-      <div className="grid gap-[30px] lg:grid-cols-[1.08fr_0.92fr]">
-        <Card className="overflow-hidden">
-          <CardHeader className="border-b-0 p-[26px] pb-0">
-            <Badge tone="orange">First setup</Badge>
-            <h2 className="mt-4 text-2xl font-extrabold leading-[30px] text-primary">Client book setup</h2>
-            <p className="mt-2 text-sm font-semibold leading-6 text-slate-500">Add records, import a spreadsheet, or start with prospects.</p>
+      <div className="grid gap-6 lg:grid-cols-[1.15fr_0.85fr]">
+        <Card className="min-h-[248px] overflow-hidden">
+          <CardHeader className="border-b-0 p-7 pb-0">
+            <h2 className="text-[22px] font-extrabold leading-[26px] tracking-[-0.04em] text-primary">Start with your existing clients</h2>
+            <p className="mt-3 text-[13px] font-semibold leading-6 text-slate-500">Most agents already have a book of business. Import it first, then fill in any missing fields.</p>
           </CardHeader>
-          <CardContent className="grid gap-4 p-[26px] sm:grid-cols-3">
-            <SetupStep icon={Users} title="Clients" body="Store customer details once." href={navHref(base, "clients")} />
-            <SetupStep icon={Upload} title="Import" body="Map spreadsheet columns." href={navHref(base, "clients")} />
-            <SetupStep icon={UserPlus} title="Prospects" body="Track leads before sale." href={navHref(base, "prospects")} />
+          <CardContent className="p-7 pt-6">
+            <div className="grid gap-3.5 sm:grid-cols-3">
+              <SetupStep number="1" title="Import clients" body="Upload Excel or CSV from your insurer." href={navHref(base, "clients")} />
+              <SetupStep number="2" title="Review policies" body="Confirm class, expiry, and premium." href={navHref(base, "policies")} />
+              <SetupStep number="3" title="Track actions" body="Renewals, birthdays, and commissions appear here." href={navHref(base, "dashboard")} />
+            </div>
+            <Button asChild className="mt-6 min-w-[118px] rounded-[10px] text-[10px] font-extrabold">
+              <Link href={navHref(base, "clients")}>Import Clients</Link>
+            </Button>
           </CardContent>
         </Card>
-        <Card>
-          <CardHeader className="border-b-0 p-[26px] pb-0">
-            <h2 className="text-2xl font-extrabold leading-[30px] text-primary">Operational coverage</h2>
+        <Card className="min-h-[248px]">
+          <CardHeader className="border-b-0 p-7 pb-0">
+            <h2 className="text-[22px] font-extrabold leading-[26px] tracking-[-0.04em] text-primary">What becomes active after setup?</h2>
           </CardHeader>
-          <CardContent className="space-y-4 p-[26px]">
+          <CardContent className="space-y-[13px] p-7 pt-6">
             <DashboardChecklistItem title="Revenue protection" body="Renewals, lapse risk, and premium windows." />
             <DashboardChecklistItem title="Relationship manager" body="Birthdays, follow-ups, and anniversaries." />
             <DashboardChecklistItem title="Daily activity" body="Recent actions and priority records." />
+            <Button asChild variant="outline" className="mt-1 min-w-[118px] rounded-[10px] text-[10px] font-extrabold">
+              <Link href={navHref(base, "prospects")}>Add Prospect</Link>
+            </Button>
           </CardContent>
         </Card>
       </div>
-      <div className="grid gap-[30px] lg:grid-cols-2">
-        <DashboardEmptyPillar title="Revenue Protection" body="Renewal and lapse workload." />
-        <DashboardEmptyPillar title="Relationship Manager" body="Birthdays, follow-ups, and anniversaries." />
+      <div className="grid gap-6 lg:grid-cols-2">
+        <DashboardEmptyPillar title="Revenue Protection" body="Waiting for policy data" helper="Import clients or add a first policy to activate this card." />
+        <DashboardEmptyPillar title="Relationship Manager" body="Waiting for client activity" helper="Birthdays and follow-ups appear when client details are captured." />
       </div>
     </div>
   );
 }
 
-function SetupStep({ icon: Icon, title, body, href }: { icon: LucideIcon; title: string; body: string; href: string }) {
+function SetupStep({ number, title, body, href }: { number: string; title: string; body: string; href: string }) {
   return (
-    <Link href={href} className="rounded-xl border border-slate-200 bg-slate-50 p-4 transition hover:border-accent hover:bg-accent/5">
-      <span className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-accent text-white"><Icon className="h-5 w-5" /></span>
-      <strong className="mt-4 block text-base font-extrabold text-primary">{title}</strong>
-      <span className="mt-1 block text-sm font-semibold leading-5 text-slate-500">{body}</span>
+    <Link href={href} className="min-h-28 rounded-xl border border-slate-200 bg-white p-[18px] transition hover:border-accent hover:bg-accent/5">
+      <span className="inline-flex h-7 min-w-7 items-center justify-center rounded-full bg-accent/10 px-2 text-[11px] font-extrabold text-accent">{number}</span>
+      <strong className="mt-3.5 block text-sm font-extrabold text-primary">{title}</strong>
+      <span className="mt-2 block text-[10px] font-bold leading-[1.45] text-slate-500">{body}</span>
     </Link>
   );
 }
 
 function DashboardChecklistItem({ title, body }: { title: string; body: string }) {
   return (
-    <div className="flex gap-3 rounded-xl border border-slate-200 bg-slate-50 p-4">
-      <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-success" />
+    <div className="flex items-start gap-3 rounded-xl bg-slate-50 p-3.5">
+      <span className="mt-0.5 h-5 w-5 shrink-0 rounded-full border-2 border-slate-200 bg-white" />
       <div>
-        <p className="font-extrabold text-primary">{title}</p>
-        <p className="mt-1 text-sm font-semibold leading-5 text-slate-500">{body}</p>
+        <p className="text-xs font-extrabold text-primary">{title}</p>
+        <p className="mt-1 text-[10px] font-bold leading-[1.45] text-slate-500">{body}</p>
       </div>
     </div>
   );
 }
 
-function DashboardEmptyPillar({ title, body }: { title: string; body: string }) {
+function DashboardEmptyPillar({ title, body, helper }: { title: string; body: string; helper: string }) {
   return (
-    <Card className="min-h-[220px]">
-      <CardContent className="flex h-full min-h-[220px] flex-col justify-center p-[26px]">
-        <p className="text-xs font-extrabold uppercase tracking-[0.18em] text-accent">Waiting for data</p>
-        <h2 className="mt-3 text-2xl font-extrabold text-primary">{title}</h2>
-        <p className="mt-2 text-sm font-semibold leading-6 text-slate-500">{body}</p>
+    <Card className="min-h-[148px]">
+      <CardContent className="flex h-full min-h-[148px] flex-col justify-center p-[23px]">
+        <h2 className="text-[22px] font-extrabold leading-[26px] tracking-[-0.04em] text-primary">{title}</h2>
+        <p className="mt-2 text-[11px] font-bold leading-[1.5] text-slate-500">{body}</p>
+        <DashboardActionRow title={body} body={helper} badge="Empty" tone="neutral" />
       </CardContent>
     </Card>
   );
@@ -1056,10 +1062,10 @@ function DashboardEmptyPillar({ title, body }: { title: string; body: string }) 
 function DashboardStatLink({ label, value, href, wide = false }: { label: string; value: string | number; href: string; wide?: boolean }) {
   return (
     <Link href={href} className="rounded-xl focus:outline-none focus:ring-2 focus:ring-accent">
-      <Card className={`h-[118px] transition hover:-translate-y-0.5 hover:border-accent hover:shadow-md ${wide ? "xl:w-[210px]" : "xl:w-[176px]"}`}>
-        <CardContent className="p-[18px]">
-          <p className="text-[13px] font-bold leading-[18px] text-slate-500">{label}</p>
-          <strong className="mt-3 block text-[32px] font-extrabold leading-10 text-primary">{value}</strong>
+      <Card className={`min-h-[88px] transition hover:-translate-y-0.5 hover:border-accent hover:shadow-md ${wide ? "xl:w-[168px]" : "xl:w-[136px]"}`}>
+        <CardContent className="p-[15px]">
+          <p className="text-[10px] font-extrabold leading-[14px] text-slate-500">{label}</p>
+          <strong className="mt-3 block truncate text-2xl font-extrabold leading-7 tracking-[-0.04em] text-primary">{value}</strong>
         </CardContent>
       </Card>
     </Link>
@@ -1072,21 +1078,23 @@ function RevenueProtectionPanel({ mix, metrics, base }: { mix: DashboardBusiness
   const cta = mix === "life" ? "Review Book" : "View Queue";
 
   return (
-    <Card className="min-h-[260px] overflow-hidden">
-      <CardHeader className="border-b-0 p-[26px] pb-0">
+    <Card className="min-h-[250px] overflow-hidden">
+      <CardHeader className="border-b-0 p-[23px] pb-0">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div>
-            <Badge tone="orange">Revenue Protection</Badge>
-            <h2 className="mt-4 text-2xl font-extrabold leading-[30px] text-primary">Revenue Protection</h2>
-            <p className="mt-2 text-sm font-semibold leading-6 text-slate-500">{copy}</p>
+            <h2 className="text-[22px] font-extrabold leading-[26px] tracking-[-0.04em] text-primary">Revenue Protection</h2>
+            <p className="mt-2 text-[11px] font-bold leading-[1.5] text-slate-500">{copy}</p>
           </div>
-          <Button asChild variant="outline" className="shrink-0">
+          <Button asChild className="min-w-[118px] shrink-0 rounded-[10px] text-[10px] font-extrabold">
             <Link href={href}>{cta}</Link>
           </Button>
         </div>
       </CardHeader>
-      <CardContent className="grid gap-4 p-[26px] pt-[22px] sm:grid-cols-3">
-        {metrics.map((item) => <DashboardPanelMetricCard key={item.label} metric={item} />)}
+      <CardContent className="p-[23px] pt-[22px]">
+        <div className="grid gap-3 sm:grid-cols-3">
+          {metrics.map((item) => <DashboardPanelMetricCard key={item.label} metric={item} />)}
+        </div>
+        <DashboardActionRow {...dashboardRevenueAction(mix, metrics)} />
       </CardContent>
     </Card>
   );
@@ -1094,36 +1102,25 @@ function RevenueProtectionPanel({ mix, metrics, base }: { mix: DashboardBusiness
 
 function RelationshipManagerPanel({ metrics, birthdays, base }: { metrics: DashboardPanelMetric[]; birthdays: Client[]; base: string }) {
   return (
-    <Card className="min-h-[260px] overflow-hidden">
-      <CardHeader className="border-b-0 p-[26px] pb-0">
+    <Card className="min-h-[250px] overflow-hidden">
+      <CardHeader className="border-b-0 p-[23px] pb-0">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div>
-            <Badge tone="green">Relationship Manager</Badge>
-            <h2 className="mt-4 text-2xl font-extrabold leading-[30px] text-primary">Relationship Manager</h2>
-            <p className="mt-2 text-sm font-semibold leading-6 text-slate-500">Client touchpoints</p>
+            <h2 className="text-[22px] font-extrabold leading-[26px] tracking-[-0.04em] text-primary">Relationship Manager</h2>
+            <p className="mt-2 text-[11px] font-bold leading-[1.5] text-slate-500">Client touchpoints</p>
           </div>
-          <Button asChild variant="outline" className="shrink-0">
+          <Button asChild className="min-w-[118px] shrink-0 rounded-[10px] text-[10px] font-extrabold">
             <Link href={`${navHref(base, "prospects")}?filter=today`}>Open Tasks</Link>
           </Button>
         </div>
       </CardHeader>
-      <CardContent className="space-y-5 p-[26px] pt-[22px]">
-        <div className="grid gap-4 sm:grid-cols-3">
+      <CardContent className="p-[23px] pt-[22px]">
+        <div className="grid gap-3 sm:grid-cols-3">
           {metrics.map((item) => <DashboardPanelMetricCard key={item.label} metric={item} />)}
         </div>
         {birthdays.length ? (
-          <div className="space-y-3 rounded-xl border border-accent/20 bg-accent/5 p-4">
-            {birthdays.slice(0, 2).map((client) => (
-              <div key={client.id} className="flex items-center justify-between gap-4">
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-extrabold text-primary">{client.full_name}</p>
-                  <p className="truncate text-xs font-semibold text-slate-500">{client.phone_number}</p>
-                </div>
-                <WhatsAppButton href={birthdayWhatsAppHref(client)} label="WhatsApp" />
-              </div>
-            ))}
-          </div>
-        ) : null}
+          <DashboardBirthdayAction client={birthdays[0]} />
+        ) : <DashboardActionRow {...dashboardRelationshipAction(metrics)} />}
       </CardContent>
     </Card>
   );
@@ -1132,38 +1129,71 @@ function RelationshipManagerPanel({ metrics, birthdays, base }: { metrics: Dashb
 function DashboardPanelMetricCard({ metric }: { metric: DashboardPanelMetric }) {
   const color = metric.tone === "danger" ? "text-danger" : metric.tone === "warning" ? "text-warning" : metric.tone === "success" ? "text-success" : metric.tone === "accent" ? "text-accent" : "text-primary";
   return (
-    <div className="h-[118px] rounded-xl border border-slate-200 bg-slate-50 p-[18px]">
-      <p className="text-[13px] font-bold leading-[18px] text-slate-500">{metric.label}</p>
-      <strong className={`mt-3 block text-[32px] font-extrabold leading-10 ${color}`}>{metric.value}</strong>
-      {metric.helper ? <p className="mt-1 truncate text-[11px] font-bold text-slate-400">{metric.helper}</p> : null}
+    <div className="min-h-[76px] rounded-[10px] border border-slate-200 bg-slate-50 p-3">
+      <p className="text-[10px] font-extrabold leading-[14px] text-slate-500">{metric.label}</p>
+      <strong className={`mt-2 block text-[26px] font-extrabold leading-none tracking-[-0.04em] ${color}`}>{metric.value}</strong>
+      {metric.helper ? <p className="mt-1 truncate text-[10px] font-bold text-slate-400">{metric.helper}</p> : null}
     </div>
+  );
+}
+
+function DashboardActionRow({ title, body, badge, tone }: { title: string; body: string; badge: string; tone: "neutral" | "danger" | "warning" | "success" }) {
+  const background = tone === "danger" ? "bg-danger/10" : tone === "warning" ? "bg-warning/10" : tone === "success" ? "bg-success/10" : "bg-slate-50";
+  const badgeColor = tone === "danger" ? "bg-danger" : tone === "warning" ? "bg-warning" : tone === "success" ? "bg-success" : "bg-primary";
+  return (
+    <div className={`mt-[17px] flex min-h-[58px] items-center justify-between gap-4 rounded-[10px] border border-slate-200 px-3.5 py-[13px] ${background}`}>
+      <div className="min-w-0">
+        <strong className="block truncate text-[13px] font-extrabold text-primary">{title}</strong>
+        <span className="mt-1 block text-[10px] font-bold leading-[1.35] text-slate-500">{body}</span>
+      </div>
+      <span className={`min-w-[68px] shrink-0 rounded-full px-2.5 py-2 text-center text-[9px] font-extrabold text-white ${badgeColor}`}>{badge}</span>
+    </div>
+  );
+}
+
+function DashboardBirthdayAction({ client }: { client: Client }) {
+  return (
+    <div className="mt-[17px] flex min-h-[58px] items-center justify-between gap-4 rounded-[10px] border border-slate-200 bg-warning/10 px-3.5 py-[13px]">
+      <div className="min-w-0">
+        <strong className="block truncate text-[13px] font-extrabold text-primary">{client.full_name}</strong>
+        <span className="mt-1 block truncate text-[10px] font-bold leading-[1.35] text-slate-500">Birthday today · {client.phone_number}</span>
+      </div>
+      <WhatsAppButton href={birthdayWhatsAppHref(client)} label="WhatsApp" className="shrink-0 rounded-[10px] text-[10px] font-extrabold" />
+    </div>
+  );
+}
+
+function RecentActivityPanel({ recent, openPolicy }: { recent: PolicyWithClient[]; openPolicy: (policy: PolicyWithClient) => void }) {
+  const latest = recent[0];
+  return (
+    <Card className="min-h-28">
+      <CardContent className="p-[23px]">
+        <h2 className="text-[22px] font-extrabold leading-[26px] tracking-[-0.04em] text-primary">Recent Activity</h2>
+        {latest ? (
+          <div className="mt-[18px] flex items-center justify-between gap-4 text-xs font-bold">
+            <button className="min-w-0 truncate text-left text-primary" onClick={() => openPolicy(latest)}>
+              {latest.client.full_name} · {latest.policy_type} · {latest.renewal_status}
+            </button>
+            <Badge tone={latest.renewal_status === "Renewed" ? "green" : latest.renewal_status === "Lost" ? "red" : "amber"}>{latest.renewal_status}</Badge>
+          </div>
+        ) : (
+          <p className="mt-[18px] text-xs font-bold text-slate-500">No recent policy activity yet.</p>
+        )}
+      </CardContent>
+    </Card>
   );
 }
 
 function ProspectsDashboardCard({ total, dueToday, href }: { total: number; dueToday: number; href: string }) {
   return (
     <Link href={href} className="rounded-xl focus:outline-none focus:ring-2 focus:ring-accent">
-      <Card className="h-[118px] cursor-pointer overflow-hidden transition hover:-translate-y-0.5 hover:border-accent hover:shadow-md xl:w-[210px]">
-        <CardContent className="p-[14px]">
-          <div className="flex items-start justify-between gap-3">
-            <div className="min-w-0">
-              <p className="text-[13px] font-bold leading-[18px] text-slate-500">Prospects</p>
-              <p className="truncate text-[10px] font-semibold leading-3 text-slate-400">Sales pipeline</p>
-            </div>
-            <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-accent/10 text-accent">
-              <UserPlus className="h-3.5 w-3.5" />
-            </span>
-          </div>
-          <div className="mt-2 grid h-[48px] grid-cols-2 rounded-xl border border-slate-200 bg-slate-50 p-1.5">
-            <div className="px-1">
-              <strong className="block text-[26px] font-extrabold leading-7 text-primary">{total}</strong>
-              <span className="block text-[10px] font-semibold leading-3 text-slate-500">Total</span>
-            </div>
-            <div className="border-l border-slate-200 pl-2">
-              <div className="rounded-lg bg-accent/10 px-1.5">
-                <strong className="block text-[26px] font-extrabold leading-7 text-accent">{dueToday}</strong>
-                <span className="block whitespace-nowrap text-[10px] font-semibold leading-3 text-slate-500">Due today</span>
-              </div>
+      <Card className="min-h-[88px] cursor-pointer overflow-hidden transition hover:-translate-y-0.5 hover:border-accent hover:shadow-md xl:w-[168px]">
+        <CardContent className="p-[15px]">
+          <p className="text-[10px] font-extrabold leading-[14px] text-slate-500">Prospects</p>
+          <div className="mt-3 flex items-end justify-between gap-3">
+            <strong className="block text-2xl font-extrabold leading-7 tracking-[-0.04em] text-primary">{total}</strong>
+            <div className="rounded-full bg-accent/10 px-2.5 py-1 text-[10px] font-extrabold text-accent">
+              {dueToday} due
             </div>
           </div>
         </CardContent>
@@ -2355,6 +2385,43 @@ function isProspectDueToday(prospect: Prospect) {
 function ProspectStatusBadge({ status }: { status: ProspectStatus }) {
   const tone = status === "Interested" ? "green" : status === "Call Back" ? "amber" : status === "Converted" ? "orange" : status === "Not Interested" ? "red" : "slate";
   return <Badge tone={tone}>{status}</Badge>;
+}
+
+function formatCompactCurrency(value: number) {
+  if (value >= 1000) return `GHS ${Math.round(value / 1000)}k`;
+  return formatCurrency(value).replace("GH₵", "GHS ");
+}
+
+function dashboardRevenueAction(mix: DashboardBusinessMix, metrics: DashboardPanelMetric[]) {
+  const valueFor = (label: string) => metrics.find((metric) => metric.label === label)?.value ?? 0;
+  if (mix === "life") {
+    const missing = valueFor("Missing Statement");
+    const atRisk = valueFor("At Risk Life");
+    if (missing) return { title: "Lapse Shield", body: `${missing} clients missing from the latest commission statement.`, badge: "Review", tone: "danger" as const };
+    if (atRisk) return { title: "Life retention watch", body: `${atRisk} clients are still inside the year 1-3 danger zone.`, badge: "Watch", tone: "warning" as const };
+    return { title: "Life book stable", body: "No immediate lapse or statement risk showing today.", badge: "Clear", tone: "success" as const };
+  }
+
+  if (mix === "mixed") {
+    const week = valueFor("This Week");
+    const missing = valueFor("Missing Statement");
+    if (week || missing) return { title: "Highest risk today", body: `${missing} life statement gaps + ${week} policies expiring this week.`, badge: "Act Now", tone: "danger" as const };
+    return { title: "Mixed book stable", body: "No critical renewal or life-retention action today.", badge: "Clear", tone: "success" as const };
+  }
+
+  const week = valueFor("This Week");
+  if (week) return { title: `${week} policies expire this week`, body: "Prioritise critical renewals before they become lost business.", badge: "This Week", tone: "danger" as const };
+  const nextWeek = valueFor("Next Week");
+  if (nextWeek) return { title: `${nextWeek} renewals next week`, body: "Prepare quotes and client follow-ups before the window gets tight.", badge: "Next", tone: "warning" as const };
+  return { title: "Renewal queue stable", body: "No urgent renewal pressure in the current week.", badge: "Clear", tone: "success" as const };
+}
+
+function dashboardRelationshipAction(metrics: DashboardPanelMetric[]) {
+  const followUps = metrics.find((metric) => metric.label === "Follow-ups Due")?.value ?? 0;
+  const anniversaries = metrics.find((metric) => metric.label === "Anniversaries")?.value ?? 0;
+  if (followUps) return { title: "Relationship tasks due", body: `${followUps} prospect follow-ups need attention today.`, badge: "Follow up", tone: "warning" as const };
+  if (anniversaries) return { title: "Policy anniversary reviews", body: `${anniversaries} clients due for a coverage review.`, badge: "Upsell", tone: "success" as const };
+  return { title: "Client touchpoints clear", body: "No birthday, follow-up, or anniversary task due today.", badge: "Clear", tone: "success" as const };
 }
 
 function dashboardBusinessMix(data: AppData): DashboardBusinessMix {
