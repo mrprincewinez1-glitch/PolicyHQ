@@ -946,8 +946,7 @@ function Dashboard({ data, base, totalPaidThisMonth, openPolicy, todaysBirthdays
           ["Total Clients", data.clients.length, navHref(base, "clients")],
           ["Active Policies", active.length, navHref(base, "policies")],
           ["Commissions Earned This Month", formatCurrency(totalPaidThisMonth), navHref(base, "commissions")],
-          ["Premium Due This Month", formatCurrency(premiumDueThisMonth), `${base}/renewals/month`],
-          ["Follow-ups Due Today", followUpsDueToday, `${navHref(base, "prospects")}?filter=today`]
+          ["Premium Due This Month", formatCurrency(premiumDueThisMonth), `${base}/renewals/month`]
         ].map(([label, value, href]) => (
           <Link key={label} href={href as string} className="rounded-xl focus:outline-none focus:ring-2 focus:ring-accent">
             <Card className="h-full transition hover:-translate-y-0.5 hover:border-orange-200 hover:shadow-md">
@@ -958,6 +957,7 @@ function Dashboard({ data, base, totalPaidThisMonth, openPolicy, todaysBirthdays
             </Card>
           </Link>
         ))}
+        <ProspectsDashboardCard total={data.prospects.length} dueToday={followUpsDueToday} href={navHref(base, "prospects")} />
       </div>
       <div className="grid gap-4 md:grid-cols-5">
         {managerMetrics.map((item) => (
@@ -996,6 +996,31 @@ function Dashboard({ data, base, totalPaidThisMonth, openPolicy, todaysBirthdays
       </div>
       <Card><CardHeader><h2 className="font-bold">Recent Activity</h2></CardHeader><DataTable headers={["Client Name", "Policy Number", "Type", "Expiry Date", "Status"]} rows={recent.map((p) => [<button className="font-bold text-primary" onClick={() => openPolicy(p)} key={p.id}>{p.client.full_name}</button>, p.policy_number, p.policy_type, formatDate(p.expiry_date), p.status])} /></Card>
     </div>
+  );
+}
+
+function ProspectsDashboardCard({ total, dueToday, href }: { total: number; dueToday: number; href: string }) {
+  return (
+    <Link href={href} className="rounded-xl focus:outline-none focus:ring-2 focus:ring-accent">
+      <Card className="h-full cursor-pointer transition hover:-translate-y-0.5 hover:border-orange-200 hover:shadow-md">
+        <CardContent className="p-5">
+          <div className="mb-3 flex items-center justify-between">
+            <p className="text-sm font-semibold text-slate-500">Prospects</p>
+            <UserPlus className="h-4 w-4 text-slate-400" />
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <strong className="block text-3xl font-extrabold text-primary">{total}</strong>
+              <span className="mt-1 block text-xs font-semibold leading-4 text-slate-500">Total prospects</span>
+            </div>
+            <div className="border-l border-slate-200 pl-4">
+              <strong className="block text-3xl font-extrabold text-accent">{dueToday}</strong>
+              <span className="mt-1 block text-xs font-semibold leading-4 text-slate-500">Follow-ups due today</span>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+    </Link>
   );
 }
 
