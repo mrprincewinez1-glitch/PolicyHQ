@@ -359,13 +359,13 @@
 
       .empty-hero {
         display: grid;
-        grid-template-columns: 1fr 1fr;
+        grid-template-columns: 1.15fr .85fr;
         gap: 24px;
         margin-top: 28px;
       }
 
       .empty-card {
-        min-height: 190px;
+        min-height: 248px;
         padding: 28px;
       }
 
@@ -376,11 +376,106 @@
         font-weight: 600;
       }
 
+      .setup-actions {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 14px;
+        margin-top: 24px;
+      }
+
+      .setup-action {
+        min-height: 112px;
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        background: white;
+        padding: 18px;
+      }
+
+      .setup-action .step {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-width: 28px;
+        height: 28px;
+        border-radius: 999px;
+        background: rgb(249 115 22 / 12%);
+        color: var(--orange);
+        font-size: 11px;
+        font-weight: 800;
+      }
+
+      .setup-action strong {
+        display: block;
+        margin-top: 14px;
+        font-size: 14px;
+        font-weight: 800;
+      }
+
+      .setup-action span {
+        display: block;
+        margin-top: 7px;
+        color: var(--muted);
+        font-size: 10px;
+        line-height: 1.45;
+        font-weight: 700;
+      }
+
+      .checklist {
+        display: grid;
+        gap: 13px;
+        margin-top: 22px;
+      }
+
+      .check-item {
+        display: flex;
+        gap: 12px;
+        align-items: flex-start;
+        border-radius: 12px;
+        background: var(--bg);
+        padding: 14px;
+      }
+
+      .dot {
+        width: 20px;
+        height: 20px;
+        flex: 0 0 auto;
+        border-radius: 999px;
+        border: 2px solid var(--border);
+        background: white;
+      }
+
+      .check-item strong {
+        display: block;
+        font-size: 12px;
+        font-weight: 800;
+      }
+
+      .check-item span {
+        display: block;
+        margin-top: 3px;
+        color: var(--muted);
+        font-size: 10px;
+        line-height: 1.45;
+        font-weight: 700;
+      }
+
+      .empty-pillars {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 24px;
+        margin-top: 26px;
+      }
+
+      .quiet-pillar {
+        min-height: 148px;
+        padding: 23px;
+      }
+
       @media (max-width: 900px) {
         .board { padding: 0; }
         .screen { width: 100%; grid-template-columns: 1fr; }
         .sidebar { display: none; }
-        .stats, .pillars, .mini-grid, .empty-hero { grid-template-columns: 1fr; }
+        .stats, .pillars, .mini-grid, .empty-hero, .setup-actions, .empty-pillars { grid-template-columns: 1fr; }
         .content { padding: 24px; }
       }
     </style>
@@ -404,14 +499,31 @@
           <aside class="sidebar"><div class="brand"><strong>PolicyHQ</strong><span>INSURANCE PLATFORM</span></div><nav class="nav"><div class="active"><i class="icon"></i>Dashboard</div><div><i class="icon"></i>Clients</div><div><i class="icon"></i>Prospects</div><div><i class="icon"></i>Policies</div><div><i class="icon"></i>Commissions</div><div><i class="icon"></i>Renewal Alerts</div><div><i class="icon"></i>Profile</div></nav></aside>
           <main><header class="topbar"><div class="search">Search clients, policies, prospects...</div><div class="top-title">Dashboard</div><div class="alert-pill">Renewal Alerts</div></header>
             <div class="content">
-              <h2>Welcome to PolicyHQ</h2><p class="date">Start by adding clients, policies, or prospects.</p>
+              <h2>Welcome to PolicyHQ</h2><p class="date">Set up your book once. PolicyHQ will turn it into daily actions.</p>
               <div class="empty-hero">
-                <article class="card empty-card"><h3>Build your book of business</h3><p>Add your first client and policy, or import an existing list to avoid manual typing.</p><div class="button">Import Clients</div></article>
-                <article class="card empty-card"><h3>Track prospects before they convert</h3><p>Add people you are speaking with before they become policy clients.</p><div class="button secondary">Add Prospect</div></article>
+                <article class="card empty-card">
+                  <h3>Start with your existing clients</h3>
+                  <p>Most agents already have a book of business. Import it first, then fill in any missing fields instead of typing everything from scratch.</p>
+                  <div class="setup-actions">
+                    <div class="setup-action"><span class="step">1</span><strong>Import clients</strong><span>Upload Excel or CSV from your insurer.</span></div>
+                    <div class="setup-action"><span class="step">2</span><strong>Review policies</strong><span>Confirm policy class, expiry, and premium.</span></div>
+                    <div class="setup-action"><span class="step">3</span><strong>Track actions</strong><span>Renewals, follow-ups, birthdays, and commissions appear here.</span></div>
+                  </div>
+                  <div style="margin-top: 24px;" class="button">Import Clients</div>
+                </article>
+                <article class="card empty-card">
+                  <h3>What becomes active after setup?</h3>
+                  <div class="checklist">
+                    <div class="check-item"><i class="dot"></i><div><strong>Revenue Protection</strong><span>Shows renewal buckets, lapse risks, or premium actions depending on your policies.</span></div></div>
+                    <div class="check-item"><i class="dot"></i><div><strong>Relationship Manager</strong><span>Shows birthdays, prospect follow-ups, anniversaries, and client check-ins.</span></div></div>
+                    <div class="check-item"><i class="dot"></i><div><strong>Recent Activity</strong><span>Keeps a simple trail of the work done inside PolicyHQ.</span></div></div>
+                  </div>
+                  <div style="margin-top: 20px;" class="button secondary">Add Prospect</div>
+                </article>
               </div>
-              <div class="pillars">
-                <article class="card pillar"><h3>Revenue Protection</h3><p class="sub">Once policies exist, this area will show renewals, premium risk, or life lapse signals.</p><div class="action-row neutral"><div><strong>No revenue risks yet</strong><span>Add policies to activate this section.</span></div><div class="badge neutral">Empty</div></div></article>
-                <article class="card pillar"><h3>Relationship Manager</h3><p class="sub">Birthdays, follow-ups, and client check-ins will appear here.</p><div class="action-row neutral"><div><strong>No relationship tasks yet</strong><span>Add clients and prospects to activate reminders.</span></div><div class="badge neutral">Empty</div></div></article>
+              <div class="empty-pillars">
+                <article class="card quiet-pillar"><h3>Revenue Protection</h3><p class="sub">No revenue risks yet. Once policies are added, this becomes the agent's renewal, premium, or lapse-risk command area.</p><div class="action-row neutral"><div><strong>Waiting for policy data</strong><span>Import clients or add a first policy to activate this card.</span></div><div class="badge neutral">Empty</div></div></article>
+                <article class="card quiet-pillar"><h3>Relationship Manager</h3><p class="sub">No relationship tasks yet. Add clients or prospects to activate birthdays, follow-ups, and check-ins.</p><div class="action-row neutral"><div><strong>Waiting for client activity</strong><span>Birthdays and follow-ups appear when client details are captured.</span></div><div class="badge neutral">Empty</div></div></article>
               </div>
             </div>
           </main>
