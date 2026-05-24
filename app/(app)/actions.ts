@@ -190,6 +190,25 @@ export async function upsertProspect(_: unknown, formData: FormData) {
   return { ok: true, message: "Prospect saved successfully.", prospect: prospect as Prospect };
 }
 
+export async function deleteProspect(prospectId: string) {
+  const { supabase, agentId } = await currentUserId();
+  const limited = assertActionRateLimit(agentId, "delete-prospect", 40);
+  if (limited) return { ok: false, message: limited };
+
+  const { data: prospect, error } = await supabase
+    .from("prospects")
+    .delete()
+    .eq("id", prospectId)
+    .eq("agent_id", agentId)
+    .select("id")
+    .maybeSingle();
+
+  if (error || !prospect) return { ok: false, message: "We could not delete this prospect." };
+  revalidatePath("/prospects");
+  revalidatePath("/dashboard");
+  return { ok: true, message: "Prospect deleted." };
+}
+
 async function currentUserId() {
   const supabase = createClient();
   const { data } = await supabase.auth.getUser();

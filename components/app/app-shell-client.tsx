@@ -31,6 +31,7 @@ import {
 import {
   deleteClient as deleteClientAction,
   deletePolicy as deletePolicyAction,
+  deleteProspect as deleteProspectAction,
   markAllNotificationsRead,
   markCommissionPaid,
   markNotificationRead,
@@ -324,6 +325,31 @@ export function AppShell({
     setData((current) => ({
       ...current,
       prospects: payload.id ? current.prospects.map((prospect) => prospect.id === saved.id ? saved : prospect) : [saved, ...current.prospects]
+    }));
+    setModal(null);
+    notify("success", result.message);
+  }
+
+  async function deleteProspect(prospect: Prospect) {
+    if (blockWrite()) return;
+    if (data.profile.id === "demo-agent") {
+      setData((current) => ({
+        ...current,
+        prospects: current.prospects.filter((item) => item.id !== prospect.id)
+      }));
+      setModal(null);
+      notify("success", "Prospect deleted in local preview.");
+      return;
+    }
+
+    const result = await deleteProspectAction(prospect.id);
+    if (!result.ok) {
+      notify("error", result.message);
+      return;
+    }
+    setData((current) => ({
+      ...current,
+      prospects: current.prospects.filter((item) => item.id !== prospect.id)
     }));
     setModal(null);
     notify("success", result.message);
@@ -710,6 +736,7 @@ export function AppShell({
       dueTodayOnly={prospectFilter === "today"}
       onAdd={() => blockWrite() || setModal({ type: "prospect" })}
       onEdit={(prospect) => blockWrite() || setModal({ type: "prospect", prospect })}
+      onDelete={(prospect) => blockWrite() || setModal({ type: "confirm", title: "Delete prospect?", body: `This will permanently delete ${prospect.full_name} from your prospects list.`, action: () => deleteProspect(prospect) })}
     />
   ) : active === "policies" ? (
     <Policies
@@ -895,7 +922,7 @@ export function AppShell({
       {mobileOpen ? <button aria-label="Close menu" className="fixed inset-0 z-30 bg-black/40 lg:hidden" onClick={() => setMobileOpen(false)}><X className="ml-auto mr-5 mt-5 text-white" /></button> : null}
       {modal?.type === "demo" ? <DemoModal onClose={() => setModal(null)} /> : null}
       {modal?.type === "client" ? <ClientModal client={modal.client} onClose={() => setModal(null)} onSave={saveClient} /> : null}
-      {modal?.type === "prospect" ? <ProspectModal prospect={modal.prospect} onClose={() => setModal(null)} onSave={saveProspect} /> : null}
+      {modal?.type === "prospect" ? <ProspectModal prospect={modal.prospect} onClose={() => setModal(null)} onSave={saveProspect} onDelete={(prospect) => setModal({ type: "confirm", title: "Delete prospect?", body: `This will permanently delete ${prospect.full_name} from your prospects list.`, action: () => deleteProspect(prospect) })} /> : null}
       {modal?.type === "policy" ? <PolicyModal policy={modal.policy} clients={data.clients} onClose={() => setModal(null)} onSave={savePolicy} /> : null}
       {modal?.type === "import" ? <ImportClientsModal onClose={() => setModal(null)} onImport={importClients} /> : null}
       {modal?.type === "confirm" ? <ConfirmModal title={modal.title} body={modal.body} onClose={() => setModal(null)} onConfirm={modal.action} /> : null}
@@ -981,7 +1008,7 @@ function RenewalList({ title, policies, base, updateRenewal, openPolicy, onBack 
   );
 }
 
-function Prospects({ prospects, dueTodayOnly, onAdd, onEdit }: { prospects: Prospect[]; dueTodayOnly: boolean; onAdd: () => void; onEdit: (prospect: Prospect) => void }) {
+function Prospects({ prospects, dueTodayOnly, onAdd, onEdit, onDelete }: { prospects: Prospect[]; dueTodayOnly: boolean; onAdd: () => void; onEdit: (prospect: Prospect) => void; onDelete: (prospect: Prospect) => void }) {
   const [status, setStatus] = useState<ProspectStatus | "All">("All");
   const visible = prospects.filter((prospect) => {
     const matchesStatus = status === "All" || prospect.status === status;
@@ -1018,7 +1045,7 @@ function Prospects({ prospects, dueTodayOnly, onAdd, onEdit }: { prospects: Pros
       {visible.length ? (
         <div className="grid gap-4 lg:grid-cols-2 xl:grid-cols-3">
           {visible.map((prospect) => (
-            <ProspectCard key={prospect.id} prospect={prospect} onEdit={() => onEdit(prospect)} />
+            <ProspectCard key={prospect.id} prospect={prospect} onEdit={() => onEdit(prospect)} onDelete={() => onDelete(prospect)} />
           ))}
         </div>
       ) : (
@@ -1035,7 +1062,7 @@ function Prospects({ prospects, dueTodayOnly, onAdd, onEdit }: { prospects: Pros
   );
 }
 
-function ProspectCard({ prospect, onEdit }: { prospect: Prospect; onEdit: () => void }) {
+function ProspectCard({ prospect, onEdit, onDelete }: { prospect: Prospect; onEdit: () => void; onDelete: () => void }) {
   const due = prospect.follow_up_date ? isTodayOrPast(prospect.follow_up_date) && !["Converted", "Not Interested"].includes(prospect.status) : false;
   return (
     <Card>
@@ -1053,7 +1080,7 @@ function ProspectCard({ prospect, onEdit }: { prospect: Prospect; onEdit: () => 
           </p>
         ) : null}
         {prospect.notes ? <p className="line-clamp-3 text-sm leading-6 text-slate-600">{prospect.notes}</p> : null}
-        <div className="grid gap-2 sm:grid-cols-3">
+        <div className="grid gap-2 sm:grid-cols-2">
           <Button asChild variant="outline" className="min-h-11">
             <a href={`tel:${normalizeGhanaPhoneNumber(prospect.phone_number)}`}><Phone className="h-4 w-4" /> Call</a>
           </Button>
@@ -1061,6 +1088,7 @@ function ProspectCard({ prospect, onEdit }: { prospect: Prospect; onEdit: () => 
             <a href={prospectWhatsAppHref(prospect)} target="_blank" rel="noreferrer"><MessageCircle className="h-4 w-4" /> WhatsApp</a>
           </Button>
           <Button variant="ghost" className="min-h-11" onClick={onEdit}>Edit</Button>
+          <Button variant="ghost" className="min-h-11 text-danger hover:bg-red-50" onClick={onDelete}><Trash2 className="h-4 w-4" /> Delete</Button>
         </div>
       </CardContent>
     </Card>
@@ -1474,7 +1502,7 @@ function ClientModal({ client, onClose, onSave }: { client?: Client; onClose: ()
   return <ModalFrame title={client ? "Edit Client" : "Add New Client"} onClose={onClose}><form onSubmit={submit} className="grid gap-4 md:grid-cols-2"><label className="block text-sm font-semibold">Full Name<Input name="full_name" required defaultValue={client?.full_name} className="mt-1" /></label><label className="block text-sm font-semibold">Phone Number<Input name="phone_number" required defaultValue={client?.phone_number} className="mt-1" /></label><label className="block text-sm font-semibold">Email<Input name="email" type="email" defaultValue={client?.email ?? ""} className="mt-1" /></label><label className="block text-sm font-semibold">Date of Birth<Input name="date_of_birth" inputMode="numeric" placeholder="DD/MM/YYYY" defaultValue={dateOfBirthForDisplay(client?.date_of_birth)} pattern="(0?[1-9]|[12][0-9]|3[01])[/.-](0?[1-9]|1[0-2])[/.-](19|20)\\d\\d|\\d{4}-\\d{2}-\\d{2}" title="Use DD/MM/YYYY, for example 23/04/1993" className="mt-1" /></label><label className="block text-sm font-semibold md:col-span-2">Address<Input name="address" defaultValue={client?.address ?? ""} className="mt-1" /></label><div className="md:col-span-2 mt-2 flex justify-end gap-3"><Button type="button" variant="outline" onClick={onClose}>Cancel</Button><Button>Save Client</Button></div></form></ModalFrame>;
 }
 
-function ProspectModal({ prospect, onClose, onSave }: { prospect?: Prospect; onClose: () => void; onSave: (payload: Partial<Prospect>) => void }) {
+function ProspectModal({ prospect, onClose, onSave, onDelete }: { prospect?: Prospect; onClose: () => void; onSave: (payload: Partial<Prospect>) => void; onDelete: (prospect: Prospect) => void }) {
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
@@ -1496,7 +1524,13 @@ function ProspectModal({ prospect, onClose, onSave }: { prospect?: Prospect; onC
         <label className="block text-sm font-semibold">Status<Select name="status" defaultValue={prospect?.status ?? "New"} className="mt-1">{prospectStatuses.map((item) => <option key={item}>{item}</option>)}</Select></label>
         <label className="block text-sm font-semibold">Follow-up Date<Input name="follow_up_date" type="date" defaultValue={prospect?.follow_up_date ?? ""} className="mt-1" /></label>
         <label className="block text-sm font-semibold md:col-span-2">Notes<Textarea name="notes" defaultValue={prospect?.notes ?? ""} className="mt-1" /></label>
-        <div className="md:col-span-2 mt-2 flex justify-end gap-3"><Button type="button" variant="outline" onClick={onClose}>Cancel</Button><Button>Save Prospect</Button></div>
+        <div className="md:col-span-2 mt-2 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          {prospect ? <Button type="button" variant="ghost" className="text-danger hover:bg-red-50" onClick={() => onDelete(prospect)}><Trash2 className="h-4 w-4" /> Delete Prospect</Button> : <span />}
+          <div className="flex justify-end gap-3">
+            <Button type="button" variant="outline" onClick={onClose}>Cancel</Button>
+            <Button>Save Prospect</Button>
+          </div>
+        </div>
       </form>
     </ModalFrame>
   );
