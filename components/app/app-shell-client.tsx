@@ -772,7 +772,7 @@ export function AppShell({
     : renewalRange
       ? "Renewal Alerts"
       : active === "dashboard"
-        ? greeting(firstName(data.profile.full_name))
+        ? "Dashboard"
         : active === "prospects"
           ? "Prospects Pipeline"
           : active === "notifications"
