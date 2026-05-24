@@ -816,7 +816,7 @@ export function AppShell({
                   if (key !== "admin") setActive(key);
                   setMobileOpen(false);
                 }}
-                className={`flex w-full items-center gap-3 rounded-xl border-l-4 px-4 py-3 text-left text-sm font-semibold ${active === key && !renewalRange ? "border-accent bg-white/10 text-white" : "border-transparent text-slate-300 hover:bg-white/5"}`}
+                className={`flex w-full items-center gap-3 rounded-xl border-l-4 px-4 py-3 text-left text-sm font-semibold transition ${active === key && !renewalRange ? "border-accent bg-white text-primary" : "border-transparent text-white hover:border-accent hover:bg-white hover:text-primary"}`}
               >
                 <Icon className="h-5 w-5" /> {label}
               </Link>
