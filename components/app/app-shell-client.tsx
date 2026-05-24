@@ -771,6 +771,19 @@ export function AppShell({
       changePassword={changePassword}
     />
   );
+  const topbarTitle = selectedClient
+    ? "Client Details"
+    : renewalRange
+      ? "Renewal Alerts"
+      : active === "dashboard"
+        ? greeting(firstName(data.profile.full_name))
+        : active === "prospects"
+          ? "Prospects Pipeline"
+          : active === "notifications"
+            ? "Renewal Alerts"
+            : active === "profile"
+              ? "Profile & Settings"
+              : nav.find(([key]) => key === active)?.[2] ?? "PolicyHQ";
 
   return (
     <div>
@@ -822,7 +835,7 @@ export function AppShell({
             </div>
           </aside>
         <main className="min-h-screen lg:pl-72">
-          <header className="sticky top-0 z-20 flex h-16 items-center justify-between border-b border-slate-200 bg-white px-4 lg:px-8">
+          <header className="sticky top-0 z-20 flex h-[72px] items-center justify-between border-b border-slate-200 bg-white px-4 lg:px-8">
             <button className="lg:hidden" onClick={() => setMobileOpen(true)} aria-label="Open menu"><Menu /></button>
             <Link
               href={navHref(base, "dashboard")}
@@ -832,7 +845,7 @@ export function AppShell({
             >
               <PolicyHqLogo className="h-9 w-auto max-w-[132px]" />
             </Link>
-            <div className="relative hidden max-w-md flex-1 lg:block">
+            <div className="relative hidden w-[360px] shrink-0 lg:block">
               <div className="flex items-center gap-2 rounded-xl border border-slate-200 px-3">
                 <Search className="h-4 w-4 text-slate-400" />
                 <input
@@ -891,6 +904,9 @@ export function AppShell({
                 </div>
               ) : null}
             </div>
+            <div className="pointer-events-none absolute left-1/2 hidden -translate-x-1/2 text-sm font-extrabold text-primary lg:block">
+              {topbarTitle}
+            </div>
             <div className="ml-auto flex items-center gap-2 sm:gap-4">
               <Link
                 href={navHref(base, "notifications")}
@@ -915,7 +931,7 @@ export function AppShell({
               ) : <form action={signOut}><Button variant="ghost" size="sm"><LogOut className="h-4 w-4" /> Sign Out</Button></form>}
             </div>
           </header>
-          <div className="p-4 lg:p-8">{content}</div>
+          <div className="p-4 lg:p-10">{content}</div>
         </main>
       </div>
 
