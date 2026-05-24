@@ -942,8 +942,8 @@ function Dashboard({ data, base, totalPaidThisMonth, openPolicy, todaysBirthdays
   const premiumDueThisMonth = expiringThisMonth(data.policies).reduce((sum, policy) => sum + policy.premium_amount, 0);
   const followUpsDueToday = data.prospects.filter(isProspectDueToday).length;
   const dashboardMix = dashboardBusinessMix(data);
-  const revenueMetrics = dashboardRevenueMetrics(data.policies, dashboardMix);
-  const relationshipMetrics = dashboardRelationshipMetrics(data.policies, todaysBirthdays.length, followUpsDueToday);
+  const revenueMetrics = dashboardRevenueMetrics(data.policies, dashboardMix, base);
+  const relationshipMetrics = dashboardRelationshipMetrics(data.policies, todaysBirthdays.length, followUpsDueToday, base);
 
   if (dashboardMix === "empty") {
     return <NoDataDashboard base={base} profileName={data.profile.full_name} />;
@@ -975,6 +975,7 @@ type DashboardBusinessMix = "empty" | "life" | "non-life" | "mixed";
 type DashboardPanelMetric = {
   label: string;
   value: number;
+  href: string;
   tone?: "primary" | "accent" | "success" | "warning" | "danger";
   helper?: string;
 };
@@ -1129,11 +1130,11 @@ function RelationshipManagerPanel({ metrics, birthdays, base }: { metrics: Dashb
 function DashboardPanelMetricCard({ metric }: { metric: DashboardPanelMetric }) {
   const color = metric.tone === "danger" ? "text-danger" : metric.tone === "warning" ? "text-warning" : metric.tone === "success" ? "text-success" : metric.tone === "accent" ? "text-accent" : "text-primary";
   return (
-    <div className="min-h-[76px] rounded-[10px] border border-slate-200 bg-slate-50 p-3">
+    <Link href={metric.href} className="min-h-[76px] rounded-[10px] border border-slate-200 bg-slate-50 p-3 transition hover:border-accent hover:bg-accent/5 focus:outline-none focus:ring-2 focus:ring-accent">
       <p className="text-[10px] font-extrabold leading-[14px] text-slate-500">{metric.label}</p>
       <strong className={`mt-2 block text-[26px] font-extrabold leading-none tracking-[-0.04em] ${color}`}>{metric.value}</strong>
       {metric.helper ? <p className="mt-1 truncate text-[10px] font-bold text-slate-400">{metric.helper}</p> : null}
-    </div>
+    </Link>
   );
 }
 
@@ -2433,7 +2434,7 @@ function dashboardBusinessMix(data: AppData): DashboardBusinessMix {
   return "non-life";
 }
 
-function dashboardRevenueMetrics(policies: PolicyWithClient[], mix: DashboardBusinessMix): DashboardPanelMetric[] {
+function dashboardRevenueMetrics(policies: PolicyWithClient[], mix: DashboardBusinessMix, base: string): DashboardPanelMetric[] {
   const nonLifePolicies = policies.filter((policy) => !isLifePolicy(policy));
   const lifePolicies = policies.filter(isLifePolicy);
   const thisWeek = policiesForRange(nonLifePolicies, "week").length;
@@ -2445,32 +2446,32 @@ function dashboardRevenueMetrics(policies: PolicyWithClient[], mix: DashboardBus
 
   if (mix === "life") {
     return [
-      { label: "Missing Statement", value: missingStatement, tone: "danger", helper: "Lapse Shield" },
-      { label: "At Risk Life", value: atRiskLife, tone: atRiskLife ? "warning" : "success", helper: "Years 1-3" },
-      { label: "Recovered", value: recoveredLife, tone: "success", helper: "Marked renewed" }
+      { label: "Missing Statement", value: missingStatement, href: navHref(base, "policies"), tone: "danger", helper: "Lapse Shield" },
+      { label: "At Risk Life", value: atRiskLife, href: navHref(base, "policies"), tone: atRiskLife ? "warning" : "success", helper: "Years 1-3" },
+      { label: "Recovered", value: recoveredLife, href: navHref(base, "policies"), tone: "success", helper: "Marked renewed" }
     ];
   }
 
   if (mix === "mixed") {
     return [
-      { label: "This Week", value: thisWeek, tone: thisWeek ? "warning" : "success", helper: "Non-life" },
-      { label: "This Month", value: thisMonth, tone: thisMonth ? "accent" : "primary", helper: "Non-life" },
-      { label: "Missing Statement", value: missingStatement, tone: "danger", helper: "Life" }
+      { label: "This Week", value: thisWeek, href: `${base}/renewals/week`, tone: thisWeek ? "warning" : "success", helper: "Non-life" },
+      { label: "This Month", value: thisMonth, href: `${base}/renewals/month`, tone: thisMonth ? "accent" : "primary", helper: "Non-life" },
+      { label: "Missing Statement", value: missingStatement, href: navHref(base, "policies"), tone: "danger", helper: "Life" }
     ];
   }
 
   return [
-    { label: "This Week", value: thisWeek, tone: thisWeek ? "warning" : "success", helper: "Expiring" },
-    { label: "Next Week", value: nextWeek, tone: nextWeek ? "accent" : "primary", helper: "Expiring" },
-    { label: "This Month", value: thisMonth, tone: thisMonth ? "danger" : "primary", helper: "Expiring" }
+    { label: "This Week", value: thisWeek, href: `${base}/renewals/week`, tone: thisWeek ? "warning" : "success", helper: "Expiring" },
+    { label: "Next Week", value: nextWeek, href: `${base}/renewals/next-week`, tone: nextWeek ? "accent" : "primary", helper: "Expiring" },
+    { label: "This Month", value: thisMonth, href: `${base}/renewals/month`, tone: thisMonth ? "danger" : "primary", helper: "Expiring" }
   ];
 }
 
-function dashboardRelationshipMetrics(policies: PolicyWithClient[], birthdaysToday: number, followUpsDueToday: number): DashboardPanelMetric[] {
+function dashboardRelationshipMetrics(policies: PolicyWithClient[], birthdaysToday: number, followUpsDueToday: number, base: string): DashboardPanelMetric[] {
   return [
-    { label: "Birthdays Today", value: birthdaysToday, tone: birthdaysToday ? "accent" : "primary", helper: "WhatsApp ready" },
-    { label: "Follow-ups Due", value: followUpsDueToday, tone: followUpsDueToday ? "warning" : "success", helper: "Prospects" },
-    { label: "Anniversaries", value: policies.filter(isPolicyAnniversarySoon).length, tone: "success", helper: "Next 7 days" }
+    { label: "Birthdays Today", value: birthdaysToday, href: navHref(base, "clients"), tone: birthdaysToday ? "accent" : "primary", helper: "WhatsApp ready" },
+    { label: "Follow-ups Due", value: followUpsDueToday, href: `${navHref(base, "prospects")}?filter=today`, tone: followUpsDueToday ? "warning" : "success", helper: "Prospects" },
+    { label: "Anniversaries", value: policies.filter(isPolicyAnniversarySoon).length, href: navHref(base, "policies"), tone: "success", helper: "Next 7 days" }
   ];
 }
 
