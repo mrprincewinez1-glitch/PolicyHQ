@@ -959,16 +959,7 @@ function Dashboard({ data, base, totalPaidThisMonth, openPolicy, todaysBirthdays
         ))}
         <ProspectsDashboardCard total={data.prospects.length} dueToday={followUpsDueToday} href={navHref(base, "prospects")} />
       </div>
-      <div className="grid gap-4 md:grid-cols-5">
-        {managerMetrics.map((item) => (
-          <Card key={item.label}>
-            <CardContent className="p-4">
-              <p className="text-xs font-bold uppercase text-slate-500">{item.label}</p>
-              <strong className="mt-2 block text-2xl text-primary">{item.value}</strong>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
+      <RenewalWorkloadPanel metrics={managerMetrics} />
       <div className="lg:hidden">
         <BirthdayDashboardCard clients={todaysBirthdays} />
       </div>
@@ -999,25 +990,60 @@ function Dashboard({ data, base, totalPaidThisMonth, openPolicy, todaysBirthdays
   );
 }
 
+function RenewalWorkloadPanel({ metrics }: { metrics: ReturnType<typeof renewalManagerMetrics> }) {
+  const workloadMetrics = metrics.filter((item) => item.label !== "Birthdays Today");
+  return (
+    <Card className="overflow-hidden">
+      <CardHeader className="flex flex-col gap-2 border-b border-slate-100 bg-white sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h2 className="text-xl font-extrabold text-primary">Renewal Workload</h2>
+          <p className="text-sm font-semibold text-slate-500">Manager view of renewals moving through the pipeline.</p>
+        </div>
+        <span className="inline-flex w-fit items-center rounded-full bg-orange-50 px-3 py-1 text-xs font-extrabold uppercase text-accent">
+          Live snapshot
+        </span>
+      </CardHeader>
+      <CardContent className="grid gap-3 p-5 sm:grid-cols-2 xl:grid-cols-4">
+        {workloadMetrics.map((item) => (
+          <div key={item.label} className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+            <p className="text-xs font-extrabold uppercase tracking-wide text-slate-500">{item.label}</p>
+            <strong className={`mt-3 block text-3xl ${item.label === "Overdue" || item.label === "Lost" ? "text-danger" : item.label === "Renewed" ? "text-success" : "text-primary"}`}>
+              {item.value}
+            </strong>
+          </div>
+        ))}
+      </CardContent>
+    </Card>
+  );
+}
+
 function ProspectsDashboardCard({ total, dueToday, href }: { total: number; dueToday: number; href: string }) {
   return (
     <Link href={href} className="rounded-xl focus:outline-none focus:ring-2 focus:ring-accent">
-      <Card className="h-full cursor-pointer transition hover:-translate-y-0.5 hover:border-orange-200 hover:shadow-md">
+      <Card className="h-full cursor-pointer overflow-hidden transition hover:-translate-y-0.5 hover:border-orange-200 hover:shadow-md">
         <CardContent className="p-5">
-          <div className="mb-3 flex items-center justify-between">
-            <p className="text-sm font-semibold text-slate-500">Prospects</p>
-            <UserPlus className="h-4 w-4 text-slate-400" />
-          </div>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="flex items-start justify-between gap-3">
             <div>
-              <strong className="block text-3xl font-extrabold text-primary">{total}</strong>
-              <span className="mt-1 block text-xs font-semibold leading-4 text-slate-500">Total prospects</span>
+              <p className="text-sm font-bold text-slate-500">Prospects</p>
+              <p className="mt-0.5 text-xs font-semibold text-slate-400">Sales pipeline</p>
             </div>
-            <div className="border-l border-slate-200 pl-4">
-              <strong className="block text-3xl font-extrabold text-accent">{dueToday}</strong>
-              <span className="mt-1 block text-xs font-semibold leading-4 text-slate-500">Follow-ups due today</span>
+            <span className="inline-flex h-8 w-8 items-center justify-center rounded-xl bg-orange-50 text-accent">
+              <UserPlus className="h-4 w-4" />
+            </span>
+          </div>
+          <div className="mt-4 grid grid-cols-2 rounded-xl border border-slate-200 bg-slate-50 p-2">
+            <div className="px-2 py-1">
+              <strong className="block text-2xl font-extrabold text-primary">{total}</strong>
+              <span className="mt-0.5 block text-xs font-semibold leading-4 text-slate-500">Total</span>
+            </div>
+            <div className="border-l border-slate-200 pl-3">
+              <div className="rounded-lg bg-orange-50 px-2 py-1">
+                <strong className="block text-2xl font-extrabold text-accent">{dueToday}</strong>
+                <span className="mt-0.5 block text-xs font-semibold leading-4 text-slate-500">Due today</span>
+              </div>
             </div>
           </div>
+          <p className="mt-3 text-xs font-semibold text-slate-400">Follow up before leads go cold</p>
         </CardContent>
       </Card>
     </Link>
