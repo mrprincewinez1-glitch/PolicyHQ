@@ -985,14 +985,14 @@ function NoDataDashboard({ base, profileName }: { base: string; profileName: str
     <div className="max-w-[1062px] space-y-8">
       <div>
         <h1 className="text-[32px] font-extrabold leading-[44px] text-primary">{greeting(firstName(profileName))}</h1>
-        <p className="mt-1 text-base font-medium leading-6 text-slate-600">Start by bringing your book into PolicyHQ. The dashboard will become useful as soon as clients and policies are added.</p>
+        <p className="mt-1 text-base font-medium leading-6 text-slate-600">Set up your book to activate revenue, renewal, and relationship tracking.</p>
       </div>
       <div className="grid gap-[30px] lg:grid-cols-[1.08fr_0.92fr]">
         <Card className="overflow-hidden">
           <CardHeader className="border-b-0 p-[26px] pb-0">
             <Badge tone="orange">First setup</Badge>
-            <h2 className="mt-4 text-2xl font-extrabold leading-[30px] text-primary">Bring in your client book</h2>
-            <p className="mt-2 text-sm font-semibold leading-6 text-slate-500">Add a single client, import an Excel/CSV list, or capture prospects you are still following up.</p>
+            <h2 className="mt-4 text-2xl font-extrabold leading-[30px] text-primary">Client book setup</h2>
+            <p className="mt-2 text-sm font-semibold leading-6 text-slate-500">Add records, import a spreadsheet, or start with prospects.</p>
           </CardHeader>
           <CardContent className="grid gap-4 p-[26px] sm:grid-cols-3">
             <SetupStep icon={Users} title="Clients" body="Store customer details once." href={navHref(base, "clients")} />
@@ -1002,18 +1002,18 @@ function NoDataDashboard({ base, profileName }: { base: string; profileName: str
         </Card>
         <Card>
           <CardHeader className="border-b-0 p-[26px] pb-0">
-            <h2 className="text-2xl font-extrabold leading-[30px] text-primary">What PolicyHQ will watch</h2>
+            <h2 className="text-2xl font-extrabold leading-[30px] text-primary">Operational coverage</h2>
           </CardHeader>
           <CardContent className="space-y-4 p-[26px]">
-            <DashboardChecklistItem title="Revenue protection" body="Renewals, life lapse risk, and premium due windows." />
-            <DashboardChecklistItem title="Relationship manager" body="Birthdays, follow-ups, and policy anniversaries." />
-            <DashboardChecklistItem title="Daily activity" body="Recent actions and policies needing attention." />
+            <DashboardChecklistItem title="Revenue protection" body="Renewals, lapse risk, and premium windows." />
+            <DashboardChecklistItem title="Relationship manager" body="Birthdays, follow-ups, and anniversaries." />
+            <DashboardChecklistItem title="Daily activity" body="Recent actions and priority records." />
           </CardContent>
         </Card>
       </div>
       <div className="grid gap-[30px] lg:grid-cols-2">
-        <DashboardEmptyPillar title="Revenue Protection" body="Your renewal and lapse-shield workload will appear here." />
-        <DashboardEmptyPillar title="Relationship Manager" body="Birthdays, prospect follow-ups, and anniversaries will appear here." />
+        <DashboardEmptyPillar title="Revenue Protection" body="Renewal and lapse workload." />
+        <DashboardEmptyPillar title="Relationship Manager" body="Birthdays, follow-ups, and anniversaries." />
       </div>
     </div>
   );
@@ -1067,13 +1067,9 @@ function DashboardStatLink({ label, value, href, wide = false }: { label: string
 }
 
 function RevenueProtectionPanel({ mix, metrics, base }: { mix: DashboardBusinessMix; metrics: DashboardPanelMetric[]; base: string }) {
-  const copy = mix === "life"
-    ? "Life clients do not renew annually. This surface watches lapse risk, missing statement signals, and recovered policies."
-    : mix === "mixed"
-      ? "Your mixed book needs both non-life renewal buckets and life-client lapse visibility."
-      : "Your non-life book is organized around the renewal windows agents act on every day.";
+  const copy = mix === "life" ? "Life retention" : mix === "mixed" ? "Renewals and retention" : "Renewals";
   const href = mix === "life" ? navHref(base, "policies") : `${base}/renewals/week`;
-  const cta = mix === "life" ? "Review Life Book" : "View Renewal Queue";
+  const cta = mix === "life" ? "Review Book" : "View Queue";
 
   return (
     <Card className="min-h-[260px] overflow-hidden">
@@ -1081,7 +1077,7 @@ function RevenueProtectionPanel({ mix, metrics, base }: { mix: DashboardBusiness
         <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div>
             <Badge tone="orange">Revenue Protection</Badge>
-            <h2 className="mt-4 text-2xl font-extrabold leading-[30px] text-primary">Protect income before it leaks</h2>
+            <h2 className="mt-4 text-2xl font-extrabold leading-[30px] text-primary">Revenue Protection</h2>
             <p className="mt-2 text-sm font-semibold leading-6 text-slate-500">{copy}</p>
           </div>
           <Button asChild variant="outline" className="shrink-0">
@@ -1103,8 +1099,8 @@ function RelationshipManagerPanel({ metrics, birthdays, base }: { metrics: Dashb
         <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div>
             <Badge tone="green">Relationship Manager</Badge>
-            <h2 className="mt-4 text-2xl font-extrabold leading-[30px] text-primary">Keep the human touch visible</h2>
-            <p className="mt-2 text-sm font-semibold leading-6 text-slate-500">Birthdays, follow-ups, and anniversaries sit beside revenue work so the app serves every agent type.</p>
+            <h2 className="mt-4 text-2xl font-extrabold leading-[30px] text-primary">Relationship Manager</h2>
+            <p className="mt-2 text-sm font-semibold leading-6 text-slate-500">Client touchpoints</p>
           </div>
           <Button asChild variant="outline" className="shrink-0">
             <Link href={`${navHref(base, "prospects")}?filter=today`}>Open Tasks</Link>
