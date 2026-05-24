@@ -122,7 +122,7 @@ export function ResetPasswordForm() {
   if (state === "invalid") {
     return (
       <div className="space-y-4">
-        <p className="rounded-xl bg-orange-50 p-3 text-sm font-semibold text-orange-700">{message}</p>
+        <p className="rounded-xl bg-accent/10 p-3 text-sm font-semibold text-accent">{message}</p>
         <Button asChild className="w-full">
           <Link href="/forgot-password">Request New Link</Link>
         </Button>
@@ -133,7 +133,7 @@ export function ResetPasswordForm() {
   if (state === "saved") {
     return (
       <div className="space-y-4">
-        <p className="rounded-xl bg-green-50 p-3 text-sm font-semibold text-green-700">{message}</p>
+        <p className="rounded-xl bg-success/10 p-3 text-sm font-semibold text-success">{message}</p>
         <Button asChild className="w-full">
           <Link href="/sign-in">Go to Sign In</Link>
         </Button>

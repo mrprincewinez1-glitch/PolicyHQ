@@ -968,7 +968,7 @@ function Dashboard({ data, base, totalPaidThisMonth, openPolicy, todaysBirthdays
 function DashboardStatLink({ label, value, href, wide = false }: { label: string; value: string | number; href: string; wide?: boolean }) {
   return (
     <Link href={href} className="rounded-xl focus:outline-none focus:ring-2 focus:ring-accent">
-      <Card className={`h-[118px] transition hover:-translate-y-0.5 hover:border-orange-200 hover:shadow-md ${wide ? "xl:w-[210px]" : "xl:w-[176px]"}`}>
+      <Card className={`h-[118px] transition hover:-translate-y-0.5 hover:border-accent hover:shadow-md ${wide ? "xl:w-[210px]" : "xl:w-[176px]"}`}>
         <CardContent className="p-[18px]">
           <p className="text-[13px] font-bold leading-[18px] text-slate-500">{label}</p>
           <strong className="mt-3 block text-[32px] font-extrabold leading-10 text-primary">{value}</strong>
@@ -1005,14 +1005,14 @@ function RenewalWorkloadPanel({ metrics }: { metrics: ReturnType<typeof renewalM
 function ProspectsDashboardCard({ total, dueToday, href }: { total: number; dueToday: number; href: string }) {
   return (
     <Link href={href} className="rounded-xl focus:outline-none focus:ring-2 focus:ring-accent">
-      <Card className="h-[138px] cursor-pointer overflow-hidden transition hover:-translate-y-0.5 hover:border-orange-200 hover:shadow-md xl:w-[210px]">
+      <Card className="h-[138px] cursor-pointer overflow-hidden transition hover:-translate-y-0.5 hover:border-accent hover:shadow-md xl:w-[210px]">
         <CardContent className="p-4">
           <div className="flex items-start justify-between gap-3">
             <div>
               <p className="text-[13px] font-bold leading-[18px] text-slate-500">Prospects</p>
               <p className="mt-0.5 text-[11px] font-semibold leading-4 text-slate-400">Sales pipeline</p>
             </div>
-            <span className="inline-flex h-[30px] w-[30px] items-center justify-center rounded-xl bg-orange-50 text-accent">
+            <span className="inline-flex h-[30px] w-[30px] items-center justify-center rounded-xl bg-accent/10 text-accent">
               <UserPlus className="h-4 w-4" />
             </span>
           </div>
@@ -1022,7 +1022,7 @@ function ProspectsDashboardCard({ total, dueToday, href }: { total: number; dueT
               <span className="block text-[11px] font-semibold leading-[14px] text-slate-500">Total</span>
             </div>
             <div className="border-l border-slate-200 pl-3">
-              <div className="rounded-lg bg-orange-50 px-2">
+              <div className="rounded-lg bg-accent/10 px-2">
                 <strong className="block text-2xl font-extrabold leading-[30px] text-accent">{dueToday}</strong>
                 <span className="block text-[11px] font-semibold leading-[14px] text-slate-500">Due today</span>
               </div>
@@ -1039,7 +1039,7 @@ function RenewalList({ title, policies, base, updateRenewal, openPolicy, onBack 
   return (
     <div className="space-y-5">
       <Button asChild variant="outline"><Link href={navHref(base, "dashboard")} onClick={onBack}>Back to dashboard</Link></Button>
-      <Card><CardHeader><h1 className="text-2xl font-extrabold">{title}</h1></CardHeader><div className="overflow-auto"><table className="w-full min-w-[1120px] text-sm"><thead className="sticky top-0 bg-slate-50"><tr>{["Client Name", "Phone Number", "Policy Number", "Policy Type", "Insurer", "Expiry Date", "Premium Amount (GHS)", "Renewal Status", "Urgency", "Action"].map((h) => <th className="px-4 py-3 text-left" key={h}>{h}</th>)}</tr></thead><tbody>{[...policies].sort(sortByExpiry).map((p) => <tr key={p.id} onClick={() => openPolicy(p)} className={`cursor-pointer border-t ${urgency(p.expiry_date) === "urgent" ? "bg-red-50" : urgency(p.expiry_date) === "soon" ? "bg-amber-50" : "odd:bg-white even:bg-slate-50"}`}><td className="px-4 py-3 font-semibold">{p.client.full_name}</td><td className="px-4 py-3">{p.client.phone_number}</td><td className="px-4 py-3"><div className="flex flex-wrap items-center gap-2"><span>{p.policy_number}</span><NeedsReviewBadge policy={p} /></div></td><td className="px-4 py-3">{p.policy_type}</td><td className="px-4 py-3">{p.insurer_name}</td><td className="px-4 py-3">{formatDate(p.expiry_date)}</td><td className="px-4 py-3">{formatCurrency(p.premium_amount)}</td><td className="px-4 py-3" onClick={(e) => e.stopPropagation()}><Select value={p.renewal_status} onChange={(e) => updateRenewal(p.id, e.target.value as RenewalStatus)}>{renewalStatuses.map((s) => <option key={s}>{s}</option>)}</Select></td><td className="px-4 py-3"><UrgencyBadge date={p.expiry_date} status={p.renewal_status} /></td><td className="px-4 py-3" onClick={(e) => e.stopPropagation()}><WhatsAppButton href={renewalWhatsAppHref(p)} label="WhatsApp" /></td></tr>)}</tbody></table></div></Card>
+      <Card><CardHeader><h1 className="text-2xl font-extrabold">{title}</h1></CardHeader><div className="overflow-auto"><table className="w-full min-w-[1120px] text-sm"><thead className="sticky top-0 bg-slate-50"><tr>{["Client Name", "Phone Number", "Policy Number", "Policy Type", "Insurer", "Expiry Date", "Premium Amount (GHS)", "Renewal Status", "Urgency", "Action"].map((h) => <th className="px-4 py-3 text-left" key={h}>{h}</th>)}</tr></thead><tbody>{[...policies].sort(sortByExpiry).map((p) => <tr key={p.id} onClick={() => openPolicy(p)} className={`cursor-pointer border-t ${urgency(p.expiry_date) === "urgent" ? "bg-danger/10" : urgency(p.expiry_date) === "soon" ? "bg-warning/10" : "odd:bg-white even:bg-slate-50"}`}><td className="px-4 py-3 font-semibold">{p.client.full_name}</td><td className="px-4 py-3">{p.client.phone_number}</td><td className="px-4 py-3"><div className="flex flex-wrap items-center gap-2"><span>{p.policy_number}</span><NeedsReviewBadge policy={p} /></div></td><td className="px-4 py-3">{p.policy_type}</td><td className="px-4 py-3">{p.insurer_name}</td><td className="px-4 py-3">{formatDate(p.expiry_date)}</td><td className="px-4 py-3">{formatCurrency(p.premium_amount)}</td><td className="px-4 py-3" onClick={(e) => e.stopPropagation()}><Select value={p.renewal_status} onChange={(e) => updateRenewal(p.id, e.target.value as RenewalStatus)}>{renewalStatuses.map((s) => <option key={s}>{s}</option>)}</Select></td><td className="px-4 py-3"><UrgencyBadge date={p.expiry_date} status={p.renewal_status} /></td><td className="px-4 py-3" onClick={(e) => e.stopPropagation()}><WhatsAppButton href={renewalWhatsAppHref(p)} label="WhatsApp" /></td></tr>)}</tbody></table></div></Card>
     </div>
   );
 }
@@ -1108,7 +1108,7 @@ function ProspectCard({ prospect, onEdit, onDelete }: { prospect: Prospect; onEd
           <ProspectStatusBadge status={prospect.status} />
         </div>
         {prospect.follow_up_date ? (
-          <p className={`rounded-xl px-3 py-2 text-sm font-bold ${due ? "bg-orange-50 text-orange-700" : "bg-slate-50 text-slate-600"}`}>
+          <p className={`rounded-xl px-3 py-2 text-sm font-bold ${due ? "bg-accent/10 text-accent" : "bg-slate-50 text-slate-600"}`}>
             Follow-up: {formatDate(prospect.follow_up_date)}
           </p>
         ) : null}
@@ -1121,7 +1121,7 @@ function ProspectCard({ prospect, onEdit, onDelete }: { prospect: Prospect; onEd
             <a href={prospectWhatsAppHref(prospect)} target="_blank" rel="noreferrer"><MessageCircle className="h-4 w-4" /> WhatsApp</a>
           </Button>
           <Button variant="ghost" className="min-h-11" onClick={onEdit}>Edit</Button>
-          <Button variant="ghost" className="min-h-11 text-danger hover:bg-red-50" onClick={onDelete}><Trash2 className="h-4 w-4" /> Delete</Button>
+          <Button variant="ghost" className="min-h-11 text-danger hover:bg-danger/10" onClick={onDelete}><Trash2 className="h-4 w-4" /> Delete</Button>
         </div>
       </CardContent>
     </Card>
@@ -1233,7 +1233,7 @@ function Policies({ policies, clients, onAdd, onEdit, onDelete, onExport, update
         <CardContent className="flex flex-wrap items-end gap-3 p-4">
           <div className="flex flex-wrap gap-2">
             {["All", "Life", "Health", "Motor", "Property"].map((item) => (
-              <button key={item} type="button" onClick={() => setType(item)} className={`h-9 rounded-full px-5 text-xs font-extrabold ${type === item ? "bg-orange-100 text-accent" : "bg-slate-100 text-slate-600"}`}>{item}</button>
+              <button key={item} type="button" onClick={() => setType(item)} className={`h-9 rounded-full px-5 text-xs font-extrabold ${type === item ? "bg-accent/10 text-accent" : "bg-slate-100 text-slate-600"}`}>{item}</button>
             ))}
           </div>
           <Select value={status} onChange={(e) => setStatus(e.target.value)}><option>All</option>{policyStatuses.map((item) => <option key={item}>{item}</option>)}</Select>
@@ -1272,7 +1272,7 @@ function Policies({ policies, clients, onAdd, onEdit, onDelete, onExport, update
           </div>
         ))}
       </div>
-      <div className="hidden overflow-auto md:block"><table className="w-full min-w-[1200px] text-sm"><thead className="sticky top-0 bg-slate-50"><tr>{["Client Name", "Policy Number", "Type", "Insurer", "Start Date", "Expiry Date", "Premium (GHS)", "Status", "Renewal Status", "Actions"].map((h) => <th className="px-4 py-3 text-left" key={h}>{h}</th>)}</tr></thead><tbody>{filtered.map((p) => <tr key={p.id} onClick={() => openPolicy(p)} className={`cursor-pointer border-t ${urgency(p.expiry_date) === "urgent" ? "bg-red-50" : urgency(p.expiry_date) === "soon" ? "bg-amber-50" : "odd:bg-white even:bg-slate-50"}`}><td className="px-4 py-3 font-bold">{p.client.full_name}</td><td className="px-4 py-3"><div className="flex flex-wrap items-center gap-2"><span>{p.policy_number}</span><NeedsReviewBadge policy={p} /></div></td><td className="px-4 py-3">{p.policy_type}</td><td className="px-4 py-3">{p.insurer_name}</td><td className="px-4 py-3">{formatDate(p.start_date)}</td><td className="px-4 py-3">{formatDate(p.expiry_date)} <UrgencyBadge date={p.expiry_date} status={p.renewal_status} /></td><td className="px-4 py-3">{formatCurrency(p.premium_amount)}</td><td className="px-4 py-3"><Badge tone={p.status === "Active" ? "green" : "slate"}>{p.status}</Badge></td><td className="px-4 py-3" onClick={(e) => e.stopPropagation()}><Select value={p.renewal_status} onChange={(e) => updateRenewal(p.id, e.target.value as RenewalStatus)}>{renewalStatuses.map((s) => <option key={s}>{s}</option>)}</Select></td><td className="px-4 py-3" onClick={(e) => e.stopPropagation()}><WhatsAppButton href={renewalWhatsAppHref(p)} label="WhatsApp" /><Button variant="ghost" size="sm" onClick={() => onEdit(p)}>Edit</Button><Button variant="ghost" size="sm" onClick={() => onDelete(p)}><Trash2 className="h-4 w-4 text-danger" /></Button></td></tr>)}</tbody></table></div>
+      <div className="hidden overflow-auto md:block"><table className="w-full min-w-[1200px] text-sm"><thead className="sticky top-0 bg-slate-50"><tr>{["Client Name", "Policy Number", "Type", "Insurer", "Start Date", "Expiry Date", "Premium (GHS)", "Status", "Renewal Status", "Actions"].map((h) => <th className="px-4 py-3 text-left" key={h}>{h}</th>)}</tr></thead><tbody>{filtered.map((p) => <tr key={p.id} onClick={() => openPolicy(p)} className={`cursor-pointer border-t ${urgency(p.expiry_date) === "urgent" ? "bg-danger/10" : urgency(p.expiry_date) === "soon" ? "bg-warning/10" : "odd:bg-white even:bg-slate-50"}`}><td className="px-4 py-3 font-bold">{p.client.full_name}</td><td className="px-4 py-3"><div className="flex flex-wrap items-center gap-2"><span>{p.policy_number}</span><NeedsReviewBadge policy={p} /></div></td><td className="px-4 py-3">{p.policy_type}</td><td className="px-4 py-3">{p.insurer_name}</td><td className="px-4 py-3">{formatDate(p.start_date)}</td><td className="px-4 py-3">{formatDate(p.expiry_date)} <UrgencyBadge date={p.expiry_date} status={p.renewal_status} /></td><td className="px-4 py-3">{formatCurrency(p.premium_amount)}</td><td className="px-4 py-3"><Badge tone={p.status === "Active" ? "green" : "slate"}>{p.status}</Badge></td><td className="px-4 py-3" onClick={(e) => e.stopPropagation()}><Select value={p.renewal_status} onChange={(e) => updateRenewal(p.id, e.target.value as RenewalStatus)}>{renewalStatuses.map((s) => <option key={s}>{s}</option>)}</Select></td><td className="px-4 py-3" onClick={(e) => e.stopPropagation()}><WhatsAppButton href={renewalWhatsAppHref(p)} label="WhatsApp" /><Button variant="ghost" size="sm" onClick={() => onEdit(p)}>Edit</Button><Button variant="ghost" size="sm" onClick={() => onDelete(p)}><Trash2 className="h-4 w-4 text-danger" /></Button></td></tr>)}</tbody></table></div>
     </Card>
     </div>
   );
@@ -1415,7 +1415,7 @@ function Commissions({ data, totalEarned, totalPaidThisMonth, base, markPaid, op
               </thead>
               <tbody>
                 {rows.map(({ commission, policy, businessClass, amount, daysPending, displayStatus }) => (
-                  <tr key={commission.id} onClick={() => openPolicy(policy)} className="cursor-pointer border-t odd:bg-white even:bg-slate-50 hover:bg-orange-50">
+                  <tr key={commission.id} onClick={() => openPolicy(policy)} className="cursor-pointer border-t odd:bg-white even:bg-slate-50 hover:bg-accent/10">
                     <td className="px-4 py-3 font-bold">{policy.client.full_name}</td>
                     <td className="px-4 py-3 font-mono text-xs font-bold" onClick={(event) => { event.stopPropagation(); navigator.clipboard.writeText(policy.policy_number); }}>{policy.policy_number}</td>
                     <td className="px-4 py-3">{shortInsurerName(policy.insurer_name)}</td>
@@ -1469,7 +1469,7 @@ function Notifications({ data, base, markAllRead, onClick, onBack }: { data: App
             <button
               key={n.id}
               onClick={() => onClick(n.id)}
-              className={`flex w-full items-center justify-between gap-4 rounded-xl border p-5 text-left transition hover:-translate-y-0.5 hover:shadow-sm ${index === 0 ? "border-red-100 bg-red-50" : "border-slate-200 bg-slate-50"}`}
+              className={`flex w-full items-center justify-between gap-4 rounded-xl border p-5 text-left transition hover:-translate-y-0.5 hover:shadow-sm ${index === 0 ? "border-danger/20 bg-danger/10" : "border-slate-200 bg-slate-50"}`}
             >
               <div>
                 <p className="text-lg font-extrabold text-primary">{n.message.split(" for ")[1]?.split(" (")[0] ?? "Renewal alert"}</p>
@@ -1502,7 +1502,7 @@ function Profile({ data, saveProfile, saveNotificationSettings, uploadAvatar, ch
           <CardHeader className="border-b-0"><h2 className="text-2xl font-extrabold text-primary">Notification Settings</h2></CardHeader>
           <CardContent>
             <form action={saveNotificationSettings} className="space-y-5">
-              <p className="rounded-xl bg-orange-50 p-3 text-sm font-semibold text-orange-700">WhatsApp delivery requires approved Meta templates and production credentials. Email and in-app renewal tracking remain available during beta.</p>
+              <p className="rounded-xl bg-accent/10 p-3 text-sm font-semibold text-accent">WhatsApp delivery requires approved Meta templates and production credentials. Email and in-app renewal tracking remain available during beta.</p>
               <ToggleRow name="whatsapp_enabled" label="WhatsApp Notifications" checked={data.profile.whatsapp_enabled} />
               <ToggleRow name="email_notifications_enabled" label="Email Notifications" checked={data.profile.email_notifications_enabled} />
               <ToggleRow name="birthday_messages_enabled" label="Birthday Messages" checked={data.profile.birthday_messages_enabled} />
@@ -1523,7 +1523,7 @@ function ToggleRow({ name, label, checked, muted = false }: { name: string; labe
   return (
     <label className="flex items-center justify-between gap-4 font-semibold text-primary">
       {label}
-      <input name={name} type="checkbox" defaultChecked={checked} className={`h-5 w-10 rounded-full accent-orange-500 ${muted ? "opacity-60" : ""}`} />
+      <input name={name} type="checkbox" defaultChecked={checked} className={`h-5 w-10 rounded-full accent-[#F97316] ${muted ? "opacity-60" : ""}`} />
     </label>
   );
 }
@@ -1567,7 +1567,7 @@ function ProspectModal({ prospect, onClose, onSave, onDelete }: { prospect?: Pro
         <label className="block text-sm font-semibold">Follow-up Date<Input name="follow_up_date" type="date" defaultValue={prospect?.follow_up_date ?? ""} className="mt-1" /></label>
         <label className="block text-sm font-semibold md:col-span-2">Notes<Textarea name="notes" defaultValue={prospect?.notes ?? ""} className="mt-1" /></label>
         <div className="md:col-span-2 mt-2 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          {prospect ? <Button type="button" variant="ghost" className="text-danger hover:bg-red-50" onClick={() => onDelete(prospect)}><Trash2 className="h-4 w-4" /> Delete Prospect</Button> : <span />}
+          {prospect ? <Button type="button" variant="ghost" className="text-danger hover:bg-danger/10" onClick={() => onDelete(prospect)}><Trash2 className="h-4 w-4" /> Delete Prospect</Button> : <span />}
           <div className="flex justify-end gap-3">
             <Button type="button" variant="outline" onClick={onClose}>Cancel</Button>
             <Button>Save Prospect</Button>
@@ -1768,7 +1768,7 @@ function ImportClientsModal({ onClose, onImport }: { onClose: () => void; onImpo
           </label>
         </div>
         {errors.length ? (
-          <div className="rounded-xl bg-red-50 p-4 text-sm font-semibold text-red-700">
+          <div className="rounded-xl bg-danger/10 p-4 text-sm font-semibold text-danger">
             {errors.map((error) => <p key={error}>{error}</p>)}
           </div>
         ) : null}
@@ -1778,18 +1778,18 @@ function ImportClientsModal({ onClose, onImport }: { onClose: () => void; onImpo
               {rows.length} row{rows.length === 1 ? "" : "s"} loaded. Fix blocking items, then import. Amber fields can be cleaned later.
             </p>
             {rowErrors.length ? (
-              <div className="rounded-xl bg-amber-50 p-4 text-sm font-semibold text-amber-800">
+              <div className="rounded-xl bg-warning/10 p-4 text-sm font-semibold text-warning">
                 {rowErrors.slice(0, 8).map((error) => <p key={error}>{error}</p>)}
                 {rowErrors.length > 8 ? <p>Plus {rowErrors.length - 8} more item{rowErrors.length - 8 === 1 ? "" : "s"} to fix.</p> : null}
               </div>
             ) : reviewWarnings.length ? (
-              <div className="rounded-xl bg-amber-50 p-4 text-sm font-semibold text-amber-800">
+              <div className="rounded-xl bg-warning/10 p-4 text-sm font-semibold text-warning">
                 <p>{reviewWarnings.length} row{reviewWarnings.length === 1 ? "" : "s"} will be imported as Needs Review.</p>
                 {reviewWarnings.slice(0, 5).map((warning) => <p key={warning}>{warning}</p>)}
                 {reviewWarnings.length > 5 ? <p>Plus {reviewWarnings.length - 5} more review note{reviewWarnings.length - 5 === 1 ? "" : "s"}.</p> : null}
               </div>
             ) : (
-              <div className="rounded-xl bg-green-50 p-4 text-sm font-semibold text-green-700">All rows look ready to import.</div>
+              <div className="rounded-xl bg-success/10 p-4 text-sm font-semibold text-success">All rows look ready to import.</div>
             )}
             <div className="max-h-[64vh] space-y-4 overflow-y-auto pr-1">
               {rows.map((row, index) => (
@@ -1825,7 +1825,7 @@ function ImportRowCard({ row, index, onUpdate }: { row: ImportClientRow; index: 
         <ImportField label="Policy No." value={row.policy_number} onChange={(value) => onUpdate("policy_number", value)} required />
         <label className="block text-sm font-semibold">
           Type
-          <Select value={row.policy_type} onChange={(event) => onUpdate("policy_type", event.target.value)} className={`mt-1 ${!row.policy_type ? "border-amber-400 bg-amber-50" : ""}`}>
+          <Select value={row.policy_type} onChange={(event) => onUpdate("policy_type", event.target.value)} className={`mt-1 ${!row.policy_type ? "border-warning bg-warning/10" : ""}`}>
             <option value="">Choose type</option>
             {policyTypes.map((type) => <option key={type}>{type}</option>)}
           </Select>
@@ -1866,7 +1866,7 @@ function ImportInput({ value, onChange, required = false, review = false, type =
       type={type}
       value={value}
       onChange={(event) => onChange(event.target.value)}
-      className={`mt-1 ${(required && !value.trim()) || review ? "border-amber-400 bg-amber-50" : ""}`}
+      className={`mt-1 ${(required && !value.trim()) || review ? "border-warning bg-warning/10" : ""}`}
     />
   );
 }
@@ -1992,7 +1992,7 @@ function Avatar({ profile, large = false }: { profile: AppData["profile"]; large
     const size = large ? 96 : 40;
     return <Image src={profile.avatar_url} alt="" width={size} height={size} className={`${large ? "h-24 w-24" : "h-10 w-10"} rounded-full object-cover`} />;
   }
-  return <div className={`${large ? "h-24 w-24 text-3xl" : "h-10 w-10 text-sm"} flex items-center justify-center rounded-full bg-orange-100 font-extrabold text-orange-700`}>{firstName(profile.full_name)[0]}</div>;
+  return <div className={`${large ? "h-24 w-24 text-3xl" : "h-10 w-10 text-sm"} flex items-center justify-center rounded-full bg-accent/10 font-extrabold text-accent`}>{firstName(profile.full_name)[0]}</div>;
 }
 
 function DataTable({ headers, rows }: { headers: string[]; rows: Array<Array<ReactNode>> }) {

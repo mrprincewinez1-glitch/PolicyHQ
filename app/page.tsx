@@ -56,7 +56,7 @@ export default function LandingPage() {
           <div className="rounded-2xl bg-primary p-4 text-white">
             <div className="mb-5 flex items-center justify-between">
               <PolicyHqLogo variant="dark" className="h-9 w-auto" />
-              <span className="rounded-full bg-orange-500 px-3 py-1 text-xs font-bold">Live renewals</span>
+              <span className="rounded-full bg-accent px-3 py-1 text-xs font-bold">Live renewals</span>
             </div>
             <div className="grid gap-3 sm:grid-cols-3">
               {["This Week", "Next Week", "This Month"].map((item, index) => (
@@ -70,7 +70,7 @@ export default function LandingPage() {
               {["Kwame Mensah", "Abena Asante", "Kofi Boateng"].map((name) => (
                 <div key={name} className="flex items-center justify-between rounded-lg bg-slate-50 px-3 py-3 text-sm">
                   <span>{name}</span>
-                  <span className="font-bold text-orange-600">Renewal due</span>
+                  <span className="font-bold text-accent">Renewal due</span>
                 </div>
               ))}
             </div>
@@ -125,7 +125,7 @@ export default function LandingPage() {
         <h2 className="text-3xl font-extrabold text-primary">Pricing</h2>
         <div className="mt-8 grid gap-6 md:grid-cols-2">
           <Card><CardContent className="p-6"><h3 className="text-xl font-bold">Free Beta</h3><p className="mt-3 text-4xl font-extrabold">GHS 0<span className="text-base font-semibold text-slate-500">/month</span></p><p className="mt-4 text-slate-600">Client records, policy tracking, renewal alerts, and commission management while PolicyHQ is in beta</p><Button asChild className="mt-6"><Link href="/sign-up">Get Started Free</Link></Button></CardContent></Card>
-          <Card className="border-orange-200"><CardContent className="p-6"><span className="rounded-full bg-orange-100 px-3 py-1 text-xs font-bold text-orange-700">Coming Soon</span><h3 className="mt-4 text-xl font-bold">Pro Plan</h3><p className="mt-3 text-4xl font-extrabold">GHS 99<span className="text-base font-semibold text-slate-500">/month</span></p><p className="mt-4 text-slate-600">Advanced automation, priority support, reports, and production WhatsApp workflows for growing agencies</p></CardContent></Card>
+          <Card className="border-accent"><CardContent className="p-6"><span className="rounded-full bg-accent/10 px-3 py-1 text-xs font-bold text-accent">Coming Soon</span><h3 className="mt-4 text-xl font-bold">Pro Plan</h3><p className="mt-3 text-4xl font-extrabold">GHS 99<span className="text-base font-semibold text-slate-500">/month</span></p><p className="mt-4 text-slate-600">Advanced automation, priority support, reports, and production WhatsApp workflows for growing agencies</p></CardContent></Card>
         </div>
       </section>
 

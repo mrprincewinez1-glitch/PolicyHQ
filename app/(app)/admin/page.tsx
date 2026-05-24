@@ -55,7 +55,7 @@ export default async function AdminPage() {
       <div className="mx-auto max-w-6xl space-y-6">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <p className="text-sm font-bold uppercase tracking-wide text-orange-600">Admin</p>
+            <p className="text-sm font-bold uppercase tracking-wide text-accent">Admin</p>
             <h1 className="text-3xl font-extrabold text-slate-950">PolicyHQ Platform Overview</h1>
             <p className="mt-1 text-slate-600">Admin-only view for agents and platform-wide totals.</p>
           </div>
@@ -84,7 +84,7 @@ export default async function AdminPage() {
                     <p className="font-bold text-slate-950">{error.function_name}</p>
                     <time className="text-sm text-slate-500">{new Date(error.created_at).toLocaleString("en-GB")}</time>
                   </div>
-                  <p className="mt-2 text-sm text-red-700">{error.error_message}</p>
+                  <p className="mt-2 text-sm text-danger">{error.error_message}</p>
                 </div>
               ))}
             </div>

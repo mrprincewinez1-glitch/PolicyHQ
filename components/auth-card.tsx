@@ -13,7 +13,7 @@ export function AuthCard({ title, subtitle, children, message }: { title: string
           </Link>
           <h1 className="text-2xl font-extrabold">{title}</h1>
           <p className="mt-2 text-sm text-slate-600">{subtitle}</p>
-          {message ? <p className="mt-4 rounded-xl bg-orange-50 p-3 text-sm font-semibold text-orange-700">{message}</p> : null}
+          {message ? <p className="mt-4 rounded-xl bg-accent/10 p-3 text-sm font-semibold text-accent">{message}</p> : null}
           <div className="mt-6">{children}</div>
         </CardContent>
       </Card>
