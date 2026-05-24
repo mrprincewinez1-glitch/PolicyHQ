@@ -939,71 +939,59 @@ function Dashboard({ data, base, totalPaidThisMonth, openPolicy, todaysBirthdays
   const managerMetrics = renewalManagerMetrics(data.policies, todaysBirthdays.length);
   const followUpsDueToday = data.prospects.filter(isProspectDueToday).length;
   return (
-    <div className="space-y-6">
-      <div><h1 className="text-3xl font-extrabold">{greeting(firstName(data.profile.full_name))}</h1><p className="mt-1 text-slate-600">{fullDate()}</p></div>
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
-        {[
-          ["Total Clients", data.clients.length, navHref(base, "clients")],
-          ["Active Policies", active.length, navHref(base, "policies")],
-          ["Commissions Earned This Month", formatCurrency(totalPaidThisMonth), navHref(base, "commissions")],
-          ["Premium Due This Month", formatCurrency(premiumDueThisMonth), `${base}/renewals/month`]
-        ].map(([label, value, href]) => (
-          <Link key={label} href={href as string} className="rounded-xl focus:outline-none focus:ring-2 focus:ring-accent">
-            <Card className="h-full transition hover:-translate-y-0.5 hover:border-orange-200 hover:shadow-md">
-              <CardContent className="p-5">
-                <p className="text-sm font-semibold text-slate-500">{label}</p>
-                <strong className="mt-2 block text-3xl">{value}</strong>
-              </CardContent>
-            </Card>
-          </Link>
-        ))}
+    <div className="max-w-[1062px] space-y-8">
+      <div>
+        <h1 className="text-[32px] font-extrabold leading-[44px] text-primary">{greeting(firstName(data.profile.full_name))}</h1>
+        <p className="mt-1 text-base font-medium leading-6 text-slate-600">{fullDate()}</p>
+      </div>
+      <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-[176px_176px_210px_210px_210px]">
+        <DashboardStatLink label="Total Clients" value={data.clients.length} href={navHref(base, "clients")} />
+        <DashboardStatLink label="Active Policies" value={active.length} href={navHref(base, "policies")} />
+        <DashboardStatLink label="Commissions Earned This Month" value={formatCurrency(totalPaidThisMonth)} href={navHref(base, "commissions")} wide />
+        <DashboardStatLink label="Premium Due This Month" value={formatCurrency(premiumDueThisMonth)} href={`${base}/renewals/month`} wide />
         <ProspectsDashboardCard total={data.prospects.length} dueToday={followUpsDueToday} href={navHref(base, "prospects")} />
       </div>
-      <div className="grid gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(320px,1fr)]">
-        <RenewalWorkloadPanel metrics={managerMetrics} policies={data.policies} base={base} />
+      <div className="grid gap-[30px] lg:grid-cols-[640px_392px]">
+        <RenewalWorkloadPanel metrics={managerMetrics} />
         <BirthdayDashboardCard clients={todaysBirthdays} />
       </div>
-      <Card><CardHeader><h2 className="font-bold">Recent Activity</h2></CardHeader><DataTable headers={["Client Name", "Policy Number", "Type", "Expiry Date", "Status"]} rows={recent.map((p) => [<button className="font-bold text-primary" onClick={() => openPolicy(p)} key={p.id}>{p.client.full_name}</button>, p.policy_number, p.policy_type, formatDate(p.expiry_date), p.status])} /></Card>
+      <Card className="min-h-[250px]"><CardHeader><h2 className="text-xl font-extrabold text-primary">Recent Activity</h2></CardHeader><DataTable headers={["Client Name", "Policy Number", "Type", "Expiry Date", "Status"]} rows={recent.map((p) => [<button className="font-bold text-primary" onClick={() => openPolicy(p)} key={p.id}>{p.client.full_name}</button>, p.policy_number, p.policy_type, formatDate(p.expiry_date), p.status])} /></Card>
     </div>
   );
 }
 
-function RenewalWorkloadPanel({ metrics, policies, base }: { metrics: ReturnType<typeof renewalManagerMetrics>; policies: PolicyWithClient[]; base: string }) {
+function DashboardStatLink({ label, value, href, wide = false }: { label: string; value: string | number; href: string; wide?: boolean }) {
+  return (
+    <Link href={href} className="rounded-xl focus:outline-none focus:ring-2 focus:ring-accent">
+      <Card className={`h-[118px] transition hover:-translate-y-0.5 hover:border-orange-200 hover:shadow-md ${wide ? "xl:w-[210px]" : "xl:w-[176px]"}`}>
+        <CardContent className="p-[18px]">
+          <p className="text-[13px] font-bold leading-[18px] text-slate-500">{label}</p>
+          <strong className="mt-3 block text-[32px] font-extrabold leading-10 text-primary">{value}</strong>
+        </CardContent>
+      </Card>
+    </Link>
+  );
+}
+
+function RenewalWorkloadPanel({ metrics }: { metrics: ReturnType<typeof renewalManagerMetrics> }) {
   const workloadMetrics = metrics.filter((item) => item.label !== "Birthdays Today");
   return (
-    <Card className="overflow-hidden">
-      <CardHeader className="flex flex-col gap-2 border-b border-slate-100 bg-white sm:flex-row sm:items-start sm:justify-between">
+    <Card className="min-h-[260px] overflow-hidden">
+      <CardHeader className="border-b-0 p-[26px] pb-0">
         <div>
-          <h2 className="text-xl font-extrabold text-primary">Renewal Workload</h2>
-          <p className="text-sm font-semibold text-slate-500">Fast view of policies that need renewal attention soon.</p>
+          <h2 className="text-2xl font-extrabold leading-[30px] text-primary">Renewal Workload</h2>
+          <p className="mt-2 text-sm font-semibold text-slate-500">Manager view of renewals moving through the pipeline.</p>
         </div>
-        <span className="inline-flex w-fit items-center rounded-full bg-orange-50 px-3 py-1 text-xs font-extrabold uppercase text-accent">
-          Live snapshot
-        </span>
       </CardHeader>
-      <CardContent className="space-y-5 p-5">
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-          {workloadMetrics.map((item) => (
-            <div key={item.label} className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-              <p className="text-xs font-extrabold uppercase tracking-wide text-slate-500">{item.label}</p>
-              <strong className={`mt-3 block text-3xl ${item.label === "Overdue" || item.label === "Lost" ? "text-danger" : item.label === "Renewed" ? "text-success" : "text-primary"}`}>
-                {item.value}
-              </strong>
-            </div>
-          ))}
-        </div>
-        <div className="grid gap-3 md:grid-cols-3">
-          {[
-            ["Expiring This Week", policiesForRange(policies, "week").length, "week"],
-            ["Expiring Next Week", policiesForRange(policies, "next-week").length, "next-week"],
-            ["Expiring This Month", policiesForRange(policies, "month").length, "month"]
-          ].map(([label, count, range]) => (
-            <Link key={label} href={`${base}/renewals/${range}`} aria-label={`Renewal alerts: ${label}`} className="rounded-xl border border-orange-200 bg-orange-50 p-4 transition hover:-translate-y-0.5 hover:bg-white hover:shadow-soft">
-              <p className="text-sm font-extrabold text-primary">{label}</p>
-              <strong className="mt-2 block text-3xl text-accent">{count}</strong>
-            </Link>
-          ))}
-        </div>
+      <CardContent className="grid gap-5 p-[26px] pt-[22px] sm:grid-cols-2 xl:grid-cols-4">
+        {workloadMetrics.map((item) => (
+          <div key={item.label} className="h-[118px] rounded-xl border border-slate-200 bg-slate-50 p-[18px]">
+            <p className="text-[13px] font-bold leading-[18px] text-slate-500">{item.label}</p>
+            <strong className={`mt-3 block text-[32px] font-extrabold leading-10 ${item.label === "Overdue" || item.label === "Lost" ? "text-danger" : item.label === "Renewed" ? "text-success" : "text-primary"}`}>
+              {item.value}
+            </strong>
+          </div>
+        ))}
       </CardContent>
     </Card>
   );
@@ -1012,30 +1000,30 @@ function RenewalWorkloadPanel({ metrics, policies, base }: { metrics: ReturnType
 function ProspectsDashboardCard({ total, dueToday, href }: { total: number; dueToday: number; href: string }) {
   return (
     <Link href={href} className="rounded-xl focus:outline-none focus:ring-2 focus:ring-accent">
-      <Card className="h-full cursor-pointer overflow-hidden transition hover:-translate-y-0.5 hover:border-orange-200 hover:shadow-md">
-        <CardContent className="p-5">
+      <Card className="h-[138px] cursor-pointer overflow-hidden transition hover:-translate-y-0.5 hover:border-orange-200 hover:shadow-md xl:w-[210px]">
+        <CardContent className="p-4">
           <div className="flex items-start justify-between gap-3">
             <div>
-              <p className="text-sm font-bold text-slate-500">Prospects</p>
-              <p className="mt-0.5 text-xs font-semibold text-slate-400">Sales pipeline</p>
+              <p className="text-[13px] font-bold leading-[18px] text-slate-500">Prospects</p>
+              <p className="mt-0.5 text-[11px] font-semibold leading-4 text-slate-400">Sales pipeline</p>
             </div>
-            <span className="inline-flex h-8 w-8 items-center justify-center rounded-xl bg-orange-50 text-accent">
+            <span className="inline-flex h-[30px] w-[30px] items-center justify-center rounded-xl bg-orange-50 text-accent">
               <UserPlus className="h-4 w-4" />
             </span>
           </div>
-          <div className="mt-4 grid grid-cols-2 rounded-xl border border-slate-200 bg-slate-50 p-2">
-            <div className="px-2 py-1">
-              <strong className="block text-2xl font-extrabold text-primary">{total}</strong>
-              <span className="mt-0.5 block text-xs font-semibold leading-4 text-slate-500">Total</span>
+          <div className="mt-[18px] grid h-[54px] grid-cols-2 rounded-xl border border-slate-200 bg-slate-50 p-2">
+            <div className="px-1">
+              <strong className="block text-2xl font-extrabold leading-[30px] text-primary">{total}</strong>
+              <span className="block text-[11px] font-semibold leading-[14px] text-slate-500">Total</span>
             </div>
             <div className="border-l border-slate-200 pl-3">
-              <div className="rounded-lg bg-orange-50 px-2 py-1">
-                <strong className="block text-2xl font-extrabold text-accent">{dueToday}</strong>
-                <span className="mt-0.5 block text-xs font-semibold leading-4 text-slate-500">Due today</span>
+              <div className="rounded-lg bg-orange-50 px-2">
+                <strong className="block text-2xl font-extrabold leading-[30px] text-accent">{dueToday}</strong>
+                <span className="block text-[11px] font-semibold leading-[14px] text-slate-500">Due today</span>
               </div>
             </div>
           </div>
-          <p className="mt-3 text-xs font-semibold text-slate-400">Follow up before leads go cold</p>
+          <p className="mt-2 text-[10px] font-semibold leading-3 text-slate-400">Follow up before leads go cold</p>
         </CardContent>
       </Card>
     </Link>
@@ -2024,12 +2012,19 @@ function BirthdaySidebarCard({ clients }: { clients: Client[] }) {
 
 function BirthdayDashboardCard({ clients }: { clients: Client[] }) {
   return (
-    <Card>
-      <CardHeader><h2 className="flex items-center gap-2 text-lg font-extrabold"><Cake className="h-5 w-5 text-accent" /> Today’s Birthdays</h2></CardHeader>
-      <CardContent className="space-y-3">
+    <Card className="min-h-[260px] overflow-hidden">
+      <CardHeader className="border-b-0 p-[26px] pb-0">
+        <h2 className="flex items-center gap-2 text-2xl font-extrabold leading-[30px] text-primary">
+          <Cake className="h-5 w-5 text-accent" /> Today’s Birthdays
+        </h2>
+      </CardHeader>
+      <CardContent className="space-y-4 p-[26px] pt-[26px]">
         {clients.length ? clients.map((client) => (
-          <div key={client.id} className="flex items-center justify-between gap-3 rounded-xl bg-slate-50 p-3">
-            <div><p className="font-bold text-primary">{client.full_name}</p><p className="text-sm text-slate-600">{client.phone_number}</p></div>
+          <div key={client.id} className="flex items-center justify-between gap-4">
+            <div className="min-w-0">
+              <p className="truncate text-base font-extrabold text-primary">{client.full_name}</p>
+              <p className="mt-1 truncate text-sm font-semibold text-slate-500">{client.phone_number}</p>
+            </div>
             <WhatsAppButton href={birthdayWhatsAppHref(client)} label="WhatsApp" />
           </div>
         )) : <p className="text-sm font-semibold text-slate-500">No client birthdays today.</p>}
