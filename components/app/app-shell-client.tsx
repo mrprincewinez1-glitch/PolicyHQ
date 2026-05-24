@@ -53,7 +53,6 @@ import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Input, Select, Textarea } from "@/components/ui/input";
 import { findInsuranceCompany, findInsuranceCompanyCategory, insuranceCategoryForPolicyType, insuranceCompanies } from "@/lib/insurance";
 import { isValidPolicyNumber, normalizePolicyNumber, policyNumberHelpText } from "@/lib/policy-number";
-import { feedbackMailto } from "@/lib/site";
 import { createClient } from "@/lib/supabase/client";
 import type { ActivityNote, AppData, Client, Commission, InsuranceCategory, Policy, PolicyStatus, PolicyType, PolicyWithClient, Prospect, ProspectStatus, RenewalStatus } from "@/lib/types";
 import {
@@ -110,7 +109,6 @@ type ImportClientRow = {
 type CommissionPaymentFilter = "All" | "Paid" | "Pending";
 type CommissionDisplayStatus = "Pending" | "Overdue" | "Paid";
 type CommissionClassFilter = "All" | InsuranceCategory;
-type CommissionPeriodMode = "Monthly" | "Yearly" | "All Time";
 type NavItem = readonly [Section | "admin", LucideIcon, string];
 type GlobalSearchResult =
   | { type: "client"; id: string; title: string; subtitle: string; href: string }
@@ -132,7 +130,6 @@ const policyStatuses: PolicyStatus[] = ["Active", "Expired", "Cancelled"];
 const renewalStatuses: RenewalStatus[] = ["Upcoming", "Contacted", "Quote Requested", "Payment Pending", "Renewed", "Lost"];
 const prospectStatuses: ProspectStatus[] = ["New", "Interested", "Call Back", "Converted", "Not Interested"];
 const commissionBusinessClasses: InsuranceCategory[] = ["Life", "Non-Life", "Health"];
-const monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 
 export function AppShell({
   initialData,
@@ -693,7 +690,6 @@ export function AppShell({
   }, [base, data.clients, data.policies, data.prospects, query]);
 
   const totalEarned = commissionTotal(data.commissions, data.policies);
-  const totalPaid = commissionTotal(data.commissions.filter((item) => item.payment_status === "Paid"), data.policies);
   const totalPaidThisMonth = commissionTotal(data.commissions.filter((item) => item.payment_status === "Paid" && isCurrentMonth(commissionEarnedDate(item))), data.policies);
 
   const selectedClient = clientId ? data.clients.find((client) => client.id === clientId) : null;
@@ -753,7 +749,7 @@ export function AppShell({
     <Commissions
       data={data}
       totalEarned={totalEarned}
-      totalPaid={totalPaid}
+      totalPaidThisMonth={totalPaidThisMonth}
       base={base}
       markPaid={markPaid}
       openPolicy={setDetailPolicy}
@@ -825,14 +821,7 @@ export function AppShell({
                 <Icon className="h-5 w-5" /> {label}
               </Link>
             ))}
-            </nav>
-            <div className="mt-6 border-t border-white/10 pt-4">
-              <a href={feedbackMailto()} className="flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-semibold text-slate-200 hover:bg-white/10">
-                <MessageCircle className="h-4 w-4" />
-                Send Feedback
-              </a>
-              <BirthdaySidebarCard clients={todaysBirthdays} />
-            </div>
+          </nav>
           </aside>
         <main className="min-h-screen lg:pl-72">
           <header className="sticky top-0 z-20 flex h-[72px] items-center justify-between border-b border-slate-200 bg-white px-4 lg:px-8">
@@ -1064,23 +1053,20 @@ function Prospects({ prospects, dueTodayOnly, onAdd, onEdit, onDelete }: { prosp
   });
 
   return (
-    <div className="space-y-5">
+    <div className="max-w-[1062px] space-y-6">
+      <div className="flex items-center justify-between gap-4">
+        <h1 className="text-[32px] font-extrabold leading-[44px] text-primary">Prospects</h1>
+        <Button onClick={onAdd}><Plus className="h-4 w-4" /> Add Prospect</Button>
+      </div>
       <Card>
-        <CardHeader className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-          <div>
-            <p className="text-sm font-bold uppercase text-slate-500">Total prospects: {prospects.length}</p>
-            <h1 className="text-2xl font-extrabold">Prospects</h1>
-          </div>
-          <Button onClick={onAdd}><Plus className="h-4 w-4" /> Add Prospect</Button>
-        </CardHeader>
-        <CardContent>
-          <div className="flex flex-wrap gap-2">
+        <CardContent className="p-4">
+          <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-6">
             {(["All", ...prospectStatuses] as Array<ProspectStatus | "All">).map((item) => (
               <button
                 key={item}
                 type="button"
                 onClick={() => setStatus(item)}
-                className={`min-h-11 rounded-xl px-4 text-sm font-bold ${status === item ? "bg-primary text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"}`}
+                className={`h-11 rounded-xl px-4 text-sm font-extrabold ${status === item ? "bg-primary text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"}`}
               >
                 {item}
               </button>
@@ -1090,7 +1076,7 @@ function Prospects({ prospects, dueTodayOnly, onAdd, onEdit, onDelete }: { prosp
       </Card>
 
       {visible.length ? (
-        <div className="grid gap-4 lg:grid-cols-2 xl:grid-cols-3">
+        <div className="grid gap-6 lg:grid-cols-2">
           {visible.map((prospect) => (
             <ProspectCard key={prospect.id} prospect={prospect} onEdit={() => onEdit(prospect)} onDelete={() => onDelete(prospect)} />
           ))}
@@ -1112,11 +1098,11 @@ function Prospects({ prospects, dueTodayOnly, onAdd, onEdit, onDelete }: { prosp
 function ProspectCard({ prospect, onEdit, onDelete }: { prospect: Prospect; onEdit: () => void; onDelete: () => void }) {
   const due = prospect.follow_up_date ? isTodayOrPast(prospect.follow_up_date) && !["Converted", "Not Interested"].includes(prospect.status) : false;
   return (
-    <Card>
-      <CardContent className="space-y-4 p-5">
+    <Card className="min-h-[210px]">
+      <CardContent className="space-y-4 p-6">
         <div className="flex items-start justify-between gap-3">
           <div>
-            <h2 className="text-lg font-extrabold text-primary">{prospect.full_name}</h2>
+            <h2 className="text-xl font-extrabold text-primary">{prospect.full_name}</h2>
             <a href={`tel:${normalizeGhanaPhoneNumber(prospect.phone_number)}`} className="mt-1 block text-sm font-semibold text-slate-600">{prospect.phone_number}</a>
           </div>
           <ProspectStatusBadge status={prospect.status} />
@@ -1127,7 +1113,7 @@ function ProspectCard({ prospect, onEdit, onDelete }: { prospect: Prospect; onEd
           </p>
         ) : null}
         {prospect.notes ? <p className="line-clamp-3 text-sm leading-6 text-slate-600">{prospect.notes}</p> : null}
-        <div className="grid gap-2 sm:grid-cols-2">
+        <div className="grid gap-3 sm:grid-cols-4">
           <Button asChild variant="outline" className="min-h-11">
             <a href={`tel:${normalizeGhanaPhoneNumber(prospect.phone_number)}`}><Phone className="h-4 w-4" /> Call</a>
           </Button>
@@ -1147,9 +1133,26 @@ function Clients({ clients, policies, base, onAdd, onImport, onEdit, onDelete, o
   const sorted = [...clients].sort((a, b) => sort === "name" ? a.full_name.localeCompare(b.full_name) : new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
   if (!clients.length) return <Empty title="No clients yet. Add your first client to get started." action="Add Client" onAction={onAdd} />;
   return (
-    <Card>
-      <CardHeader className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between"><h1 className="text-2xl font-extrabold">Clients</h1><div className="flex flex-wrap gap-2"><Select value={sort} onChange={(e) => setSort(e.target.value as "name" | "date")}><option value="name">Sort by Name</option><option value="date">Sort by Date Added</option></Select><Button variant="outline" onClick={onExport}><Download className="h-4 w-4" /> Export to CSV</Button><Button variant="outline" onClick={onImport}><Upload className="h-4 w-4" /> Import Clients</Button><Button onClick={onAdd}><Plus className="h-4 w-4" /> Add New Client</Button></div></CardHeader>
-      <div className="space-y-3 border-t p-4 md:hidden">
+    <div className="max-w-[1062px] space-y-6">
+      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+        <h1 className="text-[32px] font-extrabold leading-[44px] text-primary">Clients</h1>
+        <Button onClick={onAdd}><Plus className="h-4 w-4" /> Add Client</Button>
+      </div>
+      <Card>
+        <CardContent className="flex flex-col gap-3 p-4 lg:flex-row lg:items-end lg:justify-between">
+          <label className="block text-sm font-semibold text-slate-600">
+            Search clients
+            <Input readOnly placeholder="Name, phone, email" className="mt-1 w-full lg:w-[260px]" />
+          </label>
+          <div className="flex flex-wrap gap-2">
+            <Select value={sort} onChange={(e) => setSort(e.target.value as "name" | "date")}><option value="name">Sort by Name</option><option value="date">Sort by Date Added</option></Select>
+            <Button variant="outline" onClick={onImport}><Upload className="h-4 w-4" /> Import Clients</Button>
+            <Button variant="outline" onClick={onExport}><Download className="h-4 w-4" /> Export CSV</Button>
+          </div>
+        </CardContent>
+      </Card>
+      <Card className="min-h-[520px]">
+      <div className="space-y-3 p-4 md:hidden">
         {sorted.map((client) => (
           <div key={client.id} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
             <div className="flex items-start justify-between gap-3">
@@ -1173,6 +1176,7 @@ function Clients({ clients, policies, base, onAdd, onImport, onEdit, onDelete, o
       </div>
       <div className="hidden overflow-auto md:block"><table className="w-full min-w-[1050px] text-sm"><thead className="sticky top-0 bg-slate-50"><tr>{["Full Name", "Phone Number", "Email", "Date of Birth", "Address", "Number of Policies", "Date Added", "Actions"].map((h) => <th className="px-4 py-3 text-left" key={h}>{h}</th>)}</tr></thead><tbody>{sorted.map((c) => <tr key={c.id} className="border-t odd:bg-white even:bg-slate-50"><td className="px-4 py-3 font-bold"><Link href={`${base}/clients/${c.id}`}>{c.full_name}</Link></td><td className="px-4 py-3">{c.phone_number}</td><td className="px-4 py-3">{c.email || "—"}</td><td className="px-4 py-3">{c.date_of_birth ? formatDate(c.date_of_birth) : "—"}</td><td className="px-4 py-3">{c.address || "—"}</td><td className="px-4 py-3">{policies.filter((p) => p.client_id === c.id).length}</td><td className="px-4 py-3">{formatDate(c.created_at)}</td><td className="px-4 py-3"><Button variant="ghost" size="sm" onClick={() => onEdit(c)}>Edit</Button><Button variant="ghost" size="sm" onClick={() => onDelete(c)}><Trash2 className="h-4 w-4 text-danger" /></Button></td></tr>)}</tbody></table></div>
     </Card>
+    </div>
   );
 }
 
@@ -1220,10 +1224,24 @@ function Policies({ policies, clients, onAdd, onEdit, onDelete, onExport, update
   const filtered = policies.filter((p) => (status === "All" || p.status === status) && (type === "All" || p.policy_type === type));
   if (!policies.length) return <Empty title="No policies yet. Add your first policy to get started." action="Add Policy" onAction={onAdd} />;
   return (
-    <Card>
-      <CardHeader className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between"><h1 className="text-2xl font-extrabold">Policies</h1><div className="flex flex-wrap gap-2"><Button variant="outline" onClick={onExport}><Download className="h-4 w-4" /> Export to CSV</Button><Button onClick={onAdd}><Plus className="h-4 w-4" /> Add New Policy</Button></div></CardHeader>
-      <div className="flex flex-wrap gap-3 p-4"><Select value={status} onChange={(e) => setStatus(e.target.value)}><option>All</option>{policyStatuses.map((item) => <option key={item}>{item}</option>)}</Select><Select value={type} onChange={(e) => setType(e.target.value)}><option>All</option>{policyTypes.map((item) => <option key={item}>{item}</option>)}</Select></div>
-      <div className="space-y-3 border-t p-4 md:hidden">
+    <div className="max-w-[1062px] space-y-6">
+      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+        <h1 className="text-[32px] font-extrabold leading-[44px] text-primary">Policies</h1>
+        <Button onClick={onAdd}><Plus className="h-4 w-4" /> Add Policy</Button>
+      </div>
+      <Card>
+        <CardContent className="flex flex-wrap items-end gap-3 p-4">
+          <div className="flex flex-wrap gap-2">
+            {["All", "Life", "Health", "Motor", "Property"].map((item) => (
+              <button key={item} type="button" onClick={() => setType(item)} className={`h-9 rounded-full px-5 text-xs font-extrabold ${type === item ? "bg-orange-100 text-accent" : "bg-slate-100 text-slate-600"}`}>{item}</button>
+            ))}
+          </div>
+          <Select value={status} onChange={(e) => setStatus(e.target.value)}><option>All</option>{policyStatuses.map((item) => <option key={item}>{item}</option>)}</Select>
+          <Button variant="outline" onClick={onExport}><Download className="h-4 w-4" /> Export CSV</Button>
+        </CardContent>
+      </Card>
+      <Card className="min-h-[520px]">
+      <div className="space-y-3 p-4 md:hidden">
         {filtered.map((policy) => (
           <div key={policy.id} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
             <button type="button" onClick={() => openPolicy(policy)} className="block w-full text-left">
@@ -1256,18 +1274,15 @@ function Policies({ policies, clients, onAdd, onEdit, onDelete, onExport, update
       </div>
       <div className="hidden overflow-auto md:block"><table className="w-full min-w-[1200px] text-sm"><thead className="sticky top-0 bg-slate-50"><tr>{["Client Name", "Policy Number", "Type", "Insurer", "Start Date", "Expiry Date", "Premium (GHS)", "Status", "Renewal Status", "Actions"].map((h) => <th className="px-4 py-3 text-left" key={h}>{h}</th>)}</tr></thead><tbody>{filtered.map((p) => <tr key={p.id} onClick={() => openPolicy(p)} className={`cursor-pointer border-t ${urgency(p.expiry_date) === "urgent" ? "bg-red-50" : urgency(p.expiry_date) === "soon" ? "bg-amber-50" : "odd:bg-white even:bg-slate-50"}`}><td className="px-4 py-3 font-bold">{p.client.full_name}</td><td className="px-4 py-3"><div className="flex flex-wrap items-center gap-2"><span>{p.policy_number}</span><NeedsReviewBadge policy={p} /></div></td><td className="px-4 py-3">{p.policy_type}</td><td className="px-4 py-3">{p.insurer_name}</td><td className="px-4 py-3">{formatDate(p.start_date)}</td><td className="px-4 py-3">{formatDate(p.expiry_date)} <UrgencyBadge date={p.expiry_date} status={p.renewal_status} /></td><td className="px-4 py-3">{formatCurrency(p.premium_amount)}</td><td className="px-4 py-3"><Badge tone={p.status === "Active" ? "green" : "slate"}>{p.status}</Badge></td><td className="px-4 py-3" onClick={(e) => e.stopPropagation()}><Select value={p.renewal_status} onChange={(e) => updateRenewal(p.id, e.target.value as RenewalStatus)}>{renewalStatuses.map((s) => <option key={s}>{s}</option>)}</Select></td><td className="px-4 py-3" onClick={(e) => e.stopPropagation()}><WhatsAppButton href={renewalWhatsAppHref(p)} label="WhatsApp" /><Button variant="ghost" size="sm" onClick={() => onEdit(p)}>Edit</Button><Button variant="ghost" size="sm" onClick={() => onDelete(p)}><Trash2 className="h-4 w-4 text-danger" /></Button></td></tr>)}</tbody></table></div>
     </Card>
+    </div>
   );
 }
 
-function Commissions({ data, totalEarned, totalPaid, base, markPaid, openPolicy, onExport, onWriteAttempt }: { data: AppData; totalEarned: number; totalPaid: number; base: string; markPaid: (commission: Commission) => void; openPolicy: (policy: PolicyWithClient) => void; onExport: (commissions: Commission[]) => void; onWriteAttempt: () => boolean }) {
+function Commissions({ data, totalEarned, totalPaidThisMonth, base, markPaid, openPolicy, onExport, onWriteAttempt }: { data: AppData; totalEarned: number; totalPaidThisMonth: number; base: string; markPaid: (commission: Commission) => void; openPolicy: (policy: PolicyWithClient) => void; onExport: (commissions: Commission[]) => void; onWriteAttempt: () => boolean }) {
   const [paymentFilter, setPaymentFilter] = useState<CommissionPaymentFilter>("All");
   const [classFilter, setClassFilter] = useState<CommissionClassFilter>("All");
   const [confirmingId, setConfirmingId] = useState<string | null>(null);
   const [flaggedIds, setFlaggedIds] = useState<Set<string>>(new Set());
-  const today = new Date();
-  const [periodMode, setPeriodMode] = useState<CommissionPeriodMode>("All Time");
-  const [selectedMonth, setSelectedMonth] = useState(today.getMonth());
-  const [selectedYear, setSelectedYear] = useState(today.getFullYear());
   const commissionItems = data.commissions.flatMap((commission) => {
     const policy = data.policies.find((item) => item.id === commission.policy_id);
     if (!policy) return [];
@@ -1277,24 +1292,14 @@ function Commissions({ data, totalEarned, totalPaid, base, markPaid, openPolicy,
     const displayStatus: CommissionDisplayStatus = commission.payment_status === "Paid" ? "Paid" : daysPending > 30 ? "Overdue" : "Pending";
     return [{ commission, policy, businessClass, amount, daysPending, displayStatus }];
   });
-  const periodLabel = commissionPeriodLabel(periodMode, selectedMonth, selectedYear);
-  const availableYears = availableCommissionYears(data.commissions);
   const rows = commissionItems.filter((item) => {
     const paymentMatches = paymentFilter === "All" || item.commission.payment_status === paymentFilter;
     const classMatches = classFilter === "All" || item.businessClass === classFilter;
-    const periodMatches = item.displayStatus !== "Paid" || commissionInPeriod(item.commission, periodMode, selectedMonth, selectedYear);
-    return paymentMatches && classMatches && periodMatches;
+    return paymentMatches && classMatches;
   }).sort(sortCommissionItems);
-  const breakdown = commissionBusinessClasses.map((businessClass) => {
-    const items = commissionItems.filter((item) => item.businessClass === businessClass);
-    const paid = items.filter((item) => item.commission.payment_status === "Paid").reduce((sum, item) => sum + item.amount, 0);
-    const total = items.reduce((sum, item) => sum + item.amount, 0);
-    return { businessClass, count: items.length, total, paid, pending: total - paid };
-  });
   const pendingTotal = commissionItems.filter((item) => item.displayStatus === "Pending").reduce((sum, item) => sum + item.amount, 0);
   const overdueItems = commissionItems.filter((item) => item.displayStatus === "Overdue");
   const overdueTotal = overdueItems.reduce((sum, item) => sum + item.amount, 0);
-  const earnedForPeriod = commissionItems.filter((item) => item.displayStatus === "Paid" && commissionInPeriod(item.commission, periodMode, selectedMonth, selectedYear)).reduce((sum, item) => sum + item.amount, 0);
   function confirmMarkPaid(commission: Commission) {
     markPaid(commission);
     setConfirmingId(null);
@@ -1319,81 +1324,26 @@ function Commissions({ data, totalEarned, totalPaid, base, markPaid, openPolicy,
     );
   }
   return (
-    <div className="space-y-5">
-      <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-          <div>
-            <h1 className="text-2xl font-extrabold text-primary">Commissions</h1>
-            <p className="mt-1 text-sm font-semibold text-slate-500">Choose the earnings period for Total Earned.</p>
-          </div>
-          <div className="grid w-full grid-cols-3 rounded-xl bg-slate-100 p-1 sm:inline-flex sm:w-auto sm:flex-wrap">
-            <button
-              type="button"
-              onClick={() => setPeriodMode("All Time")}
-              className={`rounded-lg px-2 py-2 text-xs font-bold sm:px-4 sm:text-sm ${periodMode === "All Time" ? "bg-white text-primary shadow-sm" : "text-slate-500 hover:text-primary"}`}
-            >
-              All Time
-            </button>
-            <div className={`flex items-center rounded-lg ${periodMode === "Yearly" ? "bg-white text-primary shadow-sm" : "text-slate-500 hover:text-primary"}`}>
-              <button type="button" onClick={() => setPeriodMode("Yearly")} className="px-2 py-2 text-xs font-bold sm:px-4 sm:text-sm">Yearly</button>
-              {periodMode === "Yearly" ? (
-                <select value={selectedYear} onChange={(event) => setSelectedYear(Number(event.target.value))} className="mr-1 h-8 rounded-md border border-slate-200 bg-white px-2 text-sm font-bold outline-none">
-                  {availableYears.map((year) => <option key={year} value={year}>{year}</option>)}
-                </select>
-              ) : null}
-            </div>
-            <div className={`flex items-center rounded-lg ${periodMode === "Monthly" ? "bg-white text-primary shadow-sm" : "text-slate-500 hover:text-primary"}`}>
-              <button type="button" onClick={() => setPeriodMode("Monthly")} className="px-2 py-2 text-xs font-bold sm:px-4 sm:text-sm">Monthly</button>
-              {periodMode === "Monthly" ? (
-                <div className="mr-1 flex items-center gap-1">
-                  <select value={selectedMonth} onChange={(event) => setSelectedMonth(Number(event.target.value))} className="h-8 rounded-md border border-slate-200 bg-white px-2 text-sm font-bold outline-none">
-                    {monthNames.map((month, index) => <option key={month} value={index}>{month}</option>)}
-                  </select>
-                  <select value={selectedYear} onChange={(event) => setSelectedYear(Number(event.target.value))} className="h-8 rounded-md border border-slate-200 bg-white px-2 text-sm font-bold outline-none">
-                    {availableYears.map((year) => <option key={year} value={year}>{year}</option>)}
-                  </select>
-                </div>
-              ) : null}
-            </div>
-          </div>
-        </div>
-      </div>
-      <div className="grid gap-4 md:grid-cols-3">
-        {[
-          ["Total Pending", pendingTotal, `${commissionItems.filter((item) => item.displayStatus === "Pending").length} pending`],
-          ["Total Overdue", overdueTotal, `${overdueItems.length} overdue`],
-          ["Total Earned", earnedForPeriod, periodLabel]
-        ].map(([label, value, meta]) => (
-          <Card key={label as string}>
-            <CardContent>
-              <p className="text-sm font-semibold text-slate-500">{label as string}</p>
-              <strong className="mt-2 block text-3xl">{formatCurrency(value as number)}</strong>
-              <span className="mt-2 block text-xs font-bold uppercase text-slate-400">{meta as string}</span>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
-      <div className="grid gap-4 lg:grid-cols-3">
-        {breakdown.map((item) => (
-          <button
-            type="button"
-            key={item.businessClass}
-            onClick={() => setClassFilter(item.businessClass)}
-            className={`rounded-xl border bg-white p-5 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-accent ${classFilter === item.businessClass ? "border-accent ring-2 ring-orange-100" : "border-transparent"}`}
-          >
-            <div className="flex items-center justify-between gap-3">
-              <BusinessClassBadge value={item.businessClass} />
-              <span className="text-xs font-bold uppercase text-slate-400">{item.count} records</span>
-            </div>
-            <strong className="mt-4 block text-2xl">{formatCurrency(item.total)}</strong>
-            <div className="mt-3 grid gap-3 text-sm sm:grid-cols-2">
-              <span className="rounded-lg bg-green-50 px-3 py-2 font-semibold text-green-700">Paid {formatCurrency(item.paid)}</span>
-              <span className="rounded-lg bg-amber-50 px-3 py-2 font-semibold text-amber-700">Pending {formatCurrency(item.pending)}</span>
-            </div>
-          </button>
-        ))}
-      </div>
+    <div className="max-w-[1062px] space-y-6">
+      <h1 className="text-[32px] font-extrabold leading-[44px] text-primary">Commissions</h1>
       <Card>
+        <CardContent className="p-6">
+          <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4 lg:gap-14">
+            {[
+              ["Total Pending", pendingTotal],
+              ["Total Overdue", overdueTotal],
+              ["Paid This Month", totalPaidThisMonth],
+              ["All Time", totalEarned]
+            ].map(([label, value]) => (
+              <div key={label as string}>
+                <p className="text-sm font-bold text-slate-500">{label as string}</p>
+                <strong className="mt-2 block text-3xl font-extrabold text-primary">{formatCurrency(value as number)}</strong>
+              </div>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+      <Card className="min-h-[520px]">
         <CardHeader className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div>
             <h2 className="text-xl font-extrabold">Commission Records</h2>
@@ -1503,33 +1453,78 @@ function Notifications({ data, base, markAllRead, onClick, onBack }: { data: App
       </Card>
     );
   }
-  return <Card><CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><div><Button asChild variant="outline" className="mb-3"><Link href={dashboardHref} onClick={onBack}>Back to Dashboard</Link></Button><h1 className="text-2xl font-extrabold">Renewal Alerts</h1></div><Button onClick={markAllRead}>Mark All as Read</Button></CardHeader><div className="divide-y">{data.notifications.map((n) => <button key={n.id} onClick={() => onClick(n.id)} className="flex w-full items-center gap-3 p-5 text-left hover:bg-slate-50"><span className={`h-3 w-3 rounded-full ${n.is_read ? "bg-slate-200" : "bg-accent"}`} /><div><p className="font-semibold">{n.message}</p><p className="text-sm text-slate-500">{formatDate(n.created_at)}</p></div></button>)}</div></Card>;
+  return (
+    <div className="max-w-[1062px] space-y-6">
+      <h1 className="text-[32px] font-extrabold leading-[44px] text-primary">Renewal Alerts</h1>
+      <Card className="min-h-[520px]">
+        <CardHeader className="flex flex-col gap-3 border-b-0 sm:flex-row sm:items-center sm:justify-between">
+          <h2 className="text-xl font-extrabold text-primary">Renewals needing action</h2>
+          <div className="flex flex-wrap gap-2">
+            <Button asChild variant="outline"><Link href={dashboardHref} onClick={onBack}>Back to Dashboard</Link></Button>
+            <Button onClick={markAllRead}>Mark All as Read</Button>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {data.notifications.map((n, index) => (
+            <button
+              key={n.id}
+              onClick={() => onClick(n.id)}
+              className={`flex w-full items-center justify-between gap-4 rounded-xl border p-5 text-left transition hover:-translate-y-0.5 hover:shadow-sm ${index === 0 ? "border-red-100 bg-red-50" : "border-slate-200 bg-slate-50"}`}
+            >
+              <div>
+                <p className="text-lg font-extrabold text-primary">{n.message.split(" for ")[1]?.split(" (")[0] ?? "Renewal alert"}</p>
+                <p className="mt-1 text-sm font-semibold text-slate-500">{n.message}</p>
+              </div>
+              <Badge tone={index === 0 ? "red" : index === 1 ? "amber" : "green"}>{index === 0 ? "Critical" : index === 1 ? "Watch" : "Safe"}</Badge>
+            </button>
+          ))}
+        </CardContent>
+      </Card>
+    </div>
+  );
 }
 
 function Profile({ data, saveProfile, saveNotificationSettings, uploadAvatar, changePassword }: { data: AppData; saveProfile: (formData: FormData) => void; saveNotificationSettings: (formData: FormData) => void; uploadAvatar: (event: ChangeEvent<HTMLInputElement>) => void; changePassword: (formData: FormData) => void }) {
-  const [tab, setTab] = useState<"profile" | "notifications">("profile");
   return (
-    <Card>
-      <CardHeader>
-        <h1 className="text-2xl font-extrabold">Profile & Settings</h1>
-        <div className="mt-4 inline-flex rounded-xl bg-slate-100 p-1">
-          <button className={`rounded-lg px-4 py-2 text-sm font-bold ${tab === "profile" ? "bg-white text-primary shadow-sm" : "text-slate-500"}`} onClick={() => setTab("profile")}>Profile</button>
-          <button className={`rounded-lg px-4 py-2 text-sm font-bold ${tab === "notifications" ? "bg-white text-primary shadow-sm" : "text-slate-500"}`} onClick={() => setTab("notifications")}>Notification Settings</button>
-        </div>
-      </CardHeader>
-      <CardContent>
-        {tab === "profile" ? (
-          <div className="max-w-2xl space-y-4">
+    <div className="max-w-[1062px] space-y-6">
+      <h1 className="text-[32px] font-extrabold leading-[44px] text-primary">Profile & Settings</h1>
+      <div className="grid gap-8 lg:grid-cols-2">
+        <Card className="min-h-[560px]">
+          <CardHeader className="border-b-0"><h2 className="text-2xl font-extrabold text-primary">Profile</h2></CardHeader>
+          <CardContent className="space-y-4">
             <Avatar profile={data.profile} large />
             <label className="inline-flex cursor-pointer items-center gap-2 rounded-xl border border-slate-200 px-4 py-2 text-sm font-bold"><Upload className="h-4 w-4" /> Upload photo<input type="file" accept="image/jpeg,image/png,image/webp" className="sr-only" onChange={uploadAvatar} /></label>
             <form action={saveProfile} className="space-y-4"><label className="block text-sm font-semibold">Full Name<Input name="full_name" defaultValue={data.profile.full_name} className="mt-1" /></label><label className="block text-sm font-semibold">Email<Input readOnly defaultValue={data.profile.email ?? ""} placeholder="No email on this account" className="mt-1 bg-slate-50" /></label><label className="block text-sm font-semibold">Phone Number<Input name="phone_number" defaultValue={data.profile.phone_number ?? ""} className="mt-1" /></label><label className="block text-sm font-semibold">Company Name<Input name="company_name" defaultValue={data.profile.company_name ?? ""} className="mt-1" /></label><Button>Save Changes</Button></form>
             <form action={changePassword} className="border-t pt-4"><h3 className="font-bold">Change Password</h3><Input name="current_password" className="mt-3" type="password" placeholder="Current Password" /><Input name="new_password" className="mt-3" type="password" placeholder="New Password" /><Input name="confirm_password" className="mt-3" type="password" placeholder="Confirm New Password" /><Button className="mt-4">Update Password</Button></form>
-          </div>
-        ) : (
-          <form action={saveNotificationSettings} className="max-w-2xl space-y-4"><p className="rounded-xl bg-orange-50 p-3 text-sm font-semibold text-orange-700">WhatsApp delivery requires approved Meta templates and production credentials. Email and in-app renewal tracking remain available during beta.</p><label className="flex items-center justify-between gap-4 font-semibold">Enable WhatsApp Notifications <input name="whatsapp_enabled" type="checkbox" defaultChecked={data.profile.whatsapp_enabled} /></label><label className="flex items-center justify-between gap-4 font-semibold">Send me daily WhatsApp renewal summary <input name="agent_whatsapp_summary_enabled" type="checkbox" defaultChecked={data.profile.agent_whatsapp_summary_enabled} /></label><label className="flex items-center justify-between gap-4 font-semibold">Enable Email Notifications <input name="email_notifications_enabled" type="checkbox" defaultChecked={data.profile.email_notifications_enabled} /></label><label className="flex items-center justify-between gap-4 font-semibold">Enable Birthday WhatsApp Messages <input name="birthday_messages_enabled" type="checkbox" defaultChecked={data.profile.birthday_messages_enabled} /></label><div className="rounded-xl bg-slate-50 p-4"><p className="font-bold text-primary">Renewal reminder schedule</p><div className="mt-3 space-y-3"><label className="flex items-center gap-3"><input name="reminder_30_enabled" type="checkbox" defaultChecked={data.profile.reminder_30_enabled} /> 30 Days Before Expiry</label><label className="flex items-center gap-3"><input name="reminder_14_enabled" type="checkbox" defaultChecked={data.profile.reminder_14_enabled} /> 14 Days Before Expiry</label><label className="flex items-center gap-3"><input name="reminder_7_enabled" type="checkbox" defaultChecked={data.profile.reminder_7_enabled} /> 7 Days Before Expiry</label></div></div><Button>Save Settings</Button></form>
-        )}
-      </CardContent>
-    </Card>
+          </CardContent>
+        </Card>
+        <Card className="min-h-[560px]">
+          <CardHeader className="border-b-0"><h2 className="text-2xl font-extrabold text-primary">Notification Settings</h2></CardHeader>
+          <CardContent>
+            <form action={saveNotificationSettings} className="space-y-5">
+              <p className="rounded-xl bg-orange-50 p-3 text-sm font-semibold text-orange-700">WhatsApp delivery requires approved Meta templates and production credentials. Email and in-app renewal tracking remain available during beta.</p>
+              <ToggleRow name="whatsapp_enabled" label="WhatsApp Notifications" checked={data.profile.whatsapp_enabled} />
+              <ToggleRow name="email_notifications_enabled" label="Email Notifications" checked={data.profile.email_notifications_enabled} />
+              <ToggleRow name="birthday_messages_enabled" label="Birthday Messages" checked={data.profile.birthday_messages_enabled} />
+              <ToggleRow name="agent_whatsapp_summary_enabled" label="Daily WhatsApp Summary" checked={data.profile.agent_whatsapp_summary_enabled} />
+              <ToggleRow name="reminder_30_enabled" label="30-day reminders" checked={data.profile.reminder_30_enabled} muted />
+              <ToggleRow name="reminder_14_enabled" label="14-day reminders" checked={data.profile.reminder_14_enabled} muted />
+              <ToggleRow name="reminder_7_enabled" label="7-day reminders" checked={data.profile.reminder_7_enabled} muted />
+              <Button>Save Settings</Button>
+            </form>
+          </CardContent>
+        </Card>
+      </div>
+    </div>
+  );
+}
+
+function ToggleRow({ name, label, checked, muted = false }: { name: string; label: string; checked: boolean; muted?: boolean }) {
+  return (
+    <label className="flex items-center justify-between gap-4 font-semibold text-primary">
+      {label}
+      <input name={name} type="checkbox" defaultChecked={checked} className={`h-5 w-10 rounded-full accent-orange-500 ${muted ? "opacity-60" : ""}`} />
+    </label>
   );
 }
 
@@ -2008,24 +2003,6 @@ function Empty({ title, action, onAction }: { title: string; action: string; onA
   return <Card><CardContent className="flex min-h-96 flex-col items-center justify-center text-center"><FileText className="h-12 w-12 text-slate-300" /><h1 className="mt-4 text-xl font-bold">{title}</h1><Button className="mt-5" onClick={onAction}>{action}</Button></CardContent></Card>;
 }
 
-function BirthdaySidebarCard({ clients }: { clients: Client[] }) {
-  return (
-    <div className="mt-4 hidden rounded-xl border border-white/10 bg-white/5 p-4 lg:block">
-      <div className="flex items-center gap-2 text-sm font-extrabold text-white"><Cake className="h-4 w-4 text-accent" /> Today’s Birthdays</div>
-      {clients.length ? (
-        <div className="mt-3 space-y-3">
-          {clients.slice(0, 3).map((client) => (
-            <div key={client.id} className="rounded-lg bg-white/10 p-2">
-              <p className="text-sm font-bold text-white">{client.full_name}</p>
-              <WhatsAppButton href={birthdayWhatsAppHref(client)} label="WhatsApp" className="mt-2 w-full border-white/20 bg-white text-primary hover:bg-orange-50" />
-            </div>
-          ))}
-        </div>
-      ) : <p className="mt-3 text-sm font-semibold text-slate-300">None today</p>}
-    </div>
-  );
-}
-
 function BirthdayDashboardCard({ clients }: { clients: Client[] }) {
   return (
     <Card className="min-h-[260px] overflow-hidden">
@@ -2128,31 +2105,6 @@ function isCurrentMonth(value: string | null) {
 
 function commissionEarnedDate(commission: Commission) {
   return commission.payment_date ?? commission.created_at.slice(0, 10);
-}
-
-function commissionInPeriod(commission: Commission, mode: CommissionPeriodMode, month: number, year: number) {
-  if (mode === "All Time") return true;
-  const paidAt = new Date(`${commissionEarnedDate(commission)}T00:00:00Z`);
-  if (paidAt.getUTCFullYear() !== year) return false;
-  return mode === "Yearly" || paidAt.getUTCMonth() === month;
-}
-
-function commissionPeriodLabel(mode: CommissionPeriodMode, month: number, year: number) {
-  if (mode === "All Time") return "all time";
-  if (mode === "Yearly") return `${year}`;
-  return `${monthNames[month]} ${year}`;
-}
-
-function availableCommissionYears(commissions: Commission[]) {
-  const currentYear = new Date().getFullYear();
-  const years = new Set<number>();
-  for (let year = currentYear; year >= 2015; year -= 1) {
-    years.add(year);
-  }
-  commissions.forEach((commission) => {
-    years.add(new Date(`${commissionEarnedDate(commission)}T00:00:00Z`).getUTCFullYear());
-  });
-  return Array.from(years).sort((a, b) => b - a);
 }
 
 function sortCommissionItems(a: { displayStatus: CommissionDisplayStatus; daysPending: number; amount: number; commission: Commission }, b: { displayStatus: CommissionDisplayStatus; daysPending: number; amount: number; commission: Commission }) {
