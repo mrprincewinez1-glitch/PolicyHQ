@@ -959,59 +959,51 @@ function Dashboard({ data, base, totalPaidThisMonth, openPolicy, todaysBirthdays
         ))}
         <ProspectsDashboardCard total={data.prospects.length} dueToday={followUpsDueToday} href={navHref(base, "prospects")} />
       </div>
-      <RenewalWorkloadPanel metrics={managerMetrics} />
-      <div className="lg:hidden">
+      <div className="grid gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(320px,1fr)]">
+        <RenewalWorkloadPanel metrics={managerMetrics} policies={data.policies} base={base} />
         <BirthdayDashboardCard clients={todaysBirthdays} />
-      </div>
-      <div className="space-y-3">
-        <div className="flex items-center gap-3">
-          <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-orange-100 text-accent">
-            <Bell className="h-5 w-5" />
-          </span>
-          <div>
-            <h2 className="text-xl font-extrabold text-primary">Renewal Alerts</h2>
-            <p className="text-sm text-slate-600">Click a card to view policies that need renewal attention.</p>
-          </div>
-        </div>
-        <div className="grid gap-4 md:grid-cols-3">
-          {[
-            ["Expiring This Week", policiesForRange(data.policies, "week").length, "week"],
-            ["Expiring Next Week", policiesForRange(data.policies, "next-week").length, "next-week"],
-            ["Expiring This Month", policiesForRange(data.policies, "month").length, "month"]
-          ].map(([label, count, range]) => (
-            <Link key={label} href={`${base}/renewals/${range}`} aria-label={`Renewal alerts: ${label}`} className="rounded-xl border border-orange-200 bg-white p-5 shadow-soft transition hover:-translate-y-0.5">
-              <p className="font-bold text-primary">{label}</p><strong className="mt-3 block text-4xl text-accent">{count}</strong>
-            </Link>
-          ))}
-        </div>
       </div>
       <Card><CardHeader><h2 className="font-bold">Recent Activity</h2></CardHeader><DataTable headers={["Client Name", "Policy Number", "Type", "Expiry Date", "Status"]} rows={recent.map((p) => [<button className="font-bold text-primary" onClick={() => openPolicy(p)} key={p.id}>{p.client.full_name}</button>, p.policy_number, p.policy_type, formatDate(p.expiry_date), p.status])} /></Card>
     </div>
   );
 }
 
-function RenewalWorkloadPanel({ metrics }: { metrics: ReturnType<typeof renewalManagerMetrics> }) {
+function RenewalWorkloadPanel({ metrics, policies, base }: { metrics: ReturnType<typeof renewalManagerMetrics>; policies: PolicyWithClient[]; base: string }) {
   const workloadMetrics = metrics.filter((item) => item.label !== "Birthdays Today");
   return (
     <Card className="overflow-hidden">
-      <CardHeader className="flex flex-col gap-2 border-b border-slate-100 bg-white sm:flex-row sm:items-center sm:justify-between">
+      <CardHeader className="flex flex-col gap-2 border-b border-slate-100 bg-white sm:flex-row sm:items-start sm:justify-between">
         <div>
           <h2 className="text-xl font-extrabold text-primary">Renewal Workload</h2>
-          <p className="text-sm font-semibold text-slate-500">Manager view of renewals moving through the pipeline.</p>
+          <p className="text-sm font-semibold text-slate-500">Fast view of policies that need renewal attention soon.</p>
         </div>
         <span className="inline-flex w-fit items-center rounded-full bg-orange-50 px-3 py-1 text-xs font-extrabold uppercase text-accent">
           Live snapshot
         </span>
       </CardHeader>
-      <CardContent className="grid gap-3 p-5 sm:grid-cols-2 xl:grid-cols-4">
-        {workloadMetrics.map((item) => (
-          <div key={item.label} className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-            <p className="text-xs font-extrabold uppercase tracking-wide text-slate-500">{item.label}</p>
-            <strong className={`mt-3 block text-3xl ${item.label === "Overdue" || item.label === "Lost" ? "text-danger" : item.label === "Renewed" ? "text-success" : "text-primary"}`}>
-              {item.value}
-            </strong>
-          </div>
-        ))}
+      <CardContent className="space-y-5 p-5">
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          {workloadMetrics.map((item) => (
+            <div key={item.label} className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+              <p className="text-xs font-extrabold uppercase tracking-wide text-slate-500">{item.label}</p>
+              <strong className={`mt-3 block text-3xl ${item.label === "Overdue" || item.label === "Lost" ? "text-danger" : item.label === "Renewed" ? "text-success" : "text-primary"}`}>
+                {item.value}
+              </strong>
+            </div>
+          ))}
+        </div>
+        <div className="grid gap-3 md:grid-cols-3">
+          {[
+            ["Expiring This Week", policiesForRange(policies, "week").length, "week"],
+            ["Expiring Next Week", policiesForRange(policies, "next-week").length, "next-week"],
+            ["Expiring This Month", policiesForRange(policies, "month").length, "month"]
+          ].map(([label, count, range]) => (
+            <Link key={label} href={`${base}/renewals/${range}`} aria-label={`Renewal alerts: ${label}`} className="rounded-xl border border-orange-200 bg-orange-50 p-4 transition hover:-translate-y-0.5 hover:bg-white hover:shadow-soft">
+              <p className="text-sm font-extrabold text-primary">{label}</p>
+              <strong className="mt-2 block text-3xl text-accent">{count}</strong>
+            </Link>
+          ))}
+        </div>
       </CardContent>
     </Card>
   );
