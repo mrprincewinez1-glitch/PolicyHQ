@@ -1005,30 +1005,29 @@ function RenewalWorkloadPanel({ metrics }: { metrics: ReturnType<typeof renewalM
 function ProspectsDashboardCard({ total, dueToday, href }: { total: number; dueToday: number; href: string }) {
   return (
     <Link href={href} className="rounded-xl focus:outline-none focus:ring-2 focus:ring-accent">
-      <Card className="h-[138px] cursor-pointer overflow-hidden transition hover:-translate-y-0.5 hover:border-accent hover:shadow-md xl:w-[210px]">
-        <CardContent className="p-4">
+      <Card className="h-[118px] cursor-pointer overflow-hidden transition hover:-translate-y-0.5 hover:border-accent hover:shadow-md xl:w-[210px]">
+        <CardContent className="p-[14px]">
           <div className="flex items-start justify-between gap-3">
-            <div>
+            <div className="min-w-0">
               <p className="text-[13px] font-bold leading-[18px] text-slate-500">Prospects</p>
-              <p className="mt-0.5 text-[11px] font-semibold leading-4 text-slate-400">Sales pipeline</p>
+              <p className="truncate text-[10px] font-semibold leading-3 text-slate-400">Sales pipeline</p>
             </div>
-            <span className="inline-flex h-[30px] w-[30px] items-center justify-center rounded-xl bg-accent/10 text-accent">
-              <UserPlus className="h-4 w-4" />
+            <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-accent/10 text-accent">
+              <UserPlus className="h-3.5 w-3.5" />
             </span>
           </div>
-          <div className="mt-[18px] grid h-[54px] grid-cols-2 rounded-xl border border-slate-200 bg-slate-50 p-2">
+          <div className="mt-2 grid h-[48px] grid-cols-2 rounded-xl border border-slate-200 bg-slate-50 p-1.5">
             <div className="px-1">
-              <strong className="block text-2xl font-extrabold leading-[30px] text-primary">{total}</strong>
-              <span className="block text-[11px] font-semibold leading-[14px] text-slate-500">Total</span>
+              <strong className="block text-[26px] font-extrabold leading-7 text-primary">{total}</strong>
+              <span className="block text-[10px] font-semibold leading-3 text-slate-500">Total</span>
             </div>
-            <div className="border-l border-slate-200 pl-3">
-              <div className="rounded-lg bg-accent/10 px-2">
-                <strong className="block text-2xl font-extrabold leading-[30px] text-accent">{dueToday}</strong>
-                <span className="block text-[11px] font-semibold leading-[14px] text-slate-500">Due today</span>
+            <div className="border-l border-slate-200 pl-2">
+              <div className="rounded-lg bg-accent/10 px-1.5">
+                <strong className="block text-[26px] font-extrabold leading-7 text-accent">{dueToday}</strong>
+                <span className="block whitespace-nowrap text-[10px] font-semibold leading-3 text-slate-500">Due today</span>
               </div>
             </div>
           </div>
-          <p className="mt-2 text-[10px] font-semibold leading-3 text-slate-400">Follow up before leads go cold</p>
         </CardContent>
       </Card>
     </Link>
