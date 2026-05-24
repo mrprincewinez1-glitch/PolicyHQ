@@ -941,8 +941,15 @@ function Dashboard({ data, base, totalPaidThisMonth, openPolicy, todaysBirthdays
   const recent = [...data.policies].sort((a, b) => new Date(b.updated_at ?? b.created_at).getTime() - new Date(a.updated_at ?? a.created_at).getTime()).slice(0, 5);
   const active = activePolicies(data.policies);
   const premiumDueThisMonth = expiringThisMonth(data.policies).reduce((sum, policy) => sum + policy.premium_amount, 0);
-  const managerMetrics = renewalManagerMetrics(data.policies, todaysBirthdays.length);
   const followUpsDueToday = data.prospects.filter(isProspectDueToday).length;
+  const dashboardMix = dashboardBusinessMix(data);
+  const revenueMetrics = dashboardRevenueMetrics(data.policies, dashboardMix);
+  const relationshipMetrics = dashboardRelationshipMetrics(data.policies, todaysBirthdays.length, followUpsDueToday);
+
+  if (dashboardMix === "empty") {
+    return <NoDataDashboard base={base} profileName={data.profile.full_name} />;
+  }
+
   return (
     <div className="max-w-[1062px] space-y-8">
       <div>
@@ -956,12 +963,93 @@ function Dashboard({ data, base, totalPaidThisMonth, openPolicy, todaysBirthdays
         <DashboardStatLink label="Premium Due This Month" value={formatCurrency(premiumDueThisMonth)} href={`${base}/renewals/month`} wide />
         <ProspectsDashboardCard total={data.prospects.length} dueToday={followUpsDueToday} href={navHref(base, "prospects")} />
       </div>
-      <div className="grid gap-[30px] lg:grid-cols-[640px_392px]">
-        <RenewalWorkloadPanel metrics={managerMetrics} />
-        <BirthdayDashboardCard clients={todaysBirthdays} />
+      <div className="grid gap-[30px] lg:grid-cols-2">
+        <RevenueProtectionPanel mix={dashboardMix} metrics={revenueMetrics} base={base} />
+        <RelationshipManagerPanel metrics={relationshipMetrics} birthdays={todaysBirthdays} base={base} />
       </div>
       <Card className="min-h-[250px]"><CardHeader><h2 className="text-xl font-extrabold text-primary">Recent Activity</h2></CardHeader><DataTable headers={["Client Name", "Policy Number", "Type", "Expiry Date", "Status"]} rows={recent.map((p) => [<button className="font-bold text-primary" onClick={() => openPolicy(p)} key={p.id}>{p.client.full_name}</button>, p.policy_number, p.policy_type, formatDate(p.expiry_date), p.status])} /></Card>
     </div>
+  );
+}
+
+type DashboardBusinessMix = "empty" | "life" | "non-life" | "mixed";
+type DashboardPanelMetric = {
+  label: string;
+  value: number;
+  tone?: "primary" | "accent" | "success" | "warning" | "danger";
+  helper?: string;
+};
+
+function NoDataDashboard({ base, profileName }: { base: string; profileName: string }) {
+  return (
+    <div className="max-w-[1062px] space-y-8">
+      <div>
+        <h1 className="text-[32px] font-extrabold leading-[44px] text-primary">{greeting(firstName(profileName))}</h1>
+        <p className="mt-1 text-base font-medium leading-6 text-slate-600">Start by bringing your book into PolicyHQ. The dashboard will become useful as soon as clients and policies are added.</p>
+      </div>
+      <div className="grid gap-[30px] lg:grid-cols-[1.08fr_0.92fr]">
+        <Card className="overflow-hidden">
+          <CardHeader className="border-b-0 p-[26px] pb-0">
+            <Badge tone="orange">First setup</Badge>
+            <h2 className="mt-4 text-2xl font-extrabold leading-[30px] text-primary">Bring in your client book</h2>
+            <p className="mt-2 text-sm font-semibold leading-6 text-slate-500">Add a single client, import an Excel/CSV list, or capture prospects you are still following up.</p>
+          </CardHeader>
+          <CardContent className="grid gap-4 p-[26px] sm:grid-cols-3">
+            <SetupStep icon={Users} title="Clients" body="Store customer details once." href={navHref(base, "clients")} />
+            <SetupStep icon={Upload} title="Import" body="Map spreadsheet columns." href={navHref(base, "clients")} />
+            <SetupStep icon={UserPlus} title="Prospects" body="Track leads before sale." href={navHref(base, "prospects")} />
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="border-b-0 p-[26px] pb-0">
+            <h2 className="text-2xl font-extrabold leading-[30px] text-primary">What PolicyHQ will watch</h2>
+          </CardHeader>
+          <CardContent className="space-y-4 p-[26px]">
+            <DashboardChecklistItem title="Revenue protection" body="Renewals, life lapse risk, and premium due windows." />
+            <DashboardChecklistItem title="Relationship manager" body="Birthdays, follow-ups, and policy anniversaries." />
+            <DashboardChecklistItem title="Daily activity" body="Recent actions and policies needing attention." />
+          </CardContent>
+        </Card>
+      </div>
+      <div className="grid gap-[30px] lg:grid-cols-2">
+        <DashboardEmptyPillar title="Revenue Protection" body="Your renewal and lapse-shield workload will appear here." />
+        <DashboardEmptyPillar title="Relationship Manager" body="Birthdays, prospect follow-ups, and anniversaries will appear here." />
+      </div>
+    </div>
+  );
+}
+
+function SetupStep({ icon: Icon, title, body, href }: { icon: LucideIcon; title: string; body: string; href: string }) {
+  return (
+    <Link href={href} className="rounded-xl border border-slate-200 bg-slate-50 p-4 transition hover:border-accent hover:bg-accent/5">
+      <span className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-accent text-white"><Icon className="h-5 w-5" /></span>
+      <strong className="mt-4 block text-base font-extrabold text-primary">{title}</strong>
+      <span className="mt-1 block text-sm font-semibold leading-5 text-slate-500">{body}</span>
+    </Link>
+  );
+}
+
+function DashboardChecklistItem({ title, body }: { title: string; body: string }) {
+  return (
+    <div className="flex gap-3 rounded-xl border border-slate-200 bg-slate-50 p-4">
+      <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-success" />
+      <div>
+        <p className="font-extrabold text-primary">{title}</p>
+        <p className="mt-1 text-sm font-semibold leading-5 text-slate-500">{body}</p>
+      </div>
+    </div>
+  );
+}
+
+function DashboardEmptyPillar({ title, body }: { title: string; body: string }) {
+  return (
+    <Card className="min-h-[220px]">
+      <CardContent className="flex h-full min-h-[220px] flex-col justify-center p-[26px]">
+        <p className="text-xs font-extrabold uppercase tracking-[0.18em] text-accent">Waiting for data</p>
+        <h2 className="mt-3 text-2xl font-extrabold text-primary">{title}</h2>
+        <p className="mt-2 text-sm font-semibold leading-6 text-slate-500">{body}</p>
+      </CardContent>
+    </Card>
   );
 }
 
@@ -978,27 +1066,81 @@ function DashboardStatLink({ label, value, href, wide = false }: { label: string
   );
 }
 
-function RenewalWorkloadPanel({ metrics }: { metrics: ReturnType<typeof renewalManagerMetrics> }) {
-  const workloadMetrics = metrics.filter((item) => item.label !== "Birthdays Today");
+function RevenueProtectionPanel({ mix, metrics, base }: { mix: DashboardBusinessMix; metrics: DashboardPanelMetric[]; base: string }) {
+  const copy = mix === "life"
+    ? "Life clients do not renew annually. This surface watches lapse risk, missing statement signals, and recovered policies."
+    : mix === "mixed"
+      ? "Your mixed book needs both non-life renewal buckets and life-client lapse visibility."
+      : "Your non-life book is organized around the renewal windows agents act on every day.";
+  const href = mix === "life" ? navHref(base, "policies") : `${base}/renewals/week`;
+  const cta = mix === "life" ? "Review Life Book" : "View Renewal Queue";
+
   return (
     <Card className="min-h-[260px] overflow-hidden">
       <CardHeader className="border-b-0 p-[26px] pb-0">
-        <div>
-          <h2 className="text-2xl font-extrabold leading-[30px] text-primary">Renewal Workload</h2>
-          <p className="mt-2 text-sm font-semibold text-slate-500">Manager view of renewals moving through the pipeline.</p>
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <Badge tone="orange">Revenue Protection</Badge>
+            <h2 className="mt-4 text-2xl font-extrabold leading-[30px] text-primary">Protect income before it leaks</h2>
+            <p className="mt-2 text-sm font-semibold leading-6 text-slate-500">{copy}</p>
+          </div>
+          <Button asChild variant="outline" className="shrink-0">
+            <Link href={href}>{cta}</Link>
+          </Button>
         </div>
       </CardHeader>
-      <CardContent className="grid gap-5 p-[26px] pt-[22px] sm:grid-cols-2 xl:grid-cols-4">
-        {workloadMetrics.map((item) => (
-          <div key={item.label} className="h-[118px] rounded-xl border border-slate-200 bg-slate-50 p-[18px]">
-            <p className="text-[13px] font-bold leading-[18px] text-slate-500">{item.label}</p>
-            <strong className={`mt-3 block text-[32px] font-extrabold leading-10 ${item.label === "Overdue" || item.label === "Lost" ? "text-danger" : item.label === "Renewed" ? "text-success" : "text-primary"}`}>
-              {item.value}
-            </strong>
-          </div>
-        ))}
+      <CardContent className="grid gap-4 p-[26px] pt-[22px] sm:grid-cols-3">
+        {metrics.map((item) => <DashboardPanelMetricCard key={item.label} metric={item} />)}
       </CardContent>
     </Card>
+  );
+}
+
+function RelationshipManagerPanel({ metrics, birthdays, base }: { metrics: DashboardPanelMetric[]; birthdays: Client[]; base: string }) {
+  return (
+    <Card className="min-h-[260px] overflow-hidden">
+      <CardHeader className="border-b-0 p-[26px] pb-0">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <Badge tone="green">Relationship Manager</Badge>
+            <h2 className="mt-4 text-2xl font-extrabold leading-[30px] text-primary">Keep the human touch visible</h2>
+            <p className="mt-2 text-sm font-semibold leading-6 text-slate-500">Birthdays, follow-ups, and anniversaries sit beside revenue work so the app serves every agent type.</p>
+          </div>
+          <Button asChild variant="outline" className="shrink-0">
+            <Link href={`${navHref(base, "prospects")}?filter=today`}>Open Tasks</Link>
+          </Button>
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-5 p-[26px] pt-[22px]">
+        <div className="grid gap-4 sm:grid-cols-3">
+          {metrics.map((item) => <DashboardPanelMetricCard key={item.label} metric={item} />)}
+        </div>
+        {birthdays.length ? (
+          <div className="space-y-3 rounded-xl border border-accent/20 bg-accent/5 p-4">
+            {birthdays.slice(0, 2).map((client) => (
+              <div key={client.id} className="flex items-center justify-between gap-4">
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-extrabold text-primary">{client.full_name}</p>
+                  <p className="truncate text-xs font-semibold text-slate-500">{client.phone_number}</p>
+                </div>
+                <WhatsAppButton href={birthdayWhatsAppHref(client)} label="WhatsApp" />
+              </div>
+            ))}
+          </div>
+        ) : null}
+      </CardContent>
+    </Card>
+  );
+}
+
+function DashboardPanelMetricCard({ metric }: { metric: DashboardPanelMetric }) {
+  const color = metric.tone === "danger" ? "text-danger" : metric.tone === "warning" ? "text-warning" : metric.tone === "success" ? "text-success" : metric.tone === "accent" ? "text-accent" : "text-primary";
+  return (
+    <div className="h-[118px] rounded-xl border border-slate-200 bg-slate-50 p-[18px]">
+      <p className="text-[13px] font-bold leading-[18px] text-slate-500">{metric.label}</p>
+      <strong className={`mt-3 block text-[32px] font-extrabold leading-10 ${color}`}>{metric.value}</strong>
+      {metric.helper ? <p className="mt-1 truncate text-[11px] font-bold text-slate-400">{metric.helper}</p> : null}
+    </div>
   );
 }
 
@@ -2219,15 +2361,79 @@ function ProspectStatusBadge({ status }: { status: ProspectStatus }) {
   return <Badge tone={tone}>{status}</Badge>;
 }
 
-function renewalManagerMetrics(policies: PolicyWithClient[], birthdaysToday: number) {
-  const due = policies.filter((policy) => ["Watch", "Urgent", "Critical", "Overdue"].includes(renewalUrgency(policy.expiry_date, policy.renewal_status)) && policy.renewal_status !== "Renewed").length;
+function dashboardBusinessMix(data: AppData): DashboardBusinessMix {
+  if (!data.clients.length && !data.policies.length && !data.prospects.length) return "empty";
+  const lifePolicies = data.policies.filter(isLifePolicy).length;
+  const otherPolicies = data.policies.length - lifePolicies;
+  if (lifePolicies && otherPolicies) return "mixed";
+  if (lifePolicies) return "life";
+  return "non-life";
+}
+
+function dashboardRevenueMetrics(policies: PolicyWithClient[], mix: DashboardBusinessMix): DashboardPanelMetric[] {
+  const nonLifePolicies = policies.filter((policy) => !isLifePolicy(policy));
+  const lifePolicies = policies.filter(isLifePolicy);
+  const thisWeek = policiesForRange(nonLifePolicies, "week").length;
+  const nextWeek = policiesForRange(nonLifePolicies, "next-week").length;
+  const thisMonth = policiesForRange(nonLifePolicies, "month").length;
+  const missingStatement = 0;
+  const atRiskLife = lifePolicies.filter(isLifeRetentionWatch).length;
+  const recoveredLife = lifePolicies.filter((policy) => policy.renewal_status === "Renewed").length;
+
+  if (mix === "life") {
+    return [
+      { label: "Missing Statement", value: missingStatement, tone: "danger", helper: "Lapse Shield" },
+      { label: "At Risk Life", value: atRiskLife, tone: atRiskLife ? "warning" : "success", helper: "Years 1-3" },
+      { label: "Recovered", value: recoveredLife, tone: "success", helper: "Marked renewed" }
+    ];
+  }
+
+  if (mix === "mixed") {
+    return [
+      { label: "This Week", value: thisWeek, tone: thisWeek ? "warning" : "success", helper: "Non-life" },
+      { label: "This Month", value: thisMonth, tone: thisMonth ? "accent" : "primary", helper: "Non-life" },
+      { label: "Missing Statement", value: missingStatement, tone: "danger", helper: "Life" }
+    ];
+  }
+
   return [
-    { label: "Renewals Due", value: due },
-    { label: "Renewed", value: policies.filter((policy) => policy.renewal_status === "Renewed").length },
-    { label: "Overdue", value: policies.filter((policy) => renewalUrgency(policy.expiry_date, policy.renewal_status) === "Overdue").length },
-    { label: "Lost", value: policies.filter((policy) => policy.renewal_status === "Lost").length },
-    { label: "Birthdays Today", value: birthdaysToday }
+    { label: "This Week", value: thisWeek, tone: thisWeek ? "warning" : "success", helper: "Expiring" },
+    { label: "Next Week", value: nextWeek, tone: nextWeek ? "accent" : "primary", helper: "Expiring" },
+    { label: "This Month", value: thisMonth, tone: thisMonth ? "danger" : "primary", helper: "Expiring" }
   ];
+}
+
+function dashboardRelationshipMetrics(policies: PolicyWithClient[], birthdaysToday: number, followUpsDueToday: number): DashboardPanelMetric[] {
+  return [
+    { label: "Birthdays Today", value: birthdaysToday, tone: birthdaysToday ? "accent" : "primary", helper: "WhatsApp ready" },
+    { label: "Follow-ups Due", value: followUpsDueToday, tone: followUpsDueToday ? "warning" : "success", helper: "Prospects" },
+    { label: "Anniversaries", value: policies.filter(isPolicyAnniversarySoon).length, tone: "success", helper: "Next 7 days" }
+  ];
+}
+
+function isLifePolicy(policy: PolicyWithClient) {
+  return (policy.insurance_category ?? insuranceCategoryForPolicyType(policy.policy_type)) === "Life";
+}
+
+function isLifeRetentionWatch(policy: PolicyWithClient) {
+  if (policy.status !== "Active" || policy.renewal_status === "Lost") return false;
+  const start = new Date(`${policy.start_date}T00:00:00`);
+  const today = new Date();
+  if (Number.isNaN(start.getTime())) return false;
+  const threeYearsAfterStart = new Date(start);
+  threeYearsAfterStart.setFullYear(threeYearsAfterStart.getFullYear() + 3);
+  return today <= threeYearsAfterStart;
+}
+
+function isPolicyAnniversarySoon(policy: PolicyWithClient) {
+  const start = new Date(`${policy.start_date}T00:00:00`);
+  if (Number.isNaN(start.getTime())) return false;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const anniversary = new Date(today.getFullYear(), start.getMonth(), start.getDate());
+  if (anniversary < today) anniversary.setFullYear(today.getFullYear() + 1);
+  const daysAway = Math.ceil((anniversary.getTime() - today.getTime()) / 86400000);
+  return daysAway >= 0 && daysAway <= 7;
 }
 
 function downloadClientImportTemplate() {
