@@ -1,0 +1,468 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>PolicyHQ Dashboard Concept</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+    <style>
+      :root {
+        --navy: #0f172a;
+        --orange: #f97316;
+        --bg: #f8fafc;
+        --success: #22c55e;
+        --warning: #f59e0b;
+        --danger: #ef4444;
+        --border: #e2e8f0;
+        --muted: #64748b;
+        --text-soft: #cbd5e1;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        background: #e5e7eb;
+        color: var(--navy);
+        font-family: Inter, system-ui, sans-serif;
+      }
+
+      .canvas {
+        min-height: 100vh;
+        padding: 48px;
+      }
+
+      .screen {
+        display: grid;
+        grid-template-columns: 180px 1fr;
+        width: 1280px;
+        min-height: 760px;
+        overflow: hidden;
+        background: var(--bg);
+        box-shadow: 0 18px 45px rgb(15 23 42 / 8%);
+      }
+
+      .sidebar {
+        background: var(--navy);
+        padding: 28px 16px;
+        color: white;
+      }
+
+      .brand {
+        margin: 0 0 52px 8px;
+      }
+
+      .brand strong {
+        display: block;
+        font-size: 20px;
+        font-weight: 800;
+        letter-spacing: -0.04em;
+      }
+
+      .brand span {
+        display: block;
+        margin-top: 3px;
+        color: var(--text-soft);
+        font-size: 7px;
+        font-weight: 800;
+        letter-spacing: 0.12em;
+      }
+
+      .nav {
+        display: grid;
+        gap: 10px;
+      }
+
+      .nav a {
+        display: flex;
+        align-items: center;
+        min-height: 34px;
+        gap: 10px;
+        border-left: 4px solid transparent;
+        border-radius: 8px;
+        padding: 0 14px;
+        color: white;
+        font-size: 11px;
+        font-weight: 700;
+        text-decoration: none;
+      }
+
+      .nav a.active,
+      .nav a:hover {
+        border-left-color: var(--orange);
+        background: white;
+        color: var(--navy);
+      }
+
+      .icon {
+        width: 12px;
+        height: 12px;
+        border: 2px solid currentColor;
+        border-radius: 4px;
+      }
+
+      .main {
+        min-width: 0;
+      }
+
+      .topbar {
+        position: relative;
+        display: flex;
+        align-items: center;
+        height: 66px;
+        border-bottom: 1px solid var(--border);
+        background: white;
+        padding: 0 32px;
+      }
+
+      .search {
+        width: 320px;
+        height: 30px;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        color: var(--muted);
+        display: flex;
+        align-items: center;
+        padding: 0 16px;
+        font-size: 10px;
+        font-weight: 600;
+      }
+
+      .top-title {
+        position: absolute;
+        left: 50%;
+        transform: translateX(-50%);
+        font-size: 12px;
+        font-weight: 800;
+      }
+
+      .alert-pill {
+        margin-left: auto;
+        border-radius: 999px;
+        background: rgb(249 115 22 / 12%);
+        color: var(--orange);
+        padding: 8px 20px;
+        font-size: 10px;
+        font-weight: 800;
+      }
+
+      .content {
+        padding: 38px 40px 50px;
+      }
+
+      h1 {
+        margin: 0;
+        font-size: 32px;
+        line-height: 1.15;
+        letter-spacing: -0.04em;
+      }
+
+      .date {
+        margin: 8px 0 0;
+        color: var(--muted);
+        font-size: 13px;
+        font-weight: 600;
+      }
+
+      .stats {
+        display: grid;
+        grid-template-columns: 142px 142px 178px 178px 178px;
+        gap: 14px;
+        margin-top: 26px;
+      }
+
+      .card {
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        background: white;
+        box-shadow: 0 18px 45px rgb(15 23 42 / 6%);
+      }
+
+      .stat {
+        min-height: 92px;
+        padding: 16px 18px;
+      }
+
+      .label {
+        color: var(--muted);
+        font-size: 11px;
+        font-weight: 800;
+      }
+
+      .value {
+        display: block;
+        margin-top: 12px;
+        font-size: 25px;
+        font-weight: 800;
+        letter-spacing: -0.04em;
+      }
+
+      .two-pillars {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 30px;
+        margin-top: 30px;
+      }
+
+      .pillar {
+        min-height: 286px;
+        padding: 26px;
+      }
+
+      .pillar-head {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 24px;
+      }
+
+      h2 {
+        margin: 0;
+        font-size: 24px;
+        line-height: 1.2;
+        letter-spacing: -0.04em;
+      }
+
+      .sub {
+        margin: 8px 0 0;
+        color: var(--muted);
+        font-size: 12px;
+        font-weight: 700;
+      }
+
+      .button {
+        min-width: 138px;
+        border-radius: 10px;
+        background: var(--orange);
+        color: white;
+        padding: 12px 18px;
+        text-align: center;
+        font-size: 11px;
+        font-weight: 800;
+      }
+
+      .mini-grid {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 14px;
+        margin-top: 24px;
+      }
+
+      .mini {
+        min-height: 86px;
+        padding: 14px;
+        border-radius: 10px;
+        background: var(--bg);
+        border: 1px solid var(--border);
+      }
+
+      .mini strong {
+        display: block;
+        margin-top: 9px;
+        font-size: 28px;
+        line-height: 1;
+        font-weight: 800;
+      }
+
+      .row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 20px;
+        min-height: 62px;
+        margin-top: 20px;
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        padding: 14px 16px;
+      }
+
+      .row.danger {
+        background: rgb(239 68 68 / 10%);
+      }
+
+      .row.success {
+        background: rgb(34 197 94 / 10%);
+      }
+
+      .row.warning {
+        background: rgb(245 158 11 / 10%);
+      }
+
+      .row strong {
+        display: block;
+        font-size: 14px;
+        font-weight: 800;
+      }
+
+      .row span {
+        display: block;
+        margin-top: 4px;
+        color: var(--muted);
+        font-size: 10px;
+        font-weight: 700;
+      }
+
+      .badge {
+        flex: 0 0 auto;
+        min-width: 76px;
+        border-radius: 999px;
+        padding: 7px 12px;
+        color: white;
+        text-align: center;
+        font-size: 10px;
+        font-weight: 800;
+      }
+
+      .badge.danger {
+        background: var(--danger);
+      }
+
+      .badge.success {
+        background: var(--success);
+      }
+
+      .badge.warning {
+        background: var(--warning);
+      }
+
+      .activity {
+        margin-top: 30px;
+        min-height: 126px;
+        padding: 26px;
+      }
+
+      .activity-list {
+        display: grid;
+        gap: 18px;
+        margin-top: 22px;
+      }
+
+      .activity-line {
+        display: flex;
+        justify-content: space-between;
+        font-size: 12px;
+        font-weight: 700;
+      }
+
+      @media (max-width: 900px) {
+        .canvas {
+          padding: 0;
+        }
+
+        .screen {
+          grid-template-columns: 1fr;
+          width: 100%;
+        }
+
+        .sidebar {
+          display: none;
+        }
+
+        .stats,
+        .two-pillars,
+        .mini-grid {
+          grid-template-columns: 1fr;
+        }
+
+        .content {
+          padding: 24px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="canvas">
+      <div class="screen">
+        <aside class="sidebar">
+          <div class="brand">
+            <strong>PolicyHQ</strong>
+            <span>INSURANCE PLATFORM</span>
+          </div>
+          <nav class="nav">
+            <a class="active" href="#"><i class="icon"></i>Dashboard</a>
+            <a href="#"><i class="icon"></i>Clients</a>
+            <a href="#"><i class="icon"></i>Prospects</a>
+            <a href="#"><i class="icon"></i>Policies</a>
+            <a href="#"><i class="icon"></i>Commissions</a>
+            <a href="#"><i class="icon"></i>Lapse Shield</a>
+            <a href="#"><i class="icon"></i>Renewal Alerts</a>
+            <a href="#"><i class="icon"></i>Profile</a>
+          </nav>
+        </aside>
+
+        <main class="main">
+          <header class="topbar">
+            <div class="search">Search clients, policies, prospects...</div>
+            <div class="top-title">Dashboard</div>
+            <div class="alert-pill">Renewal Alerts</div>
+          </header>
+
+          <section class="content">
+            <h1>Good Morning, Prince</h1>
+            <p class="date">Sunday, 24 May 2026</p>
+
+            <div class="stats">
+              <div class="card stat"><div class="label">Total Clients</div><strong class="value">3</strong></div>
+              <div class="card stat"><div class="label">Active Policies</div><strong class="value">3</strong></div>
+              <div class="card stat"><div class="label">Commissions</div><strong class="value">GHS 348</strong></div>
+              <div class="card stat"><div class="label">Premium Due</div><strong class="value">GHS 5,200</strong></div>
+              <div class="card stat"><div class="label">Prospects</div><strong class="value">3</strong></div>
+            </div>
+
+            <div class="two-pillars">
+              <article class="card pillar">
+                <div class="pillar-head">
+                  <div>
+                    <h2>Revenue Protection</h2>
+                    <p class="sub">Renewals, lapse risk, and commission leakage</p>
+                  </div>
+                  <div class="button">Upload Statement</div>
+                </div>
+                <div class="mini-grid">
+                  <div class="mini"><div class="label">Renewals Due</div><strong>8</strong></div>
+                  <div class="mini"><div class="label">Missing Statement</div><strong style="color: var(--danger)">3</strong></div>
+                  <div class="mini"><div class="label">At Risk Life</div><strong style="color: var(--warning)">6</strong></div>
+                </div>
+                <div class="row danger">
+                  <div><strong>Lapse Shield</strong><span>3 clients missing from May commission statement</span></div>
+                  <div class="badge danger">Review</div>
+                </div>
+              </article>
+
+              <article class="card pillar">
+                <div class="pillar-head">
+                  <div>
+                    <h2>Relationship Manager</h2>
+                    <p class="sub">Birthdays, follow-ups, anniversaries, and check-ins</p>
+                  </div>
+                  <div class="button">WhatsApp Birthday</div>
+                </div>
+                <div class="mini-grid">
+                  <div class="mini"><div class="label">Birthdays Today</div><strong style="color: var(--orange)">1</strong></div>
+                  <div class="mini"><div class="label">Follow-ups Due</div><strong style="color: var(--orange)">2</strong></div>
+                  <div class="mini"><div class="label">Anniversaries</div><strong style="color: var(--success)">4</strong></div>
+                </div>
+                <div class="row success">
+                  <div><strong>Kwame Mensah</strong><span>Birthday today · +233 24 415 9082</span></div>
+                  <div class="badge success">WhatsApp</div>
+                </div>
+              </article>
+            </div>
+
+            <article class="card activity">
+              <h2>Recent Activity</h2>
+              <div class="activity-list">
+                <div class="activity-line"><span>Prince · Enterprise Life · renewed</span><span class="badge success">Done</span></div>
+                <div class="activity-line"><span>Blessing Dadzie · Health policy · payment pending</span><span class="badge warning">Watch</span></div>
+              </div>
+            </article>
+          </section>
+        </main>
+      </div>
+    </div>
+  </body>
+</html>
