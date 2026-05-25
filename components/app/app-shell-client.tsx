@@ -958,7 +958,7 @@ function Dashboard({ data, base, totalPaidThisMonth, openPolicy, todaysBirthdays
   const followUpsDueToday = data.prospects.filter(isProspectDueToday).length;
   const dashboardMix = dashboardBusinessMix(data);
   const revenueMetrics = dashboardRevenueMetrics(data.policies, dashboardMix, base);
-  const relationshipMetrics = dashboardRelationshipMetrics(data.policies, todaysBirthdays.length, followUpsDueToday, base);
+  const relationshipMetrics = dashboardRelationshipMetrics(data.policies, dashboardMix, todaysBirthdays.length, followUpsDueToday, base);
 
   if (dashboardMix === "empty") {
     return <NoDataDashboard base={base} profileName={data.profile.full_name} />;
@@ -1012,7 +1012,7 @@ function NoDataDashboard({ base, profileName }: { base: string; profileName: str
             <div className="grid gap-3.5 sm:grid-cols-3">
               <SetupStep number="1" title="Import clients" body="Upload Excel or CSV from your insurer." href={navHref(base, "clients")} />
               <SetupStep number="2" title="Review policies" body="Confirm class, expiry, and premium." href={navHref(base, "policies")} />
-              <SetupStep number="3" title="Track actions" body="Renewals, birthdays, and commissions appear here." href={navHref(base, "dashboard")} />
+              <SetupStep number="3" title="Track actions" body="Renewals, birthdays, contacts, and commissions appear here." href={navHref(base, "dashboard")} />
             </div>
             <Button asChild className="mt-6 min-w-[118px] rounded-[10px] text-[10px] font-extrabold">
               <Link href={navHref(base, "clients")}>Import Clients</Link>
@@ -1025,7 +1025,7 @@ function NoDataDashboard({ base, profileName }: { base: string; profileName: str
           </CardHeader>
           <CardContent className="space-y-[13px] p-7 pt-6">
             <DashboardChecklistItem title="Revenue protection" body="Renewals, lapse risk, and premium windows." />
-            <DashboardChecklistItem title="Relationship manager" body="Birthdays, follow-ups, and anniversaries." />
+            <DashboardChecklistItem title="Relationship manager" body="Birthdays, follow-ups, and clients to contact." />
             <DashboardChecklistItem title="Daily activity" body="Recent actions and priority records." />
             <Button asChild variant="outline" className="mt-1 min-w-[118px] rounded-[10px] text-[10px] font-extrabold">
               <Link href={navHref(base, "prospects")}>Add Prospect</Link>
@@ -1203,7 +1203,7 @@ function RecentActivityPanel({ recent, openPolicy }: { recent: PolicyWithClient[
 
 function DashboardFocusView({ focus, data, base, openPolicy }: { focus: "birthdays" | "anniversaries" | "life-retention" | "lapse-shield" | "recovered-life"; data: AppData; base: string; openPolicy: (policy: PolicyWithClient) => void }) {
   const birthdays = data.clients.filter((client) => isBirthdayToday(client.date_of_birth));
-  const anniversaries = data.policies.filter(isPolicyAnniversarySoon);
+  const anniversaries = data.policies.filter((policy) => isLifePolicy(policy) && isPolicyAnniversarySoon(policy));
   const lifeRetention = data.policies.filter(isLifeRetentionWatch);
   const recoveredLife = data.policies.filter((policy) => isLifePolicy(policy) && policy.renewal_status === "Renewed");
   const config = dashboardFocusConfig(focus, birthdays.length, anniversaries.length, lifeRetention.length, recoveredLife.length, base);
@@ -2807,10 +2807,12 @@ function dashboardRevenueAction(mix: DashboardBusinessMix, metrics: DashboardPan
 
 function dashboardRelationshipAction(metrics: DashboardPanelMetric[], base: string) {
   const followUps = metrics.find((metric) => metric.label === "Follow-ups Due")?.value ?? 0;
+  const clientsToContact = metrics.find((metric) => metric.label === "Clients to Contact")?.value ?? 0;
   const anniversaries = metrics.find((metric) => metric.label === "Anniversaries")?.value ?? 0;
   if (followUps) return { title: "Relationship tasks due", body: `${followUps} prospect follow-ups need attention today.`, badge: "Follow up", tone: "warning" as const, href: `${navHref(base, "prospects")}?filter=today` };
+  if (clientsToContact) return { title: "Clients to contact", body: `${clientsToContact} existing clients have renewal conversations or near-term renewals to chase.`, badge: "Contact", tone: "warning" as const, href: `${base}/renewals/month` };
   if (anniversaries) return { title: "Policy anniversary reviews", body: `${anniversaries} clients due for a coverage review.`, badge: "Upsell", tone: "success" as const, href: `${base}/anniversaries` };
-  return { title: "Client touchpoints clear", body: "No birthday, follow-up, or anniversary task due today.", badge: "Clear", tone: "success" as const, href: `${base}/birthdays` };
+  return { title: "Client touchpoints clear", body: "No birthday, follow-up, or client contact task due today.", badge: "Clear", tone: "success" as const, href: `${base}/birthdays` };
 }
 
 function dashboardBusinessMix(data: AppData): DashboardBusinessMix {
@@ -2855,12 +2857,32 @@ function dashboardRevenueMetrics(policies: PolicyWithClient[], mix: DashboardBus
   ];
 }
 
-function dashboardRelationshipMetrics(policies: PolicyWithClient[], birthdaysToday: number, followUpsDueToday: number, base: string): DashboardPanelMetric[] {
+function dashboardRelationshipMetrics(policies: PolicyWithClient[], mix: DashboardBusinessMix, birthdaysToday: number, followUpsDueToday: number, base: string): DashboardPanelMetric[] {
+  const clientsToContact = countClientsToContact(policies);
+  const anniversaryCount = policies.filter((policy) => isLifePolicy(policy) && isPolicyAnniversarySoon(policy)).length;
+  const thirdMetric: DashboardPanelMetric = mix === "life"
+    ? { label: "Anniversaries", value: anniversaryCount, href: `${base}/anniversaries`, tone: anniversaryCount ? "success" : "primary", helper: "Life reviews" }
+    : { label: "Clients to Contact", value: clientsToContact, href: `${base}/renewals/month`, tone: clientsToContact ? "warning" : "success", helper: "Renewals" };
+
   return [
     { label: "Birthdays Today", value: birthdaysToday, href: `${base}/birthdays`, tone: birthdaysToday ? "accent" : "primary", helper: "WhatsApp ready" },
     { label: "Follow-ups Due", value: followUpsDueToday, href: `${navHref(base, "prospects")}?filter=today`, tone: followUpsDueToday ? "warning" : "success", helper: "Prospects" },
-    { label: "Anniversaries", value: policies.filter(isPolicyAnniversarySoon).length, href: `${base}/anniversaries`, tone: "success", helper: "Next 7 days" }
+    thirdMetric
   ];
+}
+
+function countClientsToContact(policies: PolicyWithClient[]) {
+  const clientIds = new Set<string>();
+  for (const policy of policies) {
+    if (isClientContactCandidate(policy)) clientIds.add(policy.client_id);
+  }
+  return clientIds.size;
+}
+
+function isClientContactCandidate(policy: PolicyWithClient) {
+  if (policy.status !== "Active" || policy.renewal_status === "Renewed" || policy.renewal_status === "Lost") return false;
+  if (["Contacted", "Quote Requested", "Payment Pending"].includes(policy.renewal_status)) return true;
+  return policiesForRange([policy], "month").length > 0;
 }
 
 function isLifePolicy(policy: PolicyWithClient) {
