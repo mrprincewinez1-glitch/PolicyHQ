@@ -135,6 +135,7 @@ export function AppShell({
   section = "dashboard",
   demo = false,
   renewalRange,
+  dashboardFocus,
   clientId,
   prospectFilter
 }: {
@@ -142,6 +143,7 @@ export function AppShell({
   section?: Section;
   demo?: boolean;
   renewalRange?: "week" | "next-week" | "month";
+  dashboardFocus?: "birthdays" | "anniversaries" | "life-retention" | "lapse-shield" | "recovered-life";
   clientId?: string;
   prospectFilter?: "today";
 }) {
@@ -712,6 +714,8 @@ export function AppShell({
       openPolicy={setDetailPolicy}
       onBack={() => setActive("dashboard")}
     />
+  ) : dashboardFocus ? (
+    <DashboardFocusView focus={dashboardFocus} data={data} base={base} openPolicy={setDetailPolicy} />
   ) : active === "dashboard" ? (
     <Dashboard data={data} base={base} totalPaidThisMonth={totalPaidThisMonth} openPolicy={setDetailPolicy} todaysBirthdays={todaysBirthdays} />
   ) : active === "clients" ? (
@@ -1120,7 +1124,7 @@ function RelationshipManagerPanel({ metrics, birthdays, base }: { metrics: Dashb
           {metrics.map((item) => <DashboardPanelMetricCard key={item.label} metric={item} />)}
         </div>
         {birthdays.length ? (
-          <DashboardBirthdayAction client={birthdays[0]} href={navHref(base, "clients")} />
+          <DashboardBirthdayAction client={birthdays[0]} href={`${base}/birthdays`} />
         ) : <DashboardActionRow {...dashboardRelationshipAction(metrics, base)} />}
       </CardContent>
     </Card>
@@ -1181,6 +1185,128 @@ function RecentActivityPanel({ recent, openPolicy }: { recent: PolicyWithClient[
         ) : (
           <p className="mt-[18px] text-xs font-bold text-slate-500">No recent policy activity yet.</p>
         )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function DashboardFocusView({ focus, data, base, openPolicy }: { focus: "birthdays" | "anniversaries" | "life-retention" | "lapse-shield" | "recovered-life"; data: AppData; base: string; openPolicy: (policy: PolicyWithClient) => void }) {
+  const birthdays = data.clients.filter((client) => isBirthdayToday(client.date_of_birth));
+  const anniversaries = data.policies.filter(isPolicyAnniversarySoon);
+  const lifeRetention = data.policies.filter(isLifeRetentionWatch);
+  const recoveredLife = data.policies.filter((policy) => isLifePolicy(policy) && policy.renewal_status === "Renewed");
+  const config = dashboardFocusConfig(focus, birthdays.length, anniversaries.length, lifeRetention.length, recoveredLife.length, base);
+  const policies = focus === "anniversaries" ? anniversaries : focus === "life-retention" ? lifeRetention : focus === "recovered-life" ? recoveredLife : [];
+
+  return (
+    <div className="max-w-[1062px] space-y-6">
+      <Button asChild variant="outline"><Link href={navHref(base, "dashboard")}>Back to Dashboard</Link></Button>
+      <div>
+        <h1 className="text-[30px] font-extrabold leading-[35px] tracking-[-0.04em] text-primary">{config.title}</h1>
+        <p className="mt-2 text-[13px] font-semibold leading-5 text-slate-500">{config.description}</p>
+      </div>
+      <div className="grid gap-[13px] md:grid-cols-3">
+        {config.metrics.map((metric) => <DashboardPanelMetricCard key={metric.label} metric={metric} />)}
+      </div>
+      {focus === "birthdays" ? (
+        <DashboardBirthdayList clients={birthdays} />
+      ) : focus === "lapse-shield" ? (
+        <DashboardLapseShieldPreview lifePolicies={data.policies.filter(isLifePolicy)} base={base} />
+      ) : (
+        <DashboardPolicyFocusList policies={policies} openPolicy={openPolicy} emptyTitle={config.emptyTitle} />
+      )}
+    </div>
+  );
+}
+
+function DashboardBirthdayList({ clients }: { clients: Client[] }) {
+  if (!clients.length) return <EmptyFocusState title="No birthdays today." body="Clients with birthdays today will appear here with a WhatsApp action." />;
+  return (
+    <div className="grid gap-4 md:grid-cols-2">
+      {clients.map((client) => (
+        <Card key={client.id}>
+          <CardContent className="flex items-center justify-between gap-4 p-[23px]">
+            <div className="min-w-0">
+              <p className="truncate text-base font-extrabold text-primary">{client.full_name}</p>
+              <p className="mt-1 truncate text-sm font-semibold text-slate-500">{client.phone_number}</p>
+            </div>
+            <WhatsAppButton href={birthdayWhatsAppHref(client)} label="WhatsApp" className="shrink-0 rounded-[10px] text-[10px] font-extrabold" />
+          </CardContent>
+        </Card>
+      ))}
+    </div>
+  );
+}
+
+function DashboardPolicyFocusList({ policies, openPolicy, emptyTitle }: { policies: PolicyWithClient[]; openPolicy: (policy: PolicyWithClient) => void; emptyTitle: string }) {
+  if (!policies.length) return <EmptyFocusState title={emptyTitle} body="When matching policies exist, they will appear here as an action list." />;
+  return (
+    <Card>
+      <div className="space-y-3 p-4 md:hidden">
+        {policies.map((policy) => (
+          <button key={policy.id} type="button" onClick={() => openPolicy(policy)} className="w-full rounded-xl border border-slate-200 bg-white p-4 text-left shadow-sm">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <p className="truncate text-base font-extrabold text-primary">{policy.client.full_name}</p>
+                <p className="mt-1 truncate text-sm font-semibold text-slate-500">{policy.policy_number}</p>
+              </div>
+              <UrgencyBadge date={policy.expiry_date} status={policy.renewal_status} />
+            </div>
+            <p className="mt-3 text-sm font-semibold text-slate-600">{policy.policy_type} · {shortInsurerName(policy.insurer_name)}</p>
+          </button>
+        ))}
+      </div>
+      <div className="hidden overflow-auto md:block">
+        <table className="w-full min-w-[820px] text-sm">
+          <thead className="sticky top-0 bg-slate-50"><tr>{["Client", "Policy No.", "Class", "Insurer", "Start Date", "Expiry", "Status"].map((heading) => <th key={heading} className="px-4 py-3 text-left">{heading}</th>)}</tr></thead>
+          <tbody>{policies.map((policy) => (
+            <tr key={policy.id} onClick={() => openPolicy(policy)} className="cursor-pointer border-t odd:bg-white even:bg-slate-50">
+              <td className="px-4 py-3 font-bold text-primary">{policy.client.full_name}</td>
+              <td className="px-4 py-3">{policy.policy_number}</td>
+              <td className="px-4 py-3">{policy.policy_type}</td>
+              <td className="px-4 py-3">{shortInsurerName(policy.insurer_name)}</td>
+              <td className="px-4 py-3">{formatDate(policy.start_date)}</td>
+              <td className="px-4 py-3">{formatDate(policy.expiry_date)}</td>
+              <td className="px-4 py-3"><UrgencyBadge date={policy.expiry_date} status={policy.renewal_status} /></td>
+            </tr>
+          ))}</tbody>
+        </table>
+      </div>
+    </Card>
+  );
+}
+
+function DashboardLapseShieldPreview({ lifePolicies, base }: { lifePolicies: PolicyWithClient[]; base: string }) {
+  return (
+    <Card>
+      <CardContent className="grid gap-6 p-[23px] lg:grid-cols-[1fr_0.9fr]">
+        <div>
+          <h2 className="text-[22px] font-extrabold leading-[26px] tracking-[-0.04em] text-primary">Statement Review</h2>
+          <p className="mt-2 text-sm font-semibold leading-6 text-slate-500">Lapse Shield will compare an uploaded life commission statement against active life policies and flag missing clients.</p>
+          <div className="mt-5 grid gap-3 sm:grid-cols-3">
+            <DashboardPanelMetricCard metric={{ label: "Life Policies", value: lifePolicies.length, href: navHref(base, "policies"), tone: "primary", helper: "Tracked" }} />
+            <DashboardPanelMetricCard metric={{ label: "Missing", value: 0, href: navHref(base, "policies"), tone: "success", helper: "No statement yet" }} />
+            <DashboardPanelMetricCard metric={{ label: "At Risk", value: lifePolicies.filter(isLifeRetentionWatch).length, href: `${base}/life-retention`, tone: "warning", helper: "Years 1-3" }} />
+          </div>
+        </div>
+        <div className="rounded-xl border border-slate-200 bg-slate-50 p-5">
+          <p className="text-xs font-extrabold uppercase tracking-[0.18em] text-accent">Next build</p>
+          <h3 className="mt-3 text-lg font-extrabold text-primary">Commission statement upload</h3>
+          <p className="mt-2 text-sm font-semibold leading-6 text-slate-500">This page is ready for the Lapse Shield upload workflow. Until then, use At Risk Life to monitor the clients most likely to lapse.</p>
+          <Button asChild className="mt-5 rounded-[10px] text-[10px] font-extrabold"><Link href={`${base}/life-retention`}>View At Risk Life</Link></Button>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function EmptyFocusState({ title, body }: { title: string; body: string }) {
+  return (
+    <Card>
+      <CardContent className="flex min-h-72 flex-col items-center justify-center p-8 text-center">
+        <FileText className="h-10 w-10 text-slate-300" />
+        <h2 className="mt-4 text-xl font-extrabold text-primary">{title}</h2>
+        <p className="mt-2 max-w-md text-sm font-semibold leading-6 text-slate-500">{body}</p>
       </CardContent>
     </Card>
   );
@@ -2394,6 +2520,67 @@ function formatCompactCurrency(value: number) {
   return formatCurrency(value).replace("GH₵", "GHS ");
 }
 
+function dashboardFocusConfig(focus: "birthdays" | "anniversaries" | "life-retention" | "lapse-shield" | "recovered-life", birthdays: number, anniversaries: number, lifeRetention: number, recoveredLife: number, base: string) {
+  if (focus === "birthdays") {
+    return {
+      title: "Birthdays Today",
+      description: "Clients with birthdays today and quick relationship actions.",
+      emptyTitle: "No birthdays today.",
+      metrics: [
+        { label: "Birthdays", value: birthdays, href: `${base}/birthdays`, tone: birthdays ? "accent" : "primary", helper: "Today" },
+        { label: "WhatsApp Ready", value: birthdays, href: `${base}/birthdays`, tone: "success", helper: "Messages" },
+        { label: "Follow-ups", value: 0, href: `${navHref(base, "prospects")}?filter=today`, tone: "primary", helper: "Prospects" }
+      ] satisfies DashboardPanelMetric[]
+    };
+  }
+  if (focus === "anniversaries") {
+    return {
+      title: "Policy Anniversaries",
+      description: "Policies reaching an anniversary in the next 7 days.",
+      emptyTitle: "No anniversaries due this week.",
+      metrics: [
+        { label: "Anniversaries", value: anniversaries, href: `${base}/anniversaries`, tone: "success", helper: "Next 7 days" },
+        { label: "Reviews", value: anniversaries, href: `${base}/anniversaries`, tone: "accent", helper: "Coverage" },
+        { label: "Policies", value: anniversaries, href: navHref(base, "policies"), tone: "primary", helper: "Linked" }
+      ] satisfies DashboardPanelMetric[]
+    };
+  }
+  if (focus === "life-retention") {
+    return {
+      title: "At Risk Life",
+      description: "Active life policies still inside the year 1-3 lapse danger zone.",
+      emptyTitle: "No at-risk life policies right now.",
+      metrics: [
+        { label: "At Risk Life", value: lifeRetention, href: `${base}/life-retention`, tone: lifeRetention ? "warning" : "success", helper: "Years 1-3" },
+        { label: "Recovered", value: recoveredLife, href: `${base}/life-retention/recovered`, tone: "success", helper: "Renewed" },
+        { label: "Life Book", value: lifeRetention + recoveredLife, href: navHref(base, "policies"), tone: "primary", helper: "Tracked" }
+      ] satisfies DashboardPanelMetric[]
+    };
+  }
+  if (focus === "recovered-life") {
+    return {
+      title: "Recovered Life",
+      description: "Life policies marked as recovered or renewed after follow-up.",
+      emptyTitle: "No recovered life policies yet.",
+      metrics: [
+        { label: "Recovered", value: recoveredLife, href: `${base}/life-retention/recovered`, tone: "success", helper: "Renewed" },
+        { label: "At Risk Life", value: lifeRetention, href: `${base}/life-retention`, tone: lifeRetention ? "warning" : "success", helper: "Watch" },
+        { label: "Policies", value: recoveredLife, href: navHref(base, "policies"), tone: "primary", helper: "Life" }
+      ] satisfies DashboardPanelMetric[]
+    };
+  }
+  return {
+    title: "Lapse Shield",
+    description: "Statement review workspace for life policy lapse protection.",
+    emptyTitle: "No statement review yet.",
+    metrics: [
+      { label: "Missing Statement", value: 0, href: `${base}/lapse-shield`, tone: "success", helper: "Pending upload" },
+      { label: "At Risk Life", value: lifeRetention, href: `${base}/life-retention`, tone: lifeRetention ? "warning" : "success", helper: "Years 1-3" },
+      { label: "Recovered", value: recoveredLife, href: `${base}/life-retention/recovered`, tone: "success", helper: "Renewed" }
+    ] satisfies DashboardPanelMetric[]
+  };
+}
+
 function dashboardRevenueAction(mix: DashboardBusinessMix, metrics: DashboardPanelMetric[], base: string) {
   const valueFor = (label: string) => metrics.find((metric) => metric.label === label)?.value ?? 0;
   if (mix === "life") {
@@ -2422,8 +2609,8 @@ function dashboardRelationshipAction(metrics: DashboardPanelMetric[], base: stri
   const followUps = metrics.find((metric) => metric.label === "Follow-ups Due")?.value ?? 0;
   const anniversaries = metrics.find((metric) => metric.label === "Anniversaries")?.value ?? 0;
   if (followUps) return { title: "Relationship tasks due", body: `${followUps} prospect follow-ups need attention today.`, badge: "Follow up", tone: "warning" as const, href: `${navHref(base, "prospects")}?filter=today` };
-  if (anniversaries) return { title: "Policy anniversary reviews", body: `${anniversaries} clients due for a coverage review.`, badge: "Upsell", tone: "success" as const, href: navHref(base, "policies") };
-  return { title: "Client touchpoints clear", body: "No birthday, follow-up, or anniversary task due today.", badge: "Clear", tone: "success" as const, href: navHref(base, "clients") };
+  if (anniversaries) return { title: "Policy anniversary reviews", body: `${anniversaries} clients due for a coverage review.`, badge: "Upsell", tone: "success" as const, href: `${base}/anniversaries` };
+  return { title: "Client touchpoints clear", body: "No birthday, follow-up, or anniversary task due today.", badge: "Clear", tone: "success" as const, href: `${base}/birthdays` };
 }
 
 function dashboardBusinessMix(data: AppData): DashboardBusinessMix {
@@ -2447,9 +2634,9 @@ function dashboardRevenueMetrics(policies: PolicyWithClient[], mix: DashboardBus
 
   if (mix === "life") {
     return [
-      { label: "Missing Statement", value: missingStatement, href: navHref(base, "policies"), tone: "danger", helper: "Lapse Shield" },
-      { label: "At Risk Life", value: atRiskLife, href: navHref(base, "policies"), tone: atRiskLife ? "warning" : "success", helper: "Years 1-3" },
-      { label: "Recovered", value: recoveredLife, href: navHref(base, "policies"), tone: "success", helper: "Marked renewed" }
+      { label: "Missing Statement", value: missingStatement, href: `${base}/lapse-shield`, tone: "danger", helper: "Lapse Shield" },
+      { label: "At Risk Life", value: atRiskLife, href: `${base}/life-retention`, tone: atRiskLife ? "warning" : "success", helper: "Years 1-3" },
+      { label: "Recovered", value: recoveredLife, href: `${base}/life-retention/recovered`, tone: "success", helper: "Marked renewed" }
     ];
   }
 
@@ -2457,7 +2644,7 @@ function dashboardRevenueMetrics(policies: PolicyWithClient[], mix: DashboardBus
     return [
       { label: "This Week", value: thisWeek, href: `${base}/renewals/week`, tone: thisWeek ? "warning" : "success", helper: "Non-life" },
       { label: "This Month", value: thisMonth, href: `${base}/renewals/month`, tone: thisMonth ? "accent" : "primary", helper: "Non-life" },
-      { label: "Missing Statement", value: missingStatement, href: navHref(base, "policies"), tone: "danger", helper: "Life" }
+      { label: "Missing Statement", value: missingStatement, href: `${base}/lapse-shield`, tone: "danger", helper: "Life" }
     ];
   }
 
@@ -2470,9 +2657,9 @@ function dashboardRevenueMetrics(policies: PolicyWithClient[], mix: DashboardBus
 
 function dashboardRelationshipMetrics(policies: PolicyWithClient[], birthdaysToday: number, followUpsDueToday: number, base: string): DashboardPanelMetric[] {
   return [
-    { label: "Birthdays Today", value: birthdaysToday, href: navHref(base, "clients"), tone: birthdaysToday ? "accent" : "primary", helper: "WhatsApp ready" },
+    { label: "Birthdays Today", value: birthdaysToday, href: `${base}/birthdays`, tone: birthdaysToday ? "accent" : "primary", helper: "WhatsApp ready" },
     { label: "Follow-ups Due", value: followUpsDueToday, href: `${navHref(base, "prospects")}?filter=today`, tone: followUpsDueToday ? "warning" : "success", helper: "Prospects" },
-    { label: "Anniversaries", value: policies.filter(isPolicyAnniversarySoon).length, href: navHref(base, "policies"), tone: "success", helper: "Next 7 days" }
+    { label: "Anniversaries", value: policies.filter(isPolicyAnniversarySoon).length, href: `${base}/anniversaries`, tone: "success", helper: "Next 7 days" }
   ];
 }
 

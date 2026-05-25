@@ -8,6 +8,7 @@ type AppShellProps = {
   section?: "dashboard" | "clients" | "prospects" | "policies" | "commissions" | "notifications" | "profile";
   demo?: boolean;
   renewalRange?: "week" | "next-week" | "month";
+  dashboardFocus?: "birthdays" | "anniversaries" | "life-retention" | "lapse-shield" | "recovered-life";
   clientId?: string;
   prospectFilter?: "today";
 };
