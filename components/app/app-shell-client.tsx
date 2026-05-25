@@ -105,6 +105,17 @@ type ImportClientRow = {
   date_of_birth?: string;
   notes?: string;
 };
+type LapseShieldStatementRow = {
+  rowNumber: number;
+  policy_number: string;
+  client_name: string;
+};
+type LapseShieldReview = {
+  matched: PolicyWithClient[];
+  missing: PolicyWithClient[];
+  unknown: LapseShieldStatementRow[];
+  statementRows: number;
+};
 type CommissionPaymentFilter = "All" | "Paid" | "Pending";
 type CommissionDisplayStatus = "Pending" | "Overdue" | "Paid";
 type CommissionClassFilter = "All" | InsuranceCategory;
@@ -1211,7 +1222,7 @@ function DashboardFocusView({ focus, data, base, openPolicy }: { focus: "birthda
       {focus === "birthdays" ? (
         <DashboardBirthdayList clients={birthdays} />
       ) : focus === "lapse-shield" ? (
-        <DashboardLapseShieldPreview lifePolicies={data.policies.filter(isLifePolicy)} base={base} />
+        <DashboardLapseShieldPreview lifePolicies={data.policies.filter(isLifePolicy)} base={base} openPolicy={openPolicy} />
       ) : (
         <DashboardPolicyFocusList policies={policies} openPolicy={openPolicy} emptyTitle={config.emptyTitle} />
       )}
@@ -1276,27 +1287,140 @@ function DashboardPolicyFocusList({ policies, openPolicy, emptyTitle }: { polici
   );
 }
 
-function DashboardLapseShieldPreview({ lifePolicies, base }: { lifePolicies: PolicyWithClient[]; base: string }) {
+function DashboardLapseShieldPreview({ lifePolicies, base, openPolicy }: { lifePolicies: PolicyWithClient[]; base: string; openPolicy: (policy: PolicyWithClient) => void }) {
+  const [review, setReview] = useState<LapseShieldReview | null>(null);
+  const [statementName, setStatementName] = useState("");
+  const [errors, setErrors] = useState<string[]>([]);
+  const activeLifePolicies = lifePolicies.filter((policy) => policy.status === "Active" && policy.renewal_status !== "Lost");
+
+  async function handleStatementUpload(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    setStatementName(file.name);
+    setErrors([]);
+    setReview(null);
+    if (!file.name.toLowerCase().endsWith(".csv")) {
+      setErrors(["Upload a CSV statement for now. Excel and PDF parsing should be added as a separate approved feature so we do not bloat the MVP bundle."]);
+      return;
+    }
+
+    const text = await file.text();
+    const parsed = parseLapseShieldStatementCsv(text);
+    if (parsed.errors.length) {
+      setErrors(parsed.errors);
+      return;
+    }
+    setReview(compareLapseShieldStatement(activeLifePolicies, parsed.rows));
+  }
+
+  const matchedCount = review?.matched.length ?? 0;
+  const missingCount = review?.missing.length ?? 0;
+  const unknownCount = review?.unknown.length ?? 0;
+
   return (
-    <Card>
-      <CardContent className="grid gap-6 p-[23px] lg:grid-cols-[1fr_0.9fr]">
-        <div>
-          <h2 className="text-[22px] font-extrabold leading-[26px] tracking-[-0.04em] text-primary">Statement Review</h2>
-          <p className="mt-2 text-sm font-semibold leading-6 text-slate-500">Lapse Shield will compare an uploaded life commission statement against active life policies and flag missing clients.</p>
-          <div className="mt-5 grid gap-3 sm:grid-cols-3">
-            <DashboardPanelMetricCard metric={{ label: "Life Policies", value: lifePolicies.length, href: navHref(base, "policies"), tone: "primary", helper: "Tracked" }} />
-            <DashboardPanelMetricCard metric={{ label: "Missing", value: 0, href: navHref(base, "policies"), tone: "success", helper: "No statement yet" }} />
-            <DashboardPanelMetricCard metric={{ label: "At Risk", value: lifePolicies.filter(isLifeRetentionWatch).length, href: `${base}/life-retention`, tone: "warning", helper: "Years 1-3" }} />
+    <div className="space-y-5">
+      <Card>
+        <CardContent className="grid gap-6 p-[23px] lg:grid-cols-[1fr_0.9fr]">
+          <div>
+            <h2 className="text-[22px] font-extrabold leading-[26px] tracking-[-0.04em] text-primary">Statement Review</h2>
+            <p className="mt-2 text-sm font-semibold leading-6 text-slate-500">Upload a life commission statement CSV. PolicyHQ checks which active life policies are missing so the agent can follow up before lapse risk turns permanent.</p>
+            <div className="mt-5 grid gap-3 sm:grid-cols-3">
+              <DashboardPanelMetricCard metric={{ label: "Life Policies", value: activeLifePolicies.length, href: navHref(base, "policies"), tone: "primary", helper: "Active" }} />
+              <DashboardPanelMetricCard metric={{ label: "Matched", value: matchedCount, href: `${base}/lapse-shield`, tone: matchedCount ? "success" : "primary", helper: statementName ? "In statement" : "Pending upload" }} />
+              <DashboardPanelMetricCard metric={{ label: "Missing", value: missingCount, href: `${base}/lapse-shield`, tone: missingCount ? "danger" : "success", helper: statementName ? "Needs follow-up" : "No statement yet" }} />
+            </div>
+          </div>
+          <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-5">
+            <p className="text-xs font-extrabold uppercase tracking-[0.18em] text-accent">CSV statement</p>
+            <h3 className="mt-3 text-lg font-extrabold text-primary">Upload commission statement</h3>
+            <p className="mt-2 text-sm font-semibold leading-6 text-slate-500">The file needs a policy number column. Client names are helpful but optional.</p>
+            <Input type="file" accept=".csv,text/csv" onChange={handleStatementUpload} className="mt-5 bg-white" />
+            {statementName ? <p className="mt-3 truncate text-xs font-bold text-slate-500">{statementName}</p> : null}
+            {errors.length ? <div className="mt-4 rounded-xl bg-danger/10 p-3 text-sm font-semibold leading-6 text-danger">{errors.map((error) => <p key={error}>{error}</p>)}</div> : null}
+          </div>
+        </CardContent>
+      </Card>
+      {review ? (
+        <div className="grid gap-5 lg:grid-cols-[1.1fr_0.9fr]">
+          <Card>
+            <CardHeader>
+              <div>
+                <p className="text-xs font-extrabold uppercase tracking-[0.18em] text-danger">Missing from statement</p>
+                <h2 className="mt-2 text-xl font-extrabold text-primary">{missingCount} client{missingCount === 1 ? "" : "s"} need review</h2>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {review.missing.length ? review.missing.map((policy) => (
+                <div key={policy.id} className="flex flex-col gap-3 rounded-xl border border-danger/20 bg-danger/5 p-4 sm:flex-row sm:items-center sm:justify-between">
+                  <button type="button" onClick={() => openPolicy(policy)} className="min-w-0 text-left">
+                    <p className="truncate text-base font-extrabold text-primary">{policy.client.full_name}</p>
+                    <p className="mt-1 truncate text-sm font-semibold text-slate-600">{policy.policy_number} · {policy.policy_type}</p>
+                  </button>
+                  <div className="flex shrink-0 gap-2">
+                    <Button size="sm" variant="outline" onClick={() => openPolicy(policy)}>View</Button>
+                    <WhatsAppButton href={lapseShieldWhatsAppHref(policy)} label="WhatsApp" />
+                  </div>
+                </div>
+              )) : <EmptyInlineState title="No missing life policies." body="Every active life policy matched this statement." />}
+            </CardContent>
+          </Card>
+          <div className="space-y-5">
+            <Card>
+              <CardHeader><h2 className="text-lg font-extrabold text-primary">Statement Summary</h2></CardHeader>
+              <CardContent className="grid gap-3 sm:grid-cols-3 lg:grid-cols-1">
+                <StatementSummaryItem label="Rows read" value={review.statementRows} />
+                <StatementSummaryItem label="Matched policies" value={matchedCount} />
+                <StatementSummaryItem label="Unknown in file" value={unknownCount} />
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader><h2 className="text-lg font-extrabold text-primary">Unknown Statement Rows</h2></CardHeader>
+              <CardContent className="space-y-3">
+                {review.unknown.length ? review.unknown.slice(0, 6).map((row) => (
+                  <div key={`${row.rowNumber}-${row.policy_number}`} className="rounded-xl bg-slate-50 p-3">
+                    <p className="text-sm font-extrabold text-primary">{row.policy_number}</p>
+                    <p className="mt-1 text-xs font-semibold text-slate-500">Row {row.rowNumber}{row.client_name ? ` · ${row.client_name}` : ""}</p>
+                  </div>
+                )) : <EmptyInlineState title="No unknown rows." body="Every statement policy number exists in PolicyHQ." />}
+              </CardContent>
+            </Card>
           </div>
         </div>
-        <div className="rounded-xl border border-slate-200 bg-slate-50 p-5">
-          <p className="text-xs font-extrabold uppercase tracking-[0.18em] text-accent">Next build</p>
-          <h3 className="mt-3 text-lg font-extrabold text-primary">Commission statement upload</h3>
-          <p className="mt-2 text-sm font-semibold leading-6 text-slate-500">This page is ready for the Lapse Shield upload workflow. Until then, use At Risk Life to monitor the clients most likely to lapse.</p>
-          <Button asChild className="mt-5 rounded-[10px] text-[10px] font-extrabold"><Link href={`${base}/life-retention`}>View At Risk Life</Link></Button>
-        </div>
-      </CardContent>
-    </Card>
+      ) : (
+        <Card>
+          <CardContent className="grid gap-6 p-[23px] lg:grid-cols-[1fr_0.9fr]">
+            <div>
+              <h2 className="text-[22px] font-extrabold leading-[26px] tracking-[-0.04em] text-primary">Before upload</h2>
+              <p className="mt-2 text-sm font-semibold leading-6 text-slate-500">This workspace stays quiet until an agent uploads the monthly life commission statement. Nothing is stored from the file.</p>
+            </div>
+            <div className="rounded-xl border border-slate-200 bg-white p-5">
+              <p className="text-xs font-extrabold uppercase tracking-[0.18em] text-accent">Monitor now</p>
+              <h3 className="mt-3 text-lg font-extrabold text-primary">Use At Risk Life meanwhile</h3>
+              <p className="mt-2 text-sm font-semibold leading-6 text-slate-500">At Risk Life shows active life policies inside the year 1-3 lapse danger zone.</p>
+              <Button asChild className="mt-5 rounded-[10px] text-[10px] font-extrabold"><Link href={`${base}/life-retention`}>View At Risk Life</Link></Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+    </div>
+  );
+}
+
+function StatementSummaryItem({ label, value }: { label: string; value: number }) {
+  return (
+    <div className="rounded-xl bg-slate-50 p-4">
+      <p className="text-xs font-extrabold uppercase tracking-[0.16em] text-slate-500">{label}</p>
+      <p className="mt-2 text-2xl font-extrabold tracking-[-0.04em] text-primary">{value}</p>
+    </div>
+  );
+}
+
+function EmptyInlineState({ title, body }: { title: string; body: string }) {
+  return (
+    <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+      <p className="text-sm font-extrabold text-primary">{title}</p>
+      <p className="mt-1 text-sm font-semibold leading-6 text-slate-500">{body}</p>
+    </div>
   );
 }
 
@@ -1331,10 +1455,68 @@ function ProspectsDashboardCard({ total, dueToday, href }: { total: number; dueT
 }
 
 function RenewalList({ title, policies, base, updateRenewal, openPolicy, onBack }: { title: string; policies: PolicyWithClient[]; base: string; updateRenewal: (id: string, status: RenewalStatus) => void; openPolicy: (policy: PolicyWithClient) => void; onBack: () => void }) {
+  const sortedPolicies = [...policies].sort(sortByExpiry);
   return (
-    <div className="space-y-5">
-      <Button asChild variant="outline"><Link href={navHref(base, "dashboard")} onClick={onBack}>Back to dashboard</Link></Button>
-      <Card><CardHeader><h1 className="text-2xl font-extrabold">{title}</h1></CardHeader><div className="overflow-auto"><table className="w-full min-w-[1120px] text-sm"><thead className="sticky top-0 bg-slate-50"><tr>{["Client Name", "Phone Number", "Policy Number", "Policy Type", "Insurer", "Expiry Date", "Premium Amount (GHS)", "Renewal Status", "Urgency", "Action"].map((h) => <th className="px-4 py-3 text-left" key={h}>{h}</th>)}</tr></thead><tbody>{[...policies].sort(sortByExpiry).map((p) => <tr key={p.id} onClick={() => openPolicy(p)} className={`cursor-pointer border-t ${urgency(p.expiry_date) === "urgent" ? "bg-danger/10" : urgency(p.expiry_date) === "soon" ? "bg-warning/10" : "odd:bg-white even:bg-slate-50"}`}><td className="px-4 py-3 font-semibold">{p.client.full_name}</td><td className="px-4 py-3">{p.client.phone_number}</td><td className="px-4 py-3"><div className="flex flex-wrap items-center gap-2"><span>{p.policy_number}</span><NeedsReviewBadge policy={p} /></div></td><td className="px-4 py-3">{p.policy_type}</td><td className="px-4 py-3">{p.insurer_name}</td><td className="px-4 py-3">{formatDate(p.expiry_date)}</td><td className="px-4 py-3">{formatCurrency(p.premium_amount)}</td><td className="px-4 py-3" onClick={(e) => e.stopPropagation()}><Select value={p.renewal_status} onChange={(e) => updateRenewal(p.id, e.target.value as RenewalStatus)}>{renewalStatuses.map((s) => <option key={s}>{s}</option>)}</Select></td><td className="px-4 py-3"><UrgencyBadge date={p.expiry_date} status={p.renewal_status} /></td><td className="px-4 py-3" onClick={(e) => e.stopPropagation()}><WhatsAppButton href={renewalWhatsAppHref(p)} label="WhatsApp" /></td></tr>)}</tbody></table></div></Card>
+    <div className="max-w-[1062px] space-y-5">
+      <Button asChild variant="outline"><Link href={navHref(base, "dashboard")} onClick={onBack}>Back to Dashboard</Link></Button>
+      <div>
+        <h1 className="text-[30px] font-extrabold leading-[35px] tracking-[-0.04em] text-primary">{title}</h1>
+        <p className="mt-2 text-[13px] font-semibold leading-5 text-slate-500">{sortedPolicies.length} renewal{sortedPolicies.length === 1 ? "" : "s"} needing attention in this view.</p>
+      </div>
+      <Card>
+        {sortedPolicies.length ? (
+          <>
+            <div className="space-y-3 p-4 md:hidden">
+              {sortedPolicies.map((policy) => (
+                <div key={policy.id} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+                  <button type="button" onClick={() => openPolicy(policy)} className="block w-full text-left">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="truncate text-base font-extrabold text-primary">{policy.client.full_name}</p>
+                        <p className="mt-1 truncate font-mono text-sm font-bold text-slate-500">{policy.policy_number}</p>
+                      </div>
+                      <UrgencyBadge date={policy.expiry_date} status={policy.renewal_status} />
+                    </div>
+                    <p className="mt-3 text-sm font-semibold text-slate-600">{policy.policy_type} · {shortInsurerName(policy.insurer_name)}</p>
+                    <div className="mt-3 grid grid-cols-2 gap-3 text-sm">
+                      <Info label="Expiry" value={formatDate(policy.expiry_date)} />
+                      <Info label="Premium" value={formatCurrency(policy.premium_amount)} />
+                    </div>
+                  </button>
+                  <div className="mt-4 grid gap-2" onClick={(event) => event.stopPropagation()}>
+                    <Select value={policy.renewal_status} onChange={(event) => updateRenewal(policy.id, event.target.value as RenewalStatus)}>{renewalStatuses.map((status) => <option key={status}>{status}</option>)}</Select>
+                    <WhatsAppButton href={renewalWhatsAppHref(policy)} label="WhatsApp" className="w-full justify-center" />
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div className="hidden overflow-auto md:block">
+              <table className="w-full min-w-[1060px] text-sm">
+                <thead className="sticky top-0 bg-slate-50">
+                  <tr>{["Client", "Phone", "Policy No.", "Class", "Insurer", "Expiry", "Premium", "Status", "Action"].map((heading) => <th className="px-4 py-3 text-left" key={heading}>{heading}</th>)}</tr>
+                </thead>
+                <tbody>
+                  {sortedPolicies.map((policy) => (
+                    <tr key={policy.id} onClick={() => openPolicy(policy)} className={`cursor-pointer border-t ${urgency(policy.expiry_date) === "urgent" ? "bg-danger/10" : urgency(policy.expiry_date) === "soon" ? "bg-warning/10" : "odd:bg-white even:bg-slate-50"} hover:bg-accent/10`}>
+                      <td className="px-4 py-3 font-bold text-primary">{policy.client.full_name}</td>
+                      <td className="px-4 py-3">{policy.client.phone_number}</td>
+                      <td className="px-4 py-3"><div className="flex flex-wrap items-center gap-2"><span>{policy.policy_number}</span><NeedsReviewBadge policy={policy} /></div></td>
+                      <td className="px-4 py-3">{policy.policy_type}</td>
+                      <td className="px-4 py-3">{shortInsurerName(policy.insurer_name)}</td>
+                      <td className="px-4 py-3">{formatDate(policy.expiry_date)} <UrgencyBadge date={policy.expiry_date} status={policy.renewal_status} /></td>
+                      <td className="px-4 py-3">{formatCurrency(policy.premium_amount)}</td>
+                      <td className="px-4 py-3" onClick={(event) => event.stopPropagation()}><Select value={policy.renewal_status} onChange={(event) => updateRenewal(policy.id, event.target.value as RenewalStatus)}>{renewalStatuses.map((status) => <option key={status}>{status}</option>)}</Select></td>
+                      <td className="px-4 py-3" onClick={(event) => event.stopPropagation()}><WhatsAppButton href={renewalWhatsAppHref(policy)} label="WhatsApp" /></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
+        ) : (
+          <CardContent><EmptyInlineState title="No renewals in this window." body="When policies match this renewal range, they will appear here." /></CardContent>
+        )}
+      </Card>
     </div>
   );
 }
@@ -1396,11 +1578,11 @@ function ProspectCard({ prospect, onEdit, onDelete }: { prospect: Prospect; onEd
     <Card className="min-h-[210px]">
       <CardContent className="space-y-4 p-6">
         <div className="flex items-start justify-between gap-3">
-          <div>
-            <h2 className="text-xl font-extrabold text-primary">{prospect.full_name}</h2>
-            <a href={`tel:${normalizeGhanaPhoneNumber(prospect.phone_number)}`} className="mt-1 block text-sm font-semibold text-slate-600">{prospect.phone_number}</a>
+          <div className="min-w-0">
+            <h2 className="truncate text-xl font-extrabold text-primary">{prospect.full_name}</h2>
+            <a href={`tel:${normalizeGhanaPhoneNumber(prospect.phone_number)}`} className="mt-1 block truncate text-sm font-semibold text-slate-600">{prospect.phone_number}</a>
           </div>
-          <ProspectStatusBadge status={prospect.status} />
+          <div className="shrink-0"><ProspectStatusBadge status={prospect.status} /></div>
         </div>
         {prospect.follow_up_date ? (
           <p className={`rounded-xl px-3 py-2 text-sm font-bold ${due ? "bg-accent/10 text-accent" : "bg-slate-50 text-slate-600"}`}>
@@ -1425,7 +1607,13 @@ function ProspectCard({ prospect, onEdit, onDelete }: { prospect: Prospect; onEd
 
 function Clients({ clients, policies, base, onAdd, onImport, onEdit, onDelete, onExport }: { clients: Client[]; policies: PolicyWithClient[]; base: string; onAdd: () => void; onImport: () => void; onEdit: (client: Client) => void; onDelete: (client: Client) => void; onExport: () => void }) {
   const [sort, setSort] = useState<"name" | "date">("name");
+  const [query, setQuery] = useState("");
   const sorted = [...clients].sort((a, b) => sort === "name" ? a.full_name.localeCompare(b.full_name) : new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+  const visibleClients = sorted.filter((client) => {
+    const search = query.trim().toLowerCase();
+    if (!search) return true;
+    return [client.full_name, client.phone_number, client.email ?? ""].some((value) => value.toLowerCase().includes(search));
+  });
   if (!clients.length) return <Empty title="No clients yet. Add your first client to get started." action="Add Client" onAction={onAdd} />;
   return (
     <div className="max-w-[1062px] space-y-6">
@@ -1437,7 +1625,7 @@ function Clients({ clients, policies, base, onAdd, onImport, onEdit, onDelete, o
         <CardContent className="flex flex-col gap-3 p-4 lg:flex-row lg:items-end lg:justify-between">
           <label className="block text-sm font-semibold text-slate-600">
             Search clients
-            <Input readOnly placeholder="Name, phone, email" className="mt-1 w-full lg:w-[260px]" />
+            <Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Name, phone, email" className="mt-1 w-full lg:w-[260px]" />
           </label>
           <div className="flex flex-wrap gap-2">
             <Select value={sort} onChange={(e) => setSort(e.target.value as "name" | "date")}><option value="name">Sort by Name</option><option value="date">Sort by Date Added</option></Select>
@@ -1447,8 +1635,10 @@ function Clients({ clients, policies, base, onAdd, onImport, onEdit, onDelete, o
         </CardContent>
       </Card>
       <Card className="min-h-[520px]">
+      {visibleClients.length ? (
+      <>
       <div className="space-y-3 p-4 md:hidden">
-        {sorted.map((client) => (
+        {visibleClients.map((client) => (
           <div key={client.id} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
             <div className="flex items-start justify-between gap-3">
               <div>
@@ -1469,7 +1659,11 @@ function Clients({ clients, policies, base, onAdd, onImport, onEdit, onDelete, o
           </div>
         ))}
       </div>
-      <div className="hidden overflow-auto md:block"><table className="w-full min-w-[1050px] text-sm"><thead className="sticky top-0 bg-slate-50"><tr>{["Full Name", "Phone Number", "Email", "Date of Birth", "Address", "Number of Policies", "Date Added", "Actions"].map((h) => <th className="px-4 py-3 text-left" key={h}>{h}</th>)}</tr></thead><tbody>{sorted.map((c) => <tr key={c.id} className="border-t odd:bg-white even:bg-slate-50"><td className="px-4 py-3 font-bold"><Link href={`${base}/clients/${c.id}`}>{c.full_name}</Link></td><td className="px-4 py-3">{c.phone_number}</td><td className="px-4 py-3">{c.email || "—"}</td><td className="px-4 py-3">{c.date_of_birth ? formatDate(c.date_of_birth) : "—"}</td><td className="px-4 py-3">{c.address || "—"}</td><td className="px-4 py-3">{policies.filter((p) => p.client_id === c.id).length}</td><td className="px-4 py-3">{formatDate(c.created_at)}</td><td className="px-4 py-3"><Button variant="ghost" size="sm" onClick={() => onEdit(c)}>Edit</Button><Button variant="ghost" size="sm" onClick={() => onDelete(c)}><Trash2 className="h-4 w-4 text-danger" /></Button></td></tr>)}</tbody></table></div>
+      <div className="hidden overflow-auto md:block"><table className="w-full min-w-[1050px] text-sm"><thead className="sticky top-0 bg-slate-50"><tr>{["Full Name", "Phone Number", "Email", "Date of Birth", "Address", "Number of Policies", "Date Added", "Actions"].map((h) => <th className="px-4 py-3 text-left" key={h}>{h}</th>)}</tr></thead><tbody>{visibleClients.map((c) => <tr key={c.id} className="border-t odd:bg-white even:bg-slate-50"><td className="px-4 py-3 font-bold"><Link href={`${base}/clients/${c.id}`}>{c.full_name}</Link></td><td className="px-4 py-3">{c.phone_number}</td><td className="px-4 py-3">{c.email || "—"}</td><td className="px-4 py-3">{c.date_of_birth ? formatDate(c.date_of_birth) : "—"}</td><td className="px-4 py-3">{c.address || "—"}</td><td className="px-4 py-3">{policies.filter((p) => p.client_id === c.id).length}</td><td className="px-4 py-3">{formatDate(c.created_at)}</td><td className="px-4 py-3"><Button variant="ghost" size="sm" onClick={() => onEdit(c)}>Edit</Button><Button variant="ghost" size="sm" onClick={() => onDelete(c)}><Trash2 className="h-4 w-4 text-danger" /></Button></td></tr>)}</tbody></table></div>
+      </>
+      ) : (
+        <CardContent><EmptyInlineState title="No clients match that search." body="Try a name, phone number, or email from your client list." /></CardContent>
+      )}
     </Card>
     </div>
   );
@@ -2484,6 +2678,11 @@ function renewalWhatsAppHref(policy: PolicyWithClient) {
   return whatsAppUrl(policy.client.phone_number, message);
 }
 
+function lapseShieldWhatsAppHref(policy: PolicyWithClient) {
+  const message = `Hello ${policy.client.full_name}, I am checking in on your ${policy.policy_type} policy. Please confirm whether your latest premium payment has gone through so we can keep the policy active. Thank you.`;
+  return whatsAppUrl(policy.client.phone_number, message);
+}
+
 function clientWhatsAppHref(client: Client) {
   return whatsAppUrl(client.phone_number, `Hello ${client.full_name}, thank you for trusting us. How may I help you today?`);
 }
@@ -2586,14 +2785,15 @@ function dashboardRevenueAction(mix: DashboardBusinessMix, metrics: DashboardPan
   if (mix === "life") {
     const missing = valueFor("Missing Statement");
     const atRisk = valueFor("At Risk Life");
-    if (missing) return { title: "Lapse Shield", body: `${missing} clients missing from the latest commission statement.`, badge: "Review", tone: "danger" as const, href: navHref(base, "policies") };
-    if (atRisk) return { title: "Life retention watch", body: `${atRisk} clients are still inside the year 1-3 danger zone.`, badge: "Watch", tone: "warning" as const, href: navHref(base, "policies") };
-    return { title: "Life book stable", body: "No immediate lapse or statement risk showing today.", badge: "Clear", tone: "success" as const, href: navHref(base, "policies") };
+    if (missing) return { title: "Lapse Shield", body: `${missing} clients missing from the latest commission statement.`, badge: "Review", tone: "danger" as const, href: `${base}/lapse-shield` };
+    if (atRisk) return { title: "Life retention watch", body: `${atRisk} clients are still inside the year 1-3 danger zone.`, badge: "Watch", tone: "warning" as const, href: `${base}/life-retention` };
+    return { title: "Life book stable", body: "No immediate lapse or statement risk showing today.", badge: "Clear", tone: "success" as const, href: `${base}/life-retention` };
   }
 
   if (mix === "mixed") {
     const week = valueFor("This Week");
     const missing = valueFor("Missing Statement");
+    if (missing && !week) return { title: "Highest risk today", body: `${missing} life statement gaps need review.`, badge: "Act Now", tone: "danger" as const, href: `${base}/lapse-shield` };
     if (week || missing) return { title: "Highest risk today", body: `${missing} life statement gaps + ${week} policies expiring this week.`, badge: "Act Now", tone: "danger" as const, href: `${base}/renewals/week` };
     return { title: "Mixed book stable", body: "No critical renewal or life-retention action today.", badge: "Clear", tone: "success" as const, href: `${base}/renewals/week` };
   }
@@ -2748,6 +2948,38 @@ function parseClientCsv(text: string) {
     });
   });
   return { rows, errors: [] };
+}
+
+function parseLapseShieldStatementCsv(text: string): { rows: LapseShieldStatementRow[]; errors: string[] } {
+  const lines = text.split(/\r?\n/).filter((line) => line.trim());
+  if (lines.length < 2) return { rows: [], errors: ["The statement needs a header row and at least one policy row."] };
+  const headers = splitCsvLine(lines[0]).map((header) => normalizeImportHeader(header));
+  const policyNumberIndex = headers.indexOf("policy_number");
+  if (policyNumberIndex === -1) return { rows: [], errors: ["PolicyHQ could not find a policy number column. Rename the column to policy_number or Policy Number and try again."] };
+  const clientNameIndex = headers.indexOf("client_name");
+  const rows = lines.slice(1).flatMap((line, index) => {
+    const values = splitCsvLine(line);
+    const policyNumber = normalizePolicyNumber(values[policyNumberIndex]?.trim() ?? "");
+    if (!policyNumber) return [];
+    return {
+      rowNumber: index + 2,
+      policy_number: policyNumber,
+      client_name: clientNameIndex >= 0 ? values[clientNameIndex]?.trim() ?? "" : ""
+    };
+  });
+  if (!rows.length) return { rows: [], errors: ["PolicyHQ found the policy number column, but no policy numbers were readable."] };
+  return { rows, errors: [] };
+}
+
+function compareLapseShieldStatement(lifePolicies: PolicyWithClient[], statementRows: LapseShieldStatementRow[]): LapseShieldReview {
+  const statementPolicyNumbers = new Set(statementRows.map((row) => row.policy_number));
+  const policyNumbers = new Set(lifePolicies.map((policy) => normalizePolicyNumber(policy.policy_number)));
+  return {
+    matched: lifePolicies.filter((policy) => statementPolicyNumbers.has(normalizePolicyNumber(policy.policy_number))),
+    missing: lifePolicies.filter((policy) => !statementPolicyNumbers.has(normalizePolicyNumber(policy.policy_number))),
+    unknown: statementRows.filter((row) => !policyNumbers.has(row.policy_number)),
+    statementRows: statementRows.length
+  };
 }
 
 function validateImportRows(rows: ImportClientRow[]) {
