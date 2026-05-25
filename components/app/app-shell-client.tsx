@@ -111,6 +111,10 @@ type LapseShieldStatementRow = {
   policy_number: string;
   client_name: string;
 };
+type LapseShieldStatementParseResult = {
+  rows: LapseShieldStatementRow[];
+  errors: string[];
+};
 type LapseShieldReview = {
   matched: PolicyWithClient[];
   missing: PolicyWithClient[];
@@ -1374,6 +1378,7 @@ function DashboardPolicyFocusList({ policies, openPolicy, emptyTitle }: { polici
 function DashboardLapseShieldPreview({ lifePolicies, base, openPolicy }: { lifePolicies: PolicyWithClient[]; base: string; openPolicy: (policy: PolicyWithClient) => void }) {
   const [review, setReview] = useState<LapseShieldReview | null>(null);
   const [statementName, setStatementName] = useState("");
+  const [statementKind, setStatementKind] = useState("CSV, Excel, or PDF");
   const [errors, setErrors] = useState<string[]>([]);
   const activeLifePolicies = lifePolicies.filter((policy) => policy.status === "Active" && policy.renewal_status !== "Lost");
 
@@ -1381,15 +1386,14 @@ function DashboardLapseShieldPreview({ lifePolicies, base, openPolicy }: { lifeP
     const file = event.target.files?.[0];
     if (!file) return;
     setStatementName(file.name);
+    setStatementKind(statementKindForFile(file));
     setErrors([]);
     setReview(null);
-    if (!file.name.toLowerCase().endsWith(".csv")) {
-      setErrors(["Upload a CSV statement for now. Excel and PDF parsing should be added as a separate approved feature so we do not bloat the MVP bundle."]);
-      return;
-    }
 
-    const text = await file.text();
-    const parsed = parseLapseShieldStatementCsv(text);
+    const parsed = await parseLapseShieldStatementFile(file).catch(() => ({
+      rows: [],
+      errors: ["PolicyHQ could not read that statement. Try CSV/Excel, or upload a text-based PDF."]
+    }));
     if (parsed.errors.length) {
       setErrors(parsed.errors);
       return;
@@ -1407,7 +1411,7 @@ function DashboardLapseShieldPreview({ lifePolicies, base, openPolicy }: { lifeP
         <CardContent className="grid gap-6 p-[23px] lg:grid-cols-[1fr_0.9fr]">
           <div>
             <h2 className="text-[22px] font-extrabold leading-[26px] tracking-[-0.04em] text-primary">Statement Review</h2>
-            <p className="mt-2 text-sm font-semibold leading-6 text-slate-500">Upload a life commission statement CSV. PolicyHQ checks which active life policies are missing so the agent can follow up before lapse risk turns permanent.</p>
+            <p className="mt-2 text-sm font-semibold leading-6 text-slate-500">Upload a life commission statement. PolicyHQ checks which active life policies are missing so the agent can follow up before lapse risk turns permanent.</p>
             <div className="mt-5 grid gap-3 sm:grid-cols-3">
               <DashboardPanelMetricCard metric={{ label: "Life Policies", value: activeLifePolicies.length, href: navHref(base, "policies"), tone: "primary", helper: "Active" }} />
               <DashboardPanelMetricCard metric={{ label: "Matched", value: matchedCount, href: `${base}/lapse-shield`, tone: matchedCount ? "success" : "primary", helper: statementName ? "In statement" : "Pending upload" }} />
@@ -1415,10 +1419,10 @@ function DashboardLapseShieldPreview({ lifePolicies, base, openPolicy }: { lifeP
             </div>
           </div>
           <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-5">
-            <p className="text-xs font-extrabold uppercase tracking-[0.18em] text-accent">CSV statement</p>
+            <p className="text-xs font-extrabold uppercase tracking-[0.18em] text-accent">{statementKind} statement</p>
             <h3 className="mt-3 text-lg font-extrabold text-primary">Upload commission statement</h3>
-            <p className="mt-2 text-sm font-semibold leading-6 text-slate-500">The file needs a policy number column. Client names are helpful but optional.</p>
-            <Input type="file" accept=".csv,text/csv" onChange={handleStatementUpload} className="mt-5 bg-white" />
+            <p className="mt-2 text-sm font-semibold leading-6 text-slate-500">CSV and Excel need a policy number column. Text-based PDFs are read automatically; scanned PDFs may need OCR later.</p>
+            <Input type="file" accept=".csv,text/csv,.xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,.pdf,application/pdf" onChange={handleStatementUpload} className="mt-5 bg-white" />
             {statementName ? <p className="mt-3 truncate text-xs font-bold text-slate-500">{statementName}</p> : null}
             {errors.length ? <div className="mt-4 rounded-xl bg-danger/10 p-3 text-sm font-semibold leading-6 text-danger">{errors.map((error) => <p key={error}>{error}</p>)}</div> : null}
           </div>
@@ -2314,13 +2318,10 @@ function ImportClientsModal({ onClose, onImport }: { onClose: () => void; onImpo
   async function handleFile(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
     if (!file) return;
-    if (!file.name.toLowerCase().endsWith(".csv")) {
-      setRows([]);
-      setErrors(["PolicyHQ currently imports CSV files. Open the Excel file, save/download it as CSV, then upload that CSV here."]);
-      return;
-    }
-    const text = await file.text();
-    const parsed = parseClientCsv(text);
+    const parsed = await parseClientImportFile(file).catch(() => ({
+      rows: [],
+      errors: ["PolicyHQ could not read that file. Upload a CSV or Excel .xlsx file."]
+    }));
     setRows(parsed.rows);
     setErrors(parsed.errors);
   }
@@ -2329,15 +2330,20 @@ function ImportClientsModal({ onClose, onImport }: { onClose: () => void; onImpo
     <ModalFrame title="Import Clients" onClose={onClose} wide>
       <div className="space-y-5">
         <div className="rounded-xl bg-slate-50 p-4 text-sm text-slate-600">
-          <p className="font-bold text-primary">Upload a CSV with clients and policies.</p>
-          <p className="mt-1">Minimum required columns: client_name, policy_number, policy_type, insurer_name, policy_end_date. Missing phone, start date, premium, commission, vehicle, or property fields will import as Needs Review.</p>
-          <p className="mt-2 font-semibold text-slate-700">Enterprise exports are accepted after saving as CSV. PolicyHQ reads columns like Insured Name, Policy No., Insurance, Start Date, Expiry Date, and Commission Due automatically.</p>
+          <p className="font-bold text-primary">Upload a CSV or Excel file.</p>
+          <p className="mt-1">PolicyHQ will match common insurer columns automatically.</p>
+          <details className="mt-3">
+            <summary className="cursor-pointer text-xs font-extrabold uppercase tracking-[0.12em] text-accent">What fields are supported?</summary>
+            <p className="mt-2 text-xs font-semibold leading-5 text-slate-500">
+              PolicyHQ looks for client name, phone number, policy number, policy type, insurer, start date, end date, premium, commission, vehicle, property, email, date of birth, and notes. Missing non-blocking fields import as Needs Review.
+            </p>
+          </details>
         </div>
         <div className="flex flex-wrap gap-3">
           <Button type="button" variant="outline" onClick={downloadClientImportTemplate}><Download className="h-4 w-4" /> Download Template</Button>
           <label className="inline-flex h-11 cursor-pointer items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-5 font-semibold text-slate-900 hover:border-accent hover:text-accent">
-            <Upload className="h-4 w-4" /> Upload CSV
-            <input type="file" accept=".csv,text/csv" className="sr-only" onChange={handleFile} />
+            <Upload className="h-4 w-4" /> Upload File
+            <input type="file" accept=".csv,text/csv,.xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" className="sr-only" onChange={handleFile} />
           </label>
         </div>
         {errors.length ? (
@@ -2348,7 +2354,7 @@ function ImportClientsModal({ onClose, onImport }: { onClose: () => void; onImpo
         {rows.length ? (
           <div className="space-y-3">
             <p className="text-sm font-bold text-slate-600">
-              {rows.length} row{rows.length === 1 ? "" : "s"} loaded. Fix blocking items, then import. Amber fields can be cleaned later.
+              {rows.length} row{rows.length === 1 ? "" : "s"} loaded. Some rows may need review before import.
             </p>
             {rowErrors.length ? (
               <div className="rounded-xl bg-warning/10 p-4 text-sm font-semibold text-warning">
@@ -3072,18 +3078,35 @@ function downloadClientImportTemplate() {
   URL.revokeObjectURL(url);
 }
 
+async function parseClientImportFile(file: File): Promise<{ rows: ImportClientRow[]; errors: string[] }> {
+  const lowerName = file.name.toLowerCase();
+  if (lowerName.endsWith(".csv")) {
+    return parseClientCsv(await file.text());
+  }
+  if (lowerName.endsWith(".xlsx")) {
+    const { readSheet } = await import("read-excel-file/browser");
+    const rows = await readSheet(file);
+    return parseClientTable(rows.map((row) => row.map((cell) => formatStatementCell(cell))));
+  }
+  return { rows: [], errors: ["Upload a CSV or Excel .xlsx file."] };
+}
+
 function parseClientCsv(text: string) {
   const lines = text.split(/\r?\n/).filter((line) => line.trim());
-  if (lines.length < 2) return { rows: [], errors: ["CSV needs a header row and at least one client row."] };
-  const headers = splitCsvLine(lines[0]).map((header) => normalizeImportHeader(header));
+  return parseClientTable(lines.map((line) => splitCsvLine(line)));
+}
+
+function parseClientTable(table: string[][]): { rows: ImportClientRow[]; errors: string[] } {
+  const rowsWithContent = table.filter((row) => row.some((cell) => cell.trim()));
+  if (rowsWithContent.length < 2) return { rows: [], errors: ["The file needs a header row and at least one client row."] };
+  const headers = rowsWithContent[0].map((header) => normalizeImportHeader(header));
   const recognizedHeaders = ["client_name", "phone_number", "policy_number", "policy_type", "insurer_name", "policy_start_date", "policy_end_date", "premium", "email", "date_of_birth", "notes", "vehicle_number", "property_location", "commission_rate", "commission_amount", "commission_status", "commission_payment_date", "commission_released"];
   if (!headers.some((header) => recognizedHeaders.includes(header))) {
     return { rows: [], errors: ["PolicyHQ could not recognise this file's column names. Use the template or rename the first row to include client/policy fields."] };
   }
 
   const rows: ImportClientRow[] = [];
-  lines.slice(1).forEach((line) => {
-    const values = splitCsvLine(line);
+  rowsWithContent.slice(1).forEach((values) => {
     const record = Object.fromEntries(headers.map((header, headerIndex) => [header, values[headerIndex]?.trim() ?? ""])) as Record<string, string>;
     if (!record.insurer_name && isEnterprisePolicyExport(headers)) record.insurer_name = "Enterprise Insurance LTD";
     record.policy_start_date = normalizeImportDate(record.policy_start_date);
@@ -3122,15 +3145,53 @@ function parseClientCsv(text: string) {
   return { rows, errors: [] };
 }
 
-function parseLapseShieldStatementCsv(text: string): { rows: LapseShieldStatementRow[]; errors: string[] } {
+async function parseLapseShieldStatementFile(file: File): Promise<LapseShieldStatementParseResult> {
+  const lowerName = file.name.toLowerCase();
+  if (lowerName.endsWith(".csv")) {
+    return parseLapseShieldStatementCsv(await file.text());
+  }
+  if (lowerName.endsWith(".xlsx")) {
+    const { readSheet } = await import("read-excel-file/browser");
+    const rows = await readSheet(file);
+    return parseLapseShieldStatementTable(rows.map((row) => row.map((cell) => formatStatementCell(cell))));
+  }
+  if (lowerName.endsWith(".pdf")) {
+    return parseLapseShieldStatementPdf(file);
+  }
+  return {
+    rows: [],
+    errors: ["Upload a CSV, Excel .xlsx, or text-based PDF commission statement."]
+  };
+}
+
+function statementKindForFile(file: File) {
+  const lowerName = file.name.toLowerCase();
+  if (lowerName.endsWith(".xlsx")) return "Excel";
+  if (lowerName.endsWith(".pdf")) return "PDF";
+  if (lowerName.endsWith(".csv")) return "CSV";
+  return "CSV, Excel, or PDF";
+}
+
+function formatStatementCell(value: unknown) {
+  if (value === null || value === undefined) return "";
+  if (value instanceof Date) return value.toISOString().slice(0, 10);
+  return String(value).trim();
+}
+
+function parseLapseShieldStatementCsv(text: string): LapseShieldStatementParseResult {
   const lines = text.split(/\r?\n/).filter((line) => line.trim());
   if (lines.length < 2) return { rows: [], errors: ["The statement needs a header row and at least one policy row."] };
-  const headers = splitCsvLine(lines[0]).map((header) => normalizeImportHeader(header));
+  return parseLapseShieldStatementTable(lines.map((line) => splitCsvLine(line)));
+}
+
+function parseLapseShieldStatementTable(table: string[][]): LapseShieldStatementParseResult {
+  const rowsWithContent = table.filter((row) => row.some((cell) => cell.trim()));
+  if (rowsWithContent.length < 2) return { rows: [], errors: ["The statement needs a header row and at least one policy row."] };
+  const headers = rowsWithContent[0].map((header) => normalizeImportHeader(header));
   const policyNumberIndex = headers.indexOf("policy_number");
   if (policyNumberIndex === -1) return { rows: [], errors: ["PolicyHQ could not find a policy number column. Rename the column to policy_number or Policy Number and try again."] };
   const clientNameIndex = headers.indexOf("client_name");
-  const rows = lines.slice(1).flatMap((line, index) => {
-    const values = splitCsvLine(line);
+  const rows = rowsWithContent.slice(1).flatMap((values, index) => {
     const policyNumber = normalizePolicyNumber(values[policyNumberIndex]?.trim() ?? "");
     if (!policyNumber) return [];
     return {
@@ -3141,6 +3202,56 @@ function parseLapseShieldStatementCsv(text: string): { rows: LapseShieldStatemen
   });
   if (!rows.length) return { rows: [], errors: ["PolicyHQ found the policy number column, but no policy numbers were readable."] };
   return { rows, errors: [] };
+}
+
+async function parseLapseShieldStatementPdf(file: File): Promise<LapseShieldStatementParseResult> {
+  const pdfjs = await import("pdfjs-dist");
+  pdfjs.GlobalWorkerOptions.workerSrc = new URL("pdfjs-dist/build/pdf.worker.mjs", import.meta.url).toString();
+  const pdf = await pdfjs.getDocument({
+    data: await file.arrayBuffer(),
+    useWorkerFetch: false,
+    useWasm: false
+  }).promise;
+  const textParts: string[] = [];
+  for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber += 1) {
+    const page = await pdf.getPage(pageNumber);
+    const content = await page.getTextContent();
+    textParts.push(content.items.map((item) => "str" in item ? item.str : "").join(" "));
+  }
+  const text = textParts.join("\n").trim();
+  if (!text) {
+    return {
+      rows: [],
+      errors: ["PolicyHQ could not read text from this PDF. It may be scanned; upload CSV/Excel for now, or add OCR later."]
+    };
+  }
+  const rows = extractStatementPolicyNumbersFromText(text);
+  if (!rows.length) {
+    return {
+      rows: [],
+      errors: ["PolicyHQ read the PDF, but could not find policy-number-like values. Try Excel/CSV or check the statement format."]
+    };
+  }
+  return { rows, errors: [] };
+}
+
+function extractStatementPolicyNumbersFromText(text: string): LapseShieldStatementRow[] {
+  const matches = text.match(/[A-Z0-9][A-Z0-9./-]{2,39}/gi) ?? [];
+  const seen = new Set<string>();
+  const rows: LapseShieldStatementRow[] = [];
+  for (const match of matches) {
+    const policyNumber = normalizePolicyNumber(match);
+    const digits = policyNumber.replace(/\D/g, "");
+    const hasLetter = /[A-Z]/.test(policyNumber);
+    if (policyNumber.length < 3 || (!hasLetter && digits.length < 6) || seen.has(policyNumber)) continue;
+    seen.add(policyNumber);
+    rows.push({
+      rowNumber: rows.length + 1,
+      policy_number: policyNumber,
+      client_name: ""
+    });
+  }
+  return rows;
 }
 
 function compareLapseShieldStatement(lifePolicies: PolicyWithClient[], statementRows: LapseShieldStatementRow[]): LapseShieldReview {
