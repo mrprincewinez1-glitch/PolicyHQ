@@ -8,6 +8,7 @@ import {
   Bell,
   Calculator,
   Cake,
+  Clock,
   Download,
   FileText,
   Flag,
@@ -728,7 +729,15 @@ export function AppShell({
   ) : dashboardFocus ? (
     <DashboardFocusView focus={dashboardFocus} data={data} base={base} openPolicy={setDetailPolicy} />
   ) : active === "dashboard" ? (
-    <Dashboard data={data} base={base} totalPaidThisMonth={totalPaidThisMonth} openPolicy={setDetailPolicy} todaysBirthdays={todaysBirthdays} />
+    <Dashboard
+      data={data}
+      base={base}
+      totalPaidThisMonth={totalPaidThisMonth}
+      openPolicy={setDetailPolicy}
+      todaysBirthdays={todaysBirthdays}
+      onAddPolicy={() => blockWrite() || setModal({ type: "policy" })}
+      onImportClients={() => blockWrite() || setModal({ type: "import" })}
+    />
   ) : active === "clients" ? (
     <Clients
       clients={filteredClients}
@@ -951,14 +960,30 @@ export function AppShell({
   );
 }
 
-function Dashboard({ data, base, totalPaidThisMonth, openPolicy, todaysBirthdays }: { data: AppData; base: string; totalPaidThisMonth: number; openPolicy: (policy: PolicyWithClient) => void; todaysBirthdays: Client[] }) {
-  const recent = [...data.policies].sort((a, b) => new Date(b.updated_at ?? b.created_at).getTime() - new Date(a.updated_at ?? a.created_at).getTime()).slice(0, 5);
+function Dashboard({
+  data,
+  base,
+  totalPaidThisMonth,
+  openPolicy,
+  todaysBirthdays,
+  onAddPolicy,
+  onImportClients
+}: {
+  data: AppData;
+  base: string;
+  totalPaidThisMonth: number;
+  openPolicy: (policy: PolicyWithClient) => void;
+  todaysBirthdays: Client[];
+  onAddPolicy: () => void;
+  onImportClients: () => void;
+}) {
   const active = activePolicies(data.policies);
   const premiumDueThisMonth = expiringThisMonth(data.policies).reduce((sum, policy) => sum + policy.premium_amount, 0);
   const followUpsDueToday = data.prospects.filter(isProspectDueToday).length;
   const dashboardMix = dashboardBusinessMix(data);
   const revenueMetrics = dashboardRevenueMetrics(data.policies, dashboardMix, base);
   const relationshipMetrics = dashboardRelationshipMetrics(data.policies, dashboardMix, todaysBirthdays.length, followUpsDueToday, base);
+  const activities = dashboardActivities(data, todaysBirthdays, base, openPolicy);
 
   if (dashboardMix === "empty") {
     return <NoDataDashboard base={base} profileName={data.profile.full_name} />;
@@ -966,9 +991,21 @@ function Dashboard({ data, base, totalPaidThisMonth, openPolicy, todaysBirthdays
 
   return (
     <div className="max-w-[1062px] space-y-[26px]">
-      <div>
-        <h1 className="text-[30px] font-extrabold leading-[35px] tracking-[-0.04em] text-primary">{greeting(firstName(data.profile.full_name))}</h1>
-        <p className="mt-2 text-[13px] font-semibold leading-5 text-slate-500">{fullDate()}</p>
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <h1 className="text-[30px] font-extrabold leading-[35px] tracking-[-0.04em] text-primary">{greeting(firstName(data.profile.full_name))}</h1>
+          <p className="mt-2 text-[13px] font-semibold leading-5 text-slate-500">{fullDate()}</p>
+        </div>
+        <div className="grid gap-2 sm:grid-cols-2">
+          <Button onClick={onAddPolicy} className="min-h-11 rounded-[10px] text-[10px] font-extrabold">
+            <Plus className="h-4 w-4" />
+            Add Policy
+          </Button>
+          <Button onClick={onImportClients} variant="outline" className="min-h-11 rounded-[10px] text-[10px] font-extrabold">
+            <Upload className="h-4 w-4" />
+            Import Clients
+          </Button>
+        </div>
       </div>
       <div className="grid gap-[13px] md:grid-cols-2 xl:grid-cols-[136px_136px_168px_168px_168px]">
         <DashboardStatLink label="Total Clients" value={data.clients.length} href={navHref(base, "clients")} />
@@ -981,12 +1018,22 @@ function Dashboard({ data, base, totalPaidThisMonth, openPolicy, todaysBirthdays
         <RevenueProtectionPanel mix={dashboardMix} metrics={revenueMetrics} base={base} />
         <RelationshipManagerPanel metrics={relationshipMetrics} birthdays={todaysBirthdays} base={base} />
       </div>
-      <RecentActivityPanel recent={recent} openPolicy={openPolicy} />
+      <RecentActivityPanel activities={activities} />
     </div>
   );
 }
 
 type DashboardBusinessMix = "empty" | "life" | "non-life" | "mixed";
+type DashboardActivity = {
+  id: string;
+  title: string;
+  body: string;
+  badge: string;
+  tone: "neutral" | "success" | "warning" | "danger" | "accent";
+  createdAt: string;
+  href?: string;
+  onClick?: () => void;
+};
 type DashboardPanelMetric = {
   label: string;
   value: number;
@@ -1180,25 +1227,60 @@ function DashboardBirthdayAction({ client, href }: { client: Client; href: strin
   );
 }
 
-function RecentActivityPanel({ recent, openPolicy }: { recent: PolicyWithClient[]; openPolicy: (policy: PolicyWithClient) => void }) {
-  const latest = recent[0];
+function RecentActivityPanel({ activities }: { activities: DashboardActivity[] }) {
   return (
     <Card className="min-h-28">
       <CardContent className="p-[23px]">
-        <h2 className="text-[22px] font-extrabold leading-[26px] tracking-[-0.04em] text-primary">Recent Activity</h2>
-        {latest ? (
-          <div className="mt-[18px] flex items-center justify-between gap-4 text-xs font-bold">
-            <button className="min-w-0 truncate text-left text-primary" onClick={() => openPolicy(latest)}>
-              {latest.client.full_name} · {latest.policy_type} · {latest.renewal_status}
-            </button>
-            <Badge tone={latest.renewal_status === "Renewed" ? "green" : latest.renewal_status === "Lost" ? "red" : "amber"}>{latest.renewal_status}</Badge>
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <h2 className="text-[22px] font-extrabold leading-[26px] tracking-[-0.04em] text-primary">Recent Activity</h2>
+          <span className="text-[10px] font-extrabold uppercase tracking-[0.08em] text-slate-400">Live work feed</span>
+        </div>
+        {activities.length ? (
+          <div className="mt-[18px] divide-y divide-slate-100">
+            {activities.map((activity) => <RecentActivityItem key={activity.id} activity={activity} />)}
           </div>
         ) : (
-          <p className="mt-[18px] text-xs font-bold text-slate-500">No recent policy activity yet.</p>
+          <p className="mt-[18px] text-xs font-bold text-slate-500">No recent activity yet. Add a policy or import clients to start building the feed.</p>
         )}
       </CardContent>
     </Card>
   );
+}
+
+function RecentActivityItem({ activity }: { activity: DashboardActivity }) {
+  const badgeTone = activity.tone === "success" ? "green" : activity.tone === "danger" ? "red" : activity.tone === "warning" ? "amber" : activity.tone === "accent" ? "orange" : "slate";
+  const row = (
+    <>
+      <div className="flex min-w-0 items-start gap-3">
+        <span className="mt-1 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-slate-50 text-slate-500">
+          <Clock className="h-3.5 w-3.5" />
+        </span>
+        <div className="min-w-0">
+          <strong className="block truncate text-xs font-extrabold text-primary">{activity.title}</strong>
+          <span className="mt-1 block truncate text-[10px] font-bold leading-[1.35] text-slate-500">{activity.body}</span>
+        </div>
+      </div>
+      <Badge tone={badgeTone}>{activity.badge}</Badge>
+    </>
+  );
+
+  if (activity.href) {
+    return (
+      <Link href={activity.href} className="flex min-h-[58px] items-center justify-between gap-4 py-3 transition hover:text-accent focus:outline-none focus:ring-2 focus:ring-accent">
+        {row}
+      </Link>
+    );
+  }
+
+  if (activity.onClick) {
+    return (
+      <button type="button" onClick={activity.onClick} className="flex min-h-[58px] w-full items-center justify-between gap-4 py-3 text-left transition hover:text-accent focus:outline-none focus:ring-2 focus:ring-accent">
+        {row}
+      </button>
+    );
+  }
+
+  return <div className="flex min-h-[58px] items-center justify-between gap-4 py-3">{row}</div>;
 }
 
 function DashboardFocusView({ focus, data, base, openPolicy }: { focus: "birthdays" | "anniversaries" | "life-retention" | "lapse-shield" | "recovered-life"; data: AppData; base: string; openPolicy: (policy: PolicyWithClient) => void }) {
@@ -2717,6 +2799,72 @@ function ProspectStatusBadge({ status }: { status: ProspectStatus }) {
 function formatCompactCurrency(value: number) {
   if (value >= 1000) return `GHS ${Math.round(value / 1000)}k`;
   return formatCurrency(value).replace("GH₵", "GHS ");
+}
+
+function dashboardActivities(data: AppData, birthdays: Client[], base: string, openPolicy: (policy: PolicyWithClient) => void): DashboardActivity[] {
+  const policyById = new Map(data.policies.map((policy) => [policy.id, policy]));
+  const activities: DashboardActivity[] = [];
+
+  for (const policy of [...data.policies].sort((a, b) => activityTime(b.updated_at ?? b.created_at) - activityTime(a.updated_at ?? a.created_at)).slice(0, 4)) {
+    activities.push({
+      id: `policy-${policy.id}`,
+      title: `${policy.client.full_name} · ${policy.policy_type}`,
+      body: `${policy.policy_number} · ${policy.renewal_status}`,
+      badge: policy.renewal_status,
+      tone: policy.renewal_status === "Renewed" ? "success" : policy.renewal_status === "Lost" ? "danger" : "warning",
+      createdAt: policy.updated_at ?? policy.created_at,
+      onClick: () => openPolicy(policy)
+    });
+  }
+
+  for (const prospect of data.prospects.filter(isProspectDueToday).slice(0, 2)) {
+    activities.push({
+      id: `prospect-${prospect.id}`,
+      title: `${prospect.full_name} · prospect follow-up`,
+      body: prospect.notes || `Status: ${prospect.status}`,
+      badge: "Follow up",
+      tone: "warning",
+      createdAt: prospect.follow_up_date ? `${prospect.follow_up_date}T12:00:00` : prospect.created_at,
+      href: `${navHref(base, "prospects")}?filter=today`
+    });
+  }
+
+  for (const client of birthdays.slice(0, 2)) {
+    activities.push({
+      id: `birthday-${client.id}`,
+      title: `${client.full_name} · birthday today`,
+      body: "Relationship touchpoint ready",
+      badge: "Birthday",
+      tone: "accent",
+      createdAt: new Date().toISOString(),
+      href: `${base}/birthdays`
+    });
+  }
+
+  for (const commission of [...data.commissions].sort((a, b) => activityTime(commissionActivityDate(b)) - activityTime(commissionActivityDate(a))).slice(0, 3)) {
+    const policy = policyById.get(commission.policy_id);
+    if (!policy) continue;
+    activities.push({
+      id: `commission-${commission.id}`,
+      title: `${policy.client.full_name} · commission ${commission.payment_status.toLowerCase()}`,
+      body: `${formatCurrency(commission.commission_amount)} · ${policy.policy_number}`,
+      badge: commission.payment_status,
+      tone: commission.payment_status === "Paid" ? "success" : "warning",
+      createdAt: commissionActivityDate(commission),
+      href: navHref(base, "commissions")
+    });
+  }
+
+  return activities.sort((a, b) => activityTime(b.createdAt) - activityTime(a.createdAt)).slice(0, 5);
+}
+
+function commissionActivityDate(commission: Commission) {
+  return commission.payment_date ? `${commission.payment_date}T12:00:00` : commission.created_at;
+}
+
+function activityTime(value: string) {
+  const time = new Date(value).getTime();
+  return Number.isNaN(time) ? 0 : time;
 }
 
 function dashboardFocusConfig(focus: "birthdays" | "anniversaries" | "life-retention" | "lapse-shield" | "recovered-life", birthdays: number, anniversaries: number, lifeRetention: number, recoveredLife: number, base: string) {
