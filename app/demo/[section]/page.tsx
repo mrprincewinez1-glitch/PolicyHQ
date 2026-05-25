@@ -5,10 +5,11 @@ import { demoData } from "@/lib/demo-data";
 const sections = ["dashboard", "clients", "prospects", "policies", "commissions", "notifications", "profile"] as const;
 const focusSections = ["birthdays", "anniversaries", "life-retention", "lapse-shield"] as const;
 
-export default function DemoSectionPage({ params }: { params: { section: string } }) {
-  if (focusSections.includes(params.section as typeof focusSections[number])) {
-    return <AppShell initialData={demoData} section="dashboard" demo dashboardFocus={params.section as typeof focusSections[number]} />;
+export default async function DemoSectionPage({ params }: { params: Promise<{ section: string }> }) {
+  const { section } = await params;
+  if (focusSections.includes(section as typeof focusSections[number])) {
+    return <AppShell initialData={demoData} section="dashboard" demo dashboardFocus={section as typeof focusSections[number]} />;
   }
-  if (!sections.includes(params.section as typeof sections[number])) notFound();
-  return <AppShell initialData={demoData} section={params.section as typeof sections[number]} demo />;
+  if (!sections.includes(section as typeof sections[number])) notFound();
+  return <AppShell initialData={demoData} section={section as typeof sections[number]} demo />;
 }

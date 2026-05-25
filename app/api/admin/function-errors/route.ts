@@ -7,7 +7,7 @@ export async function GET() {
     return adminJsonResponse(admin);
   }
 
-  const supabase = createClient();
+  const supabase = await createClient();
   const { data, error } = await supabase
     .from("function_error_logs")
     .select("id, function_name, error_message, error_stack, created_at, resolved")

@@ -15,12 +15,14 @@ type RawPolicyWithClient = Omit<PolicyWithClient, "client"> & {
   client: Client | Client[] | null;
 };
 
+type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
+
 export async function getAuthenticatedAppData(): Promise<AppData> {
   if (process.env.NEXT_PUBLIC_LOCAL_PREVIEW === "true") {
     return demoData;
   }
 
-  const supabase = createClient();
+  const supabase = await createClient();
   const { data: userData } = await supabase.auth.getUser();
   const user = userData.user;
   if (!user) redirect("/sign-in?error=Please sign in again. Your session was not active.");
@@ -90,7 +92,7 @@ export async function getAuthenticatedAppData(): Promise<AppData> {
   };
 }
 
-async function logClientViews(supabase: ReturnType<typeof createClient>, userId: string, clientIds: string[]) {
+async function logClientViews(supabase: SupabaseServerClient, userId: string, clientIds: string[]) {
   if (!clientIds.length) return;
   const { error } = await supabase.from("audit_log").insert(
     clientIds.map((clientId) => ({
@@ -105,7 +107,7 @@ async function logClientViews(supabase: ReturnType<typeof createClient>, userId:
   }
 }
 
-async function profileWithSignedAvatar(supabase: ReturnType<typeof createClient>, profile: Profile) {
+async function profileWithSignedAvatar(supabase: SupabaseServerClient, profile: Profile) {
   const path = avatarStoragePath(profile.avatar_url);
   if (!path) return profile;
 

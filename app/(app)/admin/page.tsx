@@ -31,7 +31,7 @@ export default async function AdminPage() {
     redirect("/dashboard");
   }
 
-  const supabase = createClient();
+  const supabase = await createClient();
   const [agentsResult, clientsResult, policiesResult, commissionsResult, functionErrorsResult] = await Promise.all([
     supabase.from("profiles").select("id, full_name, email, company_name, role, created_at").order("created_at", { ascending: false }).range(0, 99),
     supabase.from("clients").select("id", { count: "exact", head: true }).is("deleted_at", null),

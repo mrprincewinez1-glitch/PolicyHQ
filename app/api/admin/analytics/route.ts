@@ -12,7 +12,7 @@ export async function GET() {
     return adminJsonResponse(admin);
   }
 
-  const supabase = createClient();
+  const supabase = await createClient();
   const [agentsResult, clientsResult, policiesResult, commissionsResult] = await Promise.all([
     supabase.from("profiles").select("id", { count: "exact", head: true }),
     supabase.from("clients").select("id", { count: "exact", head: true }).is("deleted_at", null),

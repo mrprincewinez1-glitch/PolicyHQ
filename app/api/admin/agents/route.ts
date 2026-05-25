@@ -7,7 +7,7 @@ export async function GET() {
     return adminJsonResponse(admin);
   }
 
-  const supabase = createClient();
+  const supabase = await createClient();
   const { data, error } = await supabase
     .from("profiles")
     .select("id, full_name, email, company_name, role, created_at")

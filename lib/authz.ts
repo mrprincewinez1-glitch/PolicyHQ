@@ -5,7 +5,7 @@ export type AdminCheck =
   | { ok: false; status: 401 | 403; message: string };
 
 export async function requireAdmin(): Promise<AdminCheck> {
-  const supabase = createClient();
+  const supabase = await createClient();
   const { data: userData } = await supabase.auth.getUser();
   const user = userData.user;
 

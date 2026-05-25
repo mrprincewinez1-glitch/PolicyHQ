@@ -37,7 +37,7 @@ export async function signUp(formData: FormData) {
     authRedirect("/sign-up", "error", "Please enter your name, email, phone number, and matching passwords of at least 8 characters.");
   }
   ensureSupabase("/sign-up");
-  const supabase = createClient();
+  const supabase = await createClient();
   const profileData = { full_name: fullName, company_name: companyName, phone_number: phoneNumber || null };
   const { data, error } = await supabase.auth.signUp({
     email,
@@ -56,7 +56,7 @@ export async function signIn(formData: FormData) {
   const email = value(formData, "email");
   const password = value(formData, "password");
   ensureSupabase("/sign-in");
-  const supabase = createClient();
+  const supabase = await createClient();
   const { error } = await supabase.auth.signInWithPassword({ email, password });
   if (error) {
     const message = error.message.toLowerCase().includes("confirm")
@@ -69,7 +69,7 @@ export async function signIn(formData: FormData) {
 
 export async function signOut() {
   ensureSupabase("/sign-in");
-  const supabase = createClient();
+  const supabase = await createClient();
   await supabase.auth.signOut();
   redirect("/sign-in");
 }
@@ -80,7 +80,7 @@ export async function forgotPassword(formData: FormData) {
     authRedirect("/forgot-password", "error", "Enter the email address on your PolicyHQ account.");
   }
   ensureSupabase("/forgot-password");
-  const supabase = createClient();
+  const supabase = await createClient();
   const { error } = await supabase.auth.resetPasswordForEmail(email, {
     redirectTo: `${siteUrl()}/reset-password`
   });
@@ -97,7 +97,7 @@ export async function resetPassword(formData: FormData) {
     authRedirect("/reset-password", "error", "Use matching passwords of at least 8 characters.");
   }
   ensureSupabase("/reset-password");
-  const supabase = createClient();
+  const supabase = await createClient();
   const { error } = await supabase.auth.updateUser({ password });
   if (error) authRedirect("/reset-password", "error", "We could not update your password.");
   redirect("/dashboard");

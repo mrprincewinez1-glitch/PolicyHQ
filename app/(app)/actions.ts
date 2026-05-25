@@ -210,7 +210,7 @@ export async function deleteProspect(prospectId: string) {
 }
 
 async function currentUserId() {
-  const supabase = createClient();
+  const supabase = await createClient();
   const { data } = await supabase.auth.getUser();
   if (!data.user) throw new Error("Unauthenticated");
   return { supabase, agentId: data.user.id };
@@ -235,7 +235,7 @@ function assertActionRateLimit(agentId: string, action: string, maxRequests: num
 }
 
 async function insertClientAuditLog(
-  supabase: ReturnType<typeof createClient>,
+  supabase: Awaited<ReturnType<typeof createClient>>,
   agentId: string,
   action: "viewed" | "updated" | "deleted",
   clientId: string
