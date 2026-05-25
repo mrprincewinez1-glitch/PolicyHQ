@@ -1019,8 +1019,8 @@ function NoDataDashboard({ base, profileName }: { base: string; profileName: str
         </Card>
       </div>
       <div className="grid gap-6 lg:grid-cols-2">
-        <DashboardEmptyPillar title="Revenue Protection" body="Waiting for policy data" helper="Import clients or add a first policy to activate this card." />
-        <DashboardEmptyPillar title="Relationship Manager" body="Waiting for client activity" helper="Birthdays and follow-ups appear when client details are captured." />
+        <DashboardEmptyPillar title="Revenue Protection" body="Waiting for policy data" helper="Import clients or add a first policy to activate this card." href={navHref(base, "policies")} />
+        <DashboardEmptyPillar title="Relationship Manager" body="Waiting for client activity" helper="Birthdays and follow-ups appear when client details are captured." href={navHref(base, "clients")} />
       </div>
     </div>
   );
@@ -1048,13 +1048,13 @@ function DashboardChecklistItem({ title, body }: { title: string; body: string }
   );
 }
 
-function DashboardEmptyPillar({ title, body, helper }: { title: string; body: string; helper: string }) {
+function DashboardEmptyPillar({ title, body, helper, href }: { title: string; body: string; helper: string; href: string }) {
   return (
     <Card className="min-h-[148px]">
       <CardContent className="flex h-full min-h-[148px] flex-col justify-center p-[23px]">
         <h2 className="text-[22px] font-extrabold leading-[26px] tracking-[-0.04em] text-primary">{title}</h2>
         <p className="mt-2 text-[11px] font-bold leading-[1.5] text-slate-500">{body}</p>
-        <DashboardActionRow title={body} body={helper} badge="Empty" tone="neutral" />
+        <DashboardActionRow title={body} body={helper} badge="Empty" tone="neutral" href={href} />
       </CardContent>
     </Card>
   );
@@ -1095,7 +1095,7 @@ function RevenueProtectionPanel({ mix, metrics, base }: { mix: DashboardBusiness
         <div className="grid gap-3 sm:grid-cols-3">
           {metrics.map((item) => <DashboardPanelMetricCard key={item.label} metric={item} />)}
         </div>
-        <DashboardActionRow {...dashboardRevenueAction(mix, metrics)} />
+        <DashboardActionRow {...dashboardRevenueAction(mix, metrics, base)} />
       </CardContent>
     </Card>
   );
@@ -1120,8 +1120,8 @@ function RelationshipManagerPanel({ metrics, birthdays, base }: { metrics: Dashb
           {metrics.map((item) => <DashboardPanelMetricCard key={item.label} metric={item} />)}
         </div>
         {birthdays.length ? (
-          <DashboardBirthdayAction client={birthdays[0]} />
-        ) : <DashboardActionRow {...dashboardRelationshipAction(metrics)} />}
+          <DashboardBirthdayAction client={birthdays[0]} href={navHref(base, "clients")} />
+        ) : <DashboardActionRow {...dashboardRelationshipAction(metrics, base)} />}
       </CardContent>
     </Card>
   );
@@ -1138,28 +1138,29 @@ function DashboardPanelMetricCard({ metric }: { metric: DashboardPanelMetric }) 
   );
 }
 
-function DashboardActionRow({ title, body, badge, tone }: { title: string; body: string; badge: string; tone: "neutral" | "danger" | "warning" | "success" }) {
+function DashboardActionRow({ title, body, badge, tone, href }: { title: string; body: string; badge: string; tone: "neutral" | "danger" | "warning" | "success"; href: string }) {
   const background = tone === "danger" ? "bg-danger/10" : tone === "warning" ? "bg-warning/10" : tone === "success" ? "bg-success/10" : "bg-slate-50";
   const badgeColor = tone === "danger" ? "bg-danger" : tone === "warning" ? "bg-warning" : tone === "success" ? "bg-success" : "bg-primary";
   return (
-    <div className={`mt-[17px] flex min-h-[58px] items-center justify-between gap-4 rounded-[10px] border border-slate-200 px-3.5 py-[13px] ${background}`}>
+    <Link href={href} className={`mt-[17px] flex min-h-[58px] items-center justify-between gap-4 rounded-[10px] border border-slate-200 px-3.5 py-[13px] transition hover:border-accent hover:bg-accent/5 focus:outline-none focus:ring-2 focus:ring-accent ${background}`}>
       <div className="min-w-0">
         <strong className="block truncate text-[13px] font-extrabold text-primary">{title}</strong>
         <span className="mt-1 block text-[10px] font-bold leading-[1.35] text-slate-500">{body}</span>
       </div>
       <span className={`min-w-[68px] shrink-0 rounded-full px-2.5 py-2 text-center text-[9px] font-extrabold text-white ${badgeColor}`}>{badge}</span>
-    </div>
+    </Link>
   );
 }
 
-function DashboardBirthdayAction({ client }: { client: Client }) {
+function DashboardBirthdayAction({ client, href }: { client: Client; href: string }) {
   return (
-    <div className="mt-[17px] flex min-h-[58px] items-center justify-between gap-4 rounded-[10px] border border-slate-200 bg-warning/10 px-3.5 py-[13px]">
-      <div className="min-w-0">
+    <div className="relative mt-[17px] flex min-h-[58px] items-center justify-between gap-4 rounded-[10px] border border-slate-200 bg-warning/10 px-3.5 py-[13px] transition hover:border-accent">
+      <Link href={href} aria-label={`View birthday clients including ${client.full_name}`} className="absolute inset-0 rounded-[10px] focus:outline-none focus:ring-2 focus:ring-accent" />
+      <div className="relative z-10 min-w-0 pointer-events-none">
         <strong className="block truncate text-[13px] font-extrabold text-primary">{client.full_name}</strong>
         <span className="mt-1 block truncate text-[10px] font-bold leading-[1.35] text-slate-500">Birthday today · {client.phone_number}</span>
       </div>
-      <WhatsAppButton href={birthdayWhatsAppHref(client)} label="WhatsApp" className="shrink-0 rounded-[10px] text-[10px] font-extrabold" />
+      <WhatsAppButton href={birthdayWhatsAppHref(client)} label="WhatsApp" className="relative z-10 shrink-0 rounded-[10px] text-[10px] font-extrabold" />
     </div>
   );
 }
@@ -2393,36 +2394,36 @@ function formatCompactCurrency(value: number) {
   return formatCurrency(value).replace("GH₵", "GHS ");
 }
 
-function dashboardRevenueAction(mix: DashboardBusinessMix, metrics: DashboardPanelMetric[]) {
+function dashboardRevenueAction(mix: DashboardBusinessMix, metrics: DashboardPanelMetric[], base: string) {
   const valueFor = (label: string) => metrics.find((metric) => metric.label === label)?.value ?? 0;
   if (mix === "life") {
     const missing = valueFor("Missing Statement");
     const atRisk = valueFor("At Risk Life");
-    if (missing) return { title: "Lapse Shield", body: `${missing} clients missing from the latest commission statement.`, badge: "Review", tone: "danger" as const };
-    if (atRisk) return { title: "Life retention watch", body: `${atRisk} clients are still inside the year 1-3 danger zone.`, badge: "Watch", tone: "warning" as const };
-    return { title: "Life book stable", body: "No immediate lapse or statement risk showing today.", badge: "Clear", tone: "success" as const };
+    if (missing) return { title: "Lapse Shield", body: `${missing} clients missing from the latest commission statement.`, badge: "Review", tone: "danger" as const, href: navHref(base, "policies") };
+    if (atRisk) return { title: "Life retention watch", body: `${atRisk} clients are still inside the year 1-3 danger zone.`, badge: "Watch", tone: "warning" as const, href: navHref(base, "policies") };
+    return { title: "Life book stable", body: "No immediate lapse or statement risk showing today.", badge: "Clear", tone: "success" as const, href: navHref(base, "policies") };
   }
 
   if (mix === "mixed") {
     const week = valueFor("This Week");
     const missing = valueFor("Missing Statement");
-    if (week || missing) return { title: "Highest risk today", body: `${missing} life statement gaps + ${week} policies expiring this week.`, badge: "Act Now", tone: "danger" as const };
-    return { title: "Mixed book stable", body: "No critical renewal or life-retention action today.", badge: "Clear", tone: "success" as const };
+    if (week || missing) return { title: "Highest risk today", body: `${missing} life statement gaps + ${week} policies expiring this week.`, badge: "Act Now", tone: "danger" as const, href: `${base}/renewals/week` };
+    return { title: "Mixed book stable", body: "No critical renewal or life-retention action today.", badge: "Clear", tone: "success" as const, href: `${base}/renewals/week` };
   }
 
   const week = valueFor("This Week");
-  if (week) return { title: `${week} policies expire this week`, body: "Prioritise critical renewals before they become lost business.", badge: "This Week", tone: "danger" as const };
+  if (week) return { title: `${week} policies expire this week`, body: "Prioritise critical renewals before they become lost business.", badge: "This Week", tone: "danger" as const, href: `${base}/renewals/week` };
   const nextWeek = valueFor("Next Week");
-  if (nextWeek) return { title: `${nextWeek} renewals next week`, body: "Prepare quotes and client follow-ups before the window gets tight.", badge: "Next", tone: "warning" as const };
-  return { title: "Renewal queue stable", body: "No urgent renewal pressure in the current week.", badge: "Clear", tone: "success" as const };
+  if (nextWeek) return { title: `${nextWeek} renewals next week`, body: "Prepare quotes and client follow-ups before the window gets tight.", badge: "Next", tone: "warning" as const, href: `${base}/renewals/next-week` };
+  return { title: "Renewal queue stable", body: "No urgent renewal pressure in the current week.", badge: "Clear", tone: "success" as const, href: `${base}/renewals/month` };
 }
 
-function dashboardRelationshipAction(metrics: DashboardPanelMetric[]) {
+function dashboardRelationshipAction(metrics: DashboardPanelMetric[], base: string) {
   const followUps = metrics.find((metric) => metric.label === "Follow-ups Due")?.value ?? 0;
   const anniversaries = metrics.find((metric) => metric.label === "Anniversaries")?.value ?? 0;
-  if (followUps) return { title: "Relationship tasks due", body: `${followUps} prospect follow-ups need attention today.`, badge: "Follow up", tone: "warning" as const };
-  if (anniversaries) return { title: "Policy anniversary reviews", body: `${anniversaries} clients due for a coverage review.`, badge: "Upsell", tone: "success" as const };
-  return { title: "Client touchpoints clear", body: "No birthday, follow-up, or anniversary task due today.", badge: "Clear", tone: "success" as const };
+  if (followUps) return { title: "Relationship tasks due", body: `${followUps} prospect follow-ups need attention today.`, badge: "Follow up", tone: "warning" as const, href: `${navHref(base, "prospects")}?filter=today` };
+  if (anniversaries) return { title: "Policy anniversary reviews", body: `${anniversaries} clients due for a coverage review.`, badge: "Upsell", tone: "success" as const, href: navHref(base, "policies") };
+  return { title: "Client touchpoints clear", body: "No birthday, follow-up, or anniversary task due today.", badge: "Clear", tone: "success" as const, href: navHref(base, "clients") };
 }
 
 function dashboardBusinessMix(data: AppData): DashboardBusinessMix {
