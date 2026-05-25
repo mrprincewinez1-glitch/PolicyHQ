@@ -795,7 +795,7 @@ export function AppShell({
     : renewalRange
       ? "Renewal Alerts"
       : active === "dashboard"
-        ? "Dashboard"
+        ? ""
         : active === "prospects"
           ? "Prospects Pipeline"
           : active === "notifications"
@@ -916,9 +916,11 @@ export function AppShell({
                 </div>
               ) : null}
             </div>
-            <div className="pointer-events-none absolute left-1/2 hidden -translate-x-1/2 text-sm font-extrabold text-primary lg:block">
-              {topbarTitle}
-            </div>
+            {topbarTitle ? (
+              <div className="pointer-events-none absolute left-1/2 hidden -translate-x-1/2 text-sm font-extrabold text-primary lg:block">
+                {topbarTitle}
+              </div>
+            ) : null}
             <div className="ml-auto flex items-center gap-2 sm:gap-4">
               <Link
                 href={navHref(base, "notifications")}
