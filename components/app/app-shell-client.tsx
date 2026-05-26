@@ -3255,12 +3255,12 @@ function parseLapseShieldStatementTable(table: string[][]): LapseShieldStatement
 }
 
 async function parseLapseShieldStatementPdf(file: File): Promise<LapseShieldStatementParseResult> {
-  const pdfjs = await import("pdfjs-dist");
-  pdfjs.GlobalWorkerOptions.workerSrc = new URL("pdfjs-dist/build/pdf.worker.mjs", import.meta.url).toString();
+  const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
   const pdf = await pdfjs.getDocument({
-    data: await file.arrayBuffer(),
+    data: new Uint8Array(await file.arrayBuffer()),
     useWorkerFetch: false,
-    useWasm: false
+    useWasm: false,
+    disableFontFace: true
   }).promise;
   const textParts: string[] = [];
   for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber += 1) {
