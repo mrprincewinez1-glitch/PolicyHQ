@@ -1137,7 +1137,7 @@ function DashboardEmptyPillar({ title, body, helper, href }: { title: string; bo
       <CardContent className="flex h-full min-h-[148px] flex-col justify-center p-[23px]">
         <h2 className="text-[22px] font-extrabold leading-[26px] tracking-[-0.04em] text-primary">{title}</h2>
         <p className="mt-2 text-[11px] font-bold leading-[1.5] text-slate-500">{body}</p>
-        <DashboardActionRow title={body} body={helper} badge="Empty" tone="neutral" href={href} />
+        <DashboardActionRow title="Get started" body={helper} badge="Empty" tone="neutral" href={href} />
       </CardContent>
     </Card>
   );
@@ -2326,6 +2326,11 @@ function ImportClientsModal({ onClose, onImport }: { onClose: () => void; onImpo
       }
       if (field === "phone_number") return { ...row, phone_number: normalizeGhanaPhoneNumber(value) };
       if (field === "policy_number") return { ...row, policy_number: normalizePolicyNumber(value) };
+      if (field === "insurer_name") return { ...row, insurer_name: resolveImportInsurerName(value, row.policy_type) ?? value };
+      if (field === "policy_type") {
+        const policyType = normalizeImportPolicyType(value);
+        return { ...row, policy_type: policyType, insurer_name: resolveImportInsurerName(row.insurer_name, policyType) ?? row.insurer_name };
+      }
       return { ...row, [field]: value };
     }));
   }
@@ -3123,7 +3128,7 @@ function parseClientTable(table: string[][]): { rows: ImportClientRow[]; errors:
   const rows: ImportClientRow[] = [];
   rowsWithContent.slice(1).forEach((values) => {
     const record = Object.fromEntries(headers.map((header, headerIndex) => [header, values[headerIndex]?.trim() ?? ""])) as Record<string, string>;
-    if (!record.insurer_name && isEnterprisePolicyExport(headers)) record.insurer_name = "Enterprise Insurance LTD";
+    if (!record.insurer_name && isEnterprisePolicyExport(headers)) record.insurer_name = "Enterprise";
     record.policy_start_date = normalizeImportDate(record.policy_start_date);
     record.policy_end_date = normalizeImportDate(record.policy_end_date);
     record.date_of_birth = normalizeImportDate(record.date_of_birth);
@@ -3137,12 +3142,13 @@ function parseClientTable(table: string[][]): { rows: ImportClientRow[]; errors:
         : undefined;
     const commissionStatus = importCommissionStatus(record, isEnterprisePolicyExport(headers));
     const commissionPaymentDate = importCommissionPaymentDate(record, commissionStatus);
+    const policyType = normalizeImportPolicyType(record.policy_type);
     rows.push({
       client_name: record.client_name ?? "",
       phone_number: record.phone_number ? normalizeGhanaPhoneNumber(record.phone_number) : "",
       policy_number: record.policy_number ? normalizePolicyNumber(record.policy_number) : "",
-      policy_type: normalizeImportPolicyType(record.policy_type),
-      insurer_name: record.insurer_name ?? "",
+      policy_type: policyType,
+      insurer_name: resolveImportInsurerName(record.insurer_name ?? "", policyType) ?? record.insurer_name ?? "",
       policy_start_date: record.policy_start_date ?? "",
       policy_end_date: record.policy_end_date ?? "",
       vehicle_number: record.vehicle_number || undefined,
@@ -3158,6 +3164,23 @@ function parseClientTable(table: string[][]): { rows: ImportClientRow[]; errors:
     });
   });
   return { rows, errors: [] };
+}
+
+function resolveImportInsurerName(value: string, policyType: PolicyType | "") {
+  const trimmed = value.trim();
+  if (!trimmed) return "";
+  const category = policyType ? insuranceCategoryForPolicyType(policyType) : null;
+  const exact = findInsuranceCompany(trimmed);
+  if (exact && (!category || exact.category === category)) return exact.name;
+
+  const normalized = trimmed.toLowerCase().replace(/\s+/g, " ");
+  const candidates = insuranceCompanies.filter((company) => !category || company.category === category);
+  const match = candidates.find((company) => {
+    const companyName = company.name.toLowerCase();
+    return companyName.includes(normalized) || normalized.includes(companyName);
+  });
+
+  return match?.name ?? null;
 }
 
 async function parseLapseShieldStatementFile(file: File): Promise<LapseShieldStatementParseResult> {
@@ -3289,7 +3312,7 @@ function validateImportRows(rows: ImportClientRow[]) {
     if (row.policy_number && !isValidPolicyNumber(row.policy_number)) errors.push(`Row ${rowNumber}: policy number format needs checking.`);
     if (!row.policy_type) errors.push(`Row ${rowNumber}: choose the policy type.`);
     if (!row.insurer_name.trim()) errors.push(`Row ${rowNumber}: add the insurer name.`);
-    if (row.insurer_name && !findInsuranceCompany(row.insurer_name)) errors.push(`Row ${rowNumber}: choose an approved insurer name.`);
+    if (row.insurer_name && !resolveImportInsurerName(row.insurer_name, row.policy_type)) errors.push(`Row ${rowNumber}: choose an approved insurer name.`);
     if (!row.policy_end_date) errors.push(`Row ${rowNumber}: add the policy end date.`);
     if (row.policy_start_date && !/^\d{4}-\d{2}-\d{2}$/.test(row.policy_start_date)) errors.push(`Row ${rowNumber}: start date must be YYYY-MM-DD.`);
     if (row.policy_end_date && !/^\d{4}-\d{2}-\d{2}$/.test(row.policy_end_date)) errors.push(`Row ${rowNumber}: end date must be YYYY-MM-DD.`);
