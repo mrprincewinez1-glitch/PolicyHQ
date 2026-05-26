@@ -992,7 +992,7 @@ function Dashboard({
   const activities = dashboardActivities(data, todaysBirthdays, base, openPolicy);
 
   if (dashboardMix === "empty") {
-    return <NoDataDashboard base={base} profileName={data.profile.full_name} onImportClients={onImportClients} />;
+    return <NoDataDashboard base={base} profileName={data.profile.full_name} onAddPolicy={onAddPolicy} onImportClients={onImportClients} />;
   }
 
   return (
@@ -1048,12 +1048,24 @@ type DashboardPanelMetric = {
   helper?: string;
 };
 
-function NoDataDashboard({ base, profileName, onImportClients }: { base: string; profileName: string; onImportClients: () => void }) {
+function NoDataDashboard({ base, profileName, onAddPolicy, onImportClients }: { base: string; profileName: string; onAddPolicy: () => void; onImportClients: () => void }) {
   return (
     <div className="max-w-[1062px] space-y-[26px]">
-      <div>
-        <h1 className="text-[30px] font-extrabold leading-[35px] tracking-[-0.04em] text-primary">Welcome to PolicyHQ</h1>
-        <p className="mt-2 text-[13px] font-semibold leading-5 text-slate-500">Set up your book once. PolicyHQ will turn it into daily actions.</p>
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <h1 className="text-[30px] font-extrabold leading-[35px] tracking-[-0.04em] text-primary">Welcome to PolicyHQ</h1>
+          <p className="mt-2 text-[13px] font-semibold leading-5 text-slate-500">Set up your book once. PolicyHQ will turn it into daily actions.</p>
+        </div>
+        <div className="grid gap-2 sm:grid-cols-2">
+          <Button type="button" onClick={onAddPolicy} className="min-h-11 rounded-[10px] text-[10px] font-extrabold">
+            <Plus className="h-4 w-4" />
+            Add Policy
+          </Button>
+          <Button type="button" onClick={onImportClients} variant="outline" className="min-h-11 rounded-[10px] text-[10px] font-extrabold">
+            <Upload className="h-4 w-4" />
+            Import Clients
+          </Button>
+        </div>
       </div>
       <div className="grid gap-6 lg:grid-cols-[1.15fr_0.85fr]">
         <Card className="min-h-[248px] overflow-hidden">
