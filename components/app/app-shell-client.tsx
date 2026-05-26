@@ -1013,8 +1013,8 @@ function Dashboard({
       <div className="grid gap-[13px] md:grid-cols-2 xl:grid-cols-[136px_136px_168px_168px_168px]">
         <DashboardStatLink label="Total Clients" value={data.clients.length} href={navHref(base, "clients")} />
         <DashboardStatLink label="Active Policies" value={active.length} href={navHref(base, "policies")} />
-        <DashboardStatLink label="Commissions" value={formatCurrency(totalPaidThisMonth)} href={navHref(base, "commissions")} wide />
-        <DashboardStatLink label="Premium Due" value={formatCompactCurrency(premiumDueThisMonth)} href={`${base}/renewals/month`} wide />
+        <DashboardStatLink label="Commissions" value={formatDashboardCurrency(totalPaidThisMonth)} href={navHref(base, "commissions")} wide />
+        <DashboardStatLink label="Premium Due" value={formatDashboardCurrency(premiumDueThisMonth)} href={`${base}/renewals/month`} wide />
         <ProspectsDashboardCard total={data.prospects.length} dueToday={followUpsDueToday} href={navHref(base, "prospects")} />
       </div>
       <div className="grid gap-6 lg:grid-cols-2">
@@ -1158,7 +1158,7 @@ function DashboardStatLink({ label, value, href, wide = false }: { label: string
       <Card className={`min-h-[88px] transition hover:-translate-y-0.5 hover:border-accent hover:shadow-md ${wide ? "xl:w-[168px]" : "xl:w-[136px]"}`}>
         <CardContent className="p-[15px]">
           <p className="text-[10px] font-extrabold leading-[14px] text-slate-500">{label}</p>
-          <strong className="mt-3 block truncate text-[22px] font-extrabold leading-7 tracking-[-0.04em] text-primary sm:text-2xl">{value}</strong>
+          <strong className="mt-3 block text-[20px] font-extrabold leading-7 tracking-[-0.04em] text-primary sm:text-[22px]">{value}</strong>
         </CardContent>
       </Card>
     </Link>
@@ -2847,9 +2847,12 @@ function ProspectStatusBadge({ status }: { status: ProspectStatus }) {
   return <Badge tone={tone}>{status}</Badge>;
 }
 
-function formatCompactCurrency(value: number) {
-  if (value >= 1000) return `GHS ${Math.round(value / 1000)}k`;
-  return formatCurrency(value).replace("GH₵", "GHS ");
+function formatDashboardCurrency(value: number) {
+  const hasPesewas = Math.round(value * 100) % 100 !== 0;
+  return `GHS ${new Intl.NumberFormat("en-US", {
+    minimumFractionDigits: hasPesewas ? 2 : 0,
+    maximumFractionDigits: hasPesewas ? 2 : 0
+  }).format(value)}`;
 }
 
 function dashboardActivities(data: AppData, birthdays: Client[], base: string, openPolicy: (policy: PolicyWithClient) => void): DashboardActivity[] {
