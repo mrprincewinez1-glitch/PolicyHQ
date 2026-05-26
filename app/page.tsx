@@ -25,7 +25,6 @@ export default function LandingPage() {
           <nav className="hidden items-center gap-6 text-sm font-semibold text-slate-600 lg:flex">
             <a href="#features">Features</a>
             <a href="#how">How It Works</a>
-            <a href="#pricing">Pricing</a>
             <Link href="/demo">Try Live Demo</Link>
             <Link href="/feedback">Feedback</Link>
           </nav>
@@ -118,14 +117,6 @@ export default function LandingPage() {
           <h2 className="text-3xl font-extrabold">See PolicyHQ in Action</h2>
           <p className="mt-3 text-slate-300">Explore a live interactive demo — no sign up required</p>
           <Button asChild className="mt-8"><Link href="/demo">Try Live Demo</Link></Button>
-        </div>
-      </section>
-
-      <section id="pricing" className="mx-auto max-w-5xl px-4 py-20 sm:px-6 lg:px-8">
-        <h2 className="text-3xl font-extrabold text-primary">Pricing</h2>
-        <div className="mt-8 grid gap-6 md:grid-cols-2">
-          <Card><CardContent className="p-6"><h3 className="text-xl font-bold">Free Beta</h3><p className="mt-3 text-4xl font-extrabold">GHS 0<span className="text-base font-semibold text-slate-500">/month</span></p><p className="mt-4 text-slate-600">Client records, policy tracking, renewal alerts, and commission management while PolicyHQ is in beta</p><Button asChild className="mt-6"><Link href="/sign-up">Get Started Free</Link></Button></CardContent></Card>
-          <Card className="border-accent"><CardContent className="p-6"><span className="rounded-full bg-accent/10 px-3 py-1 text-xs font-bold text-accent">Coming Soon</span><h3 className="mt-4 text-xl font-bold">Pro Plan</h3><p className="mt-3 text-4xl font-extrabold">GHS 99<span className="text-base font-semibold text-slate-500">/month</span></p><p className="mt-4 text-slate-600">Advanced automation, priority support, reports, and production WhatsApp workflows for growing agencies</p></CardContent></Card>
         </div>
       </section>
 
