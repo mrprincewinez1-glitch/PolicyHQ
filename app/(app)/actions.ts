@@ -5,6 +5,7 @@ import { z } from "zod";
 import { isValidPolicyNumber, normalizePolicyNumber, policyNumberHelpText } from "@/lib/policy-number";
 import { createClient } from "@/lib/supabase/server";
 import { findInsuranceCompany, insuranceCategoryForPolicyType } from "@/lib/insurance";
+import { extractStatementPolicyNumbersFromText, type LapseShieldStatementRow } from "@/lib/lapse-shield";
 import { normalizeGhanaPhoneNumber } from "@/lib/utils";
 import type { ActivityNote, Client, Commission, PolicyWithClient, Prospect, RenewalStatus } from "@/lib/types";
 
@@ -116,6 +117,7 @@ const avatarAllowedTypes = new Map([
   ["image/webp", "webp"]
 ]);
 const maxAvatarSize = 2 * 1024 * 1024;
+const maxStatementPdfSize = 8 * 1024 * 1024;
 const actionRateLimitWindowMs = 60_000;
 const actionRateLimitGlobal = globalThis as typeof globalThis & {
   policyhqActionRateLimits?: Map<string, { count: number; resetAt: number }>;
@@ -207,6 +209,70 @@ export async function deleteProspect(prospectId: string) {
   revalidatePath("/prospects");
   revalidatePath("/dashboard");
   return { ok: true, message: "Prospect deleted." };
+}
+
+export async function parseLapseShieldPdfStatement(formData: FormData): Promise<
+  | { ok: true; rows: LapseShieldStatementRow[] }
+  | { ok: false; message: string }
+> {
+  let agentId = "";
+  try {
+    const user = await currentUserId();
+    agentId = user.agentId;
+  } catch {
+    return { ok: false, message: "Sign in before uploading PDF statements." };
+  }
+
+  const limited = assertActionRateLimit(agentId, "parse-lapse-shield-pdf", 20);
+  if (limited) return { ok: false, message: limited };
+
+  const file = formData.get("statement");
+  if (!(file instanceof File)) {
+    return { ok: false, message: "Choose a PDF statement to upload." };
+  }
+
+  const fileName = file.name.toLowerCase();
+  if (file.size > maxStatementPdfSize) {
+    return { ok: false, message: "PDF statement must be 8MB or smaller." };
+  }
+  if (file.type && file.type !== "application/pdf") {
+    return { ok: false, message: "Upload a PDF statement." };
+  }
+  if (!fileName.endsWith(".pdf")) {
+    return { ok: false, message: "Upload a PDF statement." };
+  }
+
+  try {
+    const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
+    const pdf = await pdfjs.getDocument({
+      data: new Uint8Array(await file.arrayBuffer()),
+      useWorkerFetch: false,
+      useWasm: false,
+      disableFontFace: true
+    }).promise;
+
+    const textParts: string[] = [];
+    for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber += 1) {
+      const page = await pdf.getPage(pageNumber);
+      const content = await page.getTextContent();
+      textParts.push(content.items.map((item) => "str" in item && typeof item.str === "string" ? item.str : "").join(" "));
+    }
+
+    const text = textParts.join("\n").trim();
+    if (!text) {
+      return { ok: false, message: "PolicyHQ could not read text from this PDF. It may be scanned; upload CSV/Excel for now." };
+    }
+
+    const rows = extractStatementPolicyNumbersFromText(text);
+    if (!rows.length) {
+      return { ok: false, message: "PolicyHQ read the PDF, but could not find policy numbers in it." };
+    }
+
+    return { ok: true, rows };
+  } catch {
+    console.error("Lapse Shield PDF parsing failed");
+    return { ok: false, message: "PolicyHQ could not read that PDF. Try CSV/Excel, or upload a text-based PDF." };
+  }
 }
 
 async function currentUserId() {

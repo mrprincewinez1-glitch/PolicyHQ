@@ -37,6 +37,7 @@ import {
   markNotificationRead,
   addActivityNote,
   importClientsFromCsvRows,
+  parseLapseShieldPdfStatement,
   upsertProspect,
   updateNotificationSettings,
   updatePolicyRenewalStatus,
@@ -52,6 +53,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Input, Select, Textarea } from "@/components/ui/input";
 import { findInsuranceCompany, findInsuranceCompanyCategory, insuranceCategoryForPolicyType, insuranceCompanies } from "@/lib/insurance";
+import { extractStatementPolicyNumbersFromText, type LapseShieldStatementRow } from "@/lib/lapse-shield";
 import { isValidPolicyNumber, normalizePolicyNumber, policyNumberHelpText } from "@/lib/policy-number";
 import { createClient } from "@/lib/supabase/client";
 import type { ActivityNote, AppData, Client, Commission, InsuranceCategory, Policy, PolicyStatus, PolicyType, PolicyWithClient, Prospect, ProspectStatus, RenewalStatus } from "@/lib/types";
@@ -105,11 +107,6 @@ type ImportClientRow = {
   email?: string;
   date_of_birth?: string;
   notes?: string;
-};
-type LapseShieldStatementRow = {
-  rowNumber: number;
-  policy_number: string;
-  client_name: string;
 };
 type LapseShieldStatementParseResult = {
   rows: LapseShieldStatementRow[];
@@ -1417,10 +1414,24 @@ function DashboardLapseShieldPreview({ lifePolicies, base, openPolicy }: { lifeP
     setErrors([]);
     setReview(null);
 
-    const parsed = await parseLapseShieldStatementFile(file).catch(() => ({
-      rows: [],
-      errors: ["PolicyHQ could not read that statement. Try CSV/Excel, or upload a text-based PDF."]
-    }));
+    const parsed = await parseLapseShieldStatementFile(file).catch(async () => {
+      if (!file.name.toLowerCase().endsWith(".pdf")) {
+        return {
+          rows: [],
+          errors: ["PolicyHQ could not read that statement. Try CSV/Excel, or upload a text-based PDF."]
+        };
+      }
+
+      const formData = new FormData();
+      formData.set("statement", file);
+      const serverParsed = await parseLapseShieldPdfStatement(formData);
+      if (serverParsed.ok) return { rows: serverParsed.rows, errors: [] };
+
+      return {
+        rows: [],
+        errors: [serverParsed.message]
+      };
+    });
     if (parsed.errors.length) {
       setErrors(parsed.errors);
       return;
@@ -3284,28 +3295,6 @@ async function parseLapseShieldStatementPdf(file: File): Promise<LapseShieldStat
     };
   }
   return { rows, errors: [] };
-}
-
-function extractStatementPolicyNumbersFromText(text: string): LapseShieldStatementRow[] {
-  const matches = text.match(/[A-Z0-9][A-Z0-9./-]{2,39}/gi) ?? [];
-  const seen = new Set<string>();
-  const rows: LapseShieldStatementRow[] = [];
-  for (const match of matches) {
-    const policyNumber = normalizePolicyNumber(match);
-    const digits = policyNumber.replace(/\D/g, "");
-    const hasLetter = /[A-Z]/.test(policyNumber);
-    const hasDigit = /\d/.test(policyNumber);
-    const hasPolicySeparator = /[./-]/.test(policyNumber);
-    const looksLikePolicyNumber = hasDigit && (hasPolicySeparator || (hasLetter && policyNumber.length >= 5) || digits.length >= 7);
-    if (!looksLikePolicyNumber || seen.has(policyNumber)) continue;
-    seen.add(policyNumber);
-    rows.push({
-      rowNumber: rows.length + 1,
-      policy_number: policyNumber,
-      client_name: ""
-    });
-  }
-  return rows;
 }
 
 function compareLapseShieldStatement(lifePolicies: PolicyWithClient[], statementRows: LapseShieldStatementRow[]): LapseShieldReview {
