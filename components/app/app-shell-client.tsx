@@ -992,7 +992,7 @@ function Dashboard({
   const activities = dashboardActivities(data, todaysBirthdays, base, openPolicy);
 
   if (dashboardMix === "empty") {
-    return <NoDataDashboard base={base} profileName={data.profile.full_name} />;
+    return <NoDataDashboard base={base} profileName={data.profile.full_name} onImportClients={onImportClients} />;
   }
 
   return (
@@ -1048,7 +1048,7 @@ type DashboardPanelMetric = {
   helper?: string;
 };
 
-function NoDataDashboard({ base, profileName }: { base: string; profileName: string }) {
+function NoDataDashboard({ base, profileName, onImportClients }: { base: string; profileName: string; onImportClients: () => void }) {
   return (
     <div className="max-w-[1062px] space-y-[26px]">
       <div>
@@ -1063,12 +1063,12 @@ function NoDataDashboard({ base, profileName }: { base: string; profileName: str
           </CardHeader>
           <CardContent className="p-7 pt-6">
             <div className="grid gap-3.5 sm:grid-cols-3">
-              <SetupStep number="1" title="Import clients" body="Upload Excel or CSV from your insurer." href={navHref(base, "clients")} />
+              <SetupStep number="1" title="Import clients" body="Upload Excel or CSV from your insurer." onClick={onImportClients} />
               <SetupStep number="2" title="Review policies" body="Confirm class, expiry, and premium." href={navHref(base, "policies")} />
               <SetupStep number="3" title="Track actions" body="Renewals, birthdays, contacts, and commissions appear here." href={navHref(base, "dashboard")} />
             </div>
-            <Button asChild className="mt-6 min-w-[118px] rounded-[10px] text-[10px] font-extrabold">
-              <Link href={navHref(base, "clients")}>Import Clients</Link>
+            <Button type="button" onClick={onImportClients} className="mt-6 min-w-[118px] rounded-[10px] text-[10px] font-extrabold">
+              Import Clients
             </Button>
           </CardContent>
         </Card>
@@ -1094,12 +1094,27 @@ function NoDataDashboard({ base, profileName }: { base: string; profileName: str
   );
 }
 
-function SetupStep({ number, title, body, href }: { number: string; title: string; body: string; href: string }) {
-  return (
-    <Link href={href} className="min-h-28 rounded-xl border border-slate-200 bg-white p-[18px] transition hover:border-accent hover:bg-accent/5">
+function SetupStep({ number, title, body, href, onClick }: { number: string; title: string; body: string; href?: string; onClick?: () => void }) {
+  const content = (
+    <>
       <span className="inline-flex h-7 min-w-7 items-center justify-center rounded-full bg-accent/10 px-2 text-[11px] font-extrabold text-accent">{number}</span>
       <strong className="mt-3.5 block text-sm font-extrabold text-primary">{title}</strong>
       <span className="mt-2 block text-[10px] font-bold leading-[1.45] text-slate-500">{body}</span>
+    </>
+  );
+
+  const className = "min-h-28 rounded-xl border border-slate-200 bg-white p-[18px] text-left transition hover:border-accent hover:bg-accent/5 focus:outline-none focus:ring-2 focus:ring-accent";
+  if (onClick) {
+    return (
+      <button type="button" onClick={onClick} className={className}>
+        {content}
+      </button>
+    );
+  }
+
+  return (
+    <Link href={href ?? "#"} className={className}>
+      {content}
     </Link>
   );
 }
