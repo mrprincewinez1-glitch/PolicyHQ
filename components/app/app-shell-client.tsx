@@ -3256,6 +3256,7 @@ function parseLapseShieldStatementTable(table: string[][]): LapseShieldStatement
 
 async function parseLapseShieldStatementPdf(file: File): Promise<LapseShieldStatementParseResult> {
   const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
+  pdfjs.GlobalWorkerOptions.workerSrc = new URL("pdfjs-dist/legacy/build/pdf.worker.mjs", import.meta.url).toString();
   const pdf = await pdfjs.getDocument({
     data: new Uint8Array(await file.arrayBuffer()),
     useWorkerFetch: false,
@@ -3293,7 +3294,10 @@ function extractStatementPolicyNumbersFromText(text: string): LapseShieldStateme
     const policyNumber = normalizePolicyNumber(match);
     const digits = policyNumber.replace(/\D/g, "");
     const hasLetter = /[A-Z]/.test(policyNumber);
-    if (policyNumber.length < 3 || (!hasLetter && digits.length < 6) || seen.has(policyNumber)) continue;
+    const hasDigit = /\d/.test(policyNumber);
+    const hasPolicySeparator = /[./-]/.test(policyNumber);
+    const looksLikePolicyNumber = hasDigit && (hasPolicySeparator || (hasLetter && policyNumber.length >= 5) || digits.length >= 7);
+    if (!looksLikePolicyNumber || seen.has(policyNumber)) continue;
     seen.add(policyNumber);
     rows.push({
       rowNumber: rows.length + 1,
