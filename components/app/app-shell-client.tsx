@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import Image from "next/image";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import posthog from "posthog-js";
 import type { ChangeEvent, FormEvent, ReactNode } from "react";
 import {
   Bell,
@@ -170,6 +171,16 @@ export function AppShell({
   const [toast, setToast] = useState<{ tone: "success" | "error"; message: string } | null>(null);
   const [detailPolicy, setDetailPolicy] = useState<PolicyWithClient | null>(null);
   const base = demo ? "/demo" : "";
+
+  useEffect(() => {
+    if (!demo && initialData.profile.id && initialData.profile.id !== "demo-agent") {
+      posthog.identify(initialData.profile.id, {
+        email: initialData.profile.email ?? undefined,
+        name: initialData.profile.full_name ?? undefined,
+        company_name: initialData.profile.company_name ?? undefined,
+      });
+    }
+  }, [demo, initialData.profile.id, initialData.profile.email, initialData.profile.full_name, initialData.profile.company_name]);
   const unread = data.notifications.filter((item) => !item.is_read).length;
   const navItems: NavItem[] = data.profile.role === "admin" && !demo
     ? [...nav, ["admin", ShieldCheck, "Admin"]]
@@ -207,6 +218,7 @@ export function AppShell({
     anchor.download = `${name}.csv`;
     anchor.click();
     URL.revokeObjectURL(url);
+    posthog.capture("data_exported", { export_name: name, row_count: rows.length });
     notify("success", "CSV export downloaded.");
   }
 
@@ -225,6 +237,7 @@ export function AppShell({
       notify("error", result.message);
       return;
     }
+    posthog.capture("renewal_status_updated", { policy_id: policyId, renewal_status: status });
     notify("success", result.message);
   }
 
@@ -262,6 +275,7 @@ export function AppShell({
       commissions: [...result.commissions, ...current.commissions]
     }));
     setModal(null);
+    posthog.capture("clients_imported", { client_count: result.clients.length, policy_count: result.policies.length });
     notify("success", result.message);
   }
 
@@ -282,6 +296,12 @@ export function AppShell({
       lapse_shield_runs: [result.run],
       lapse_shield_cases: result.cases
     }));
+    posthog.capture("lapse_shield_statement_reviewed", {
+      statement_kind: kind,
+      missing_count: result.run.missing_count,
+      matched_count: result.run.matched_count,
+      statement_rows_count: result.run.statement_rows_count,
+    });
     notify("success", result.message);
     return result;
   }
@@ -302,6 +322,7 @@ export function AppShell({
       notify("error", result.message);
       return;
     }
+    posthog.capture("lapse_shield_case_updated", { case_id: caseId, status, resolved: resolved });
     notify("success", result.message);
   }
 
@@ -331,6 +352,7 @@ export function AppShell({
       policies: current.policies.map((policy) => policy.client_id === saved.id ? { ...policy, client: saved } : policy)
     }));
     setModal(null);
+    posthog.capture("client_saved", { is_new: !payload.id, client_id: saved.id });
     notify("success", "Client saved successfully.");
   }
 
@@ -380,6 +402,7 @@ export function AppShell({
       prospects: payload.id ? current.prospects.map((prospect) => prospect.id === saved.id ? saved : prospect) : [saved, ...current.prospects]
     }));
     setModal(null);
+    posthog.capture("prospect_saved", { is_new: !payload.id, prospect_id: saved.id, status: saved.status });
     notify("success", result.message);
   }
 
@@ -556,6 +579,13 @@ export function AppShell({
         : [commission, ...current.commissions]
     }));
     setModal(null);
+    posthog.capture("policy_saved", {
+      is_new: !payload.id,
+      policy_id: nextPolicy.id,
+      policy_type: nextPolicy.policy_type,
+      insurance_category: nextPolicy.insurance_category,
+      insurer_name: nextPolicy.insurer_name,
+    });
     notify("success", result.message);
   }
 
@@ -589,6 +619,11 @@ export function AppShell({
       commissions: current.commissions.map((item) => item.id === commission.id ? paidCommission : item),
       policies: current.policies.map((policy) => policy.commission?.id === commission.id ? { ...policy, commission: paidCommission } : policy)
     }));
+    posthog.capture("commission_marked_paid", {
+      commission_id: commission.id,
+      commission_amount: commission.commission_amount,
+      commission_rate: commission.commission_rate,
+    });
     notify("success", result.message);
   }
 

@@ -3,6 +3,7 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { normalizeGhanaPhoneNumber } from "@/lib/utils";
+import { getPostHogClient } from "@/lib/posthog-server";
 
 function value(formData: FormData, key: string) {
   return String(formData.get(key) ?? "").trim();
@@ -49,6 +50,12 @@ export async function signUp(formData: FormData) {
   });
   if (error) authRedirect("/sign-up", "error", "We could not create your account. Please try again.");
   if (!data.session) authRedirect("/sign-in", "success", "Account created. Please check your email to confirm your account, then sign in.");
+  const userId = data.user?.id ?? email;
+  getPostHogClient().capture({
+    distinctId: userId,
+    event: "user_signed_up",
+    properties: { email, company_name: companyName || null },
+  });
   redirect("/dashboard");
 }
 
@@ -57,13 +64,19 @@ export async function signIn(formData: FormData) {
   const password = value(formData, "password");
   ensureSupabase("/sign-in");
   const supabase = await createClient();
-  const { error } = await supabase.auth.signInWithPassword({ email, password });
+  const { data: signInData, error } = await supabase.auth.signInWithPassword({ email, password });
   if (error) {
     const message = error.message.toLowerCase().includes("confirm")
       ? "Please confirm your email first, or turn off email confirmation in Supabase for testing."
       : "Supabase rejected this login. Check the email and password, or create a fresh account after turning email confirmation off.";
     authRedirect("/sign-in", "error", message);
   }
+  const signedInUserId = signInData?.user?.id ?? email;
+  getPostHogClient().capture({
+    distinctId: signedInUserId,
+    event: "user_signed_in",
+    properties: { email },
+  });
   redirect("/dashboard");
 }
 
