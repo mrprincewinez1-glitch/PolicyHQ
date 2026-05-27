@@ -208,6 +208,47 @@ export const demoData: AppData = {
   commissions: demoCommissions,
   prospects: demoProspects,
   activity_notes: demoActivityNotes,
+  lapse_shield_runs: [
+    {
+      id: "lsr1",
+      agent_id: "demo-agent",
+      statement_name: "May 2026 Life Commission Statement.pdf",
+      statement_kind: "PDF",
+      statement_month: formatISO(startOfMonth(today), { representation: "date" }),
+      matched_count: 7,
+      missing_count: 2,
+      unknown_count: 0,
+      statement_rows_count: 7,
+      is_active: true,
+      created_at: subDays(today, 1).toISOString()
+    }
+  ],
+  lapse_shield_cases: [
+    {
+      id: "lsc1",
+      run_id: "lsr1",
+      agent_id: "demo-agent",
+      client_id: "c2",
+      policy_id: "p2",
+      status: "Missing from statement",
+      last_contacted_at: null,
+      resolved_at: null,
+      created_at: subDays(today, 1).toISOString(),
+      updated_at: null
+    },
+    {
+      id: "lsc2",
+      run_id: "lsr1",
+      agent_id: "demo-agent",
+      client_id: "c3",
+      policy_id: "p13",
+      status: "Contacted",
+      last_contacted_at: subDays(today, 1).toISOString(),
+      resolved_at: null,
+      created_at: subDays(today, 1).toISOString(),
+      updated_at: subDays(today, 1).toISOString()
+    }
+  ],
   notifications: [
     {
       id: "n1",

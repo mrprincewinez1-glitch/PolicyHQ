@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { demoData } from "@/lib/demo-data";
-import type { ActivityNote, AppData, Client, Commission, PolicyWithClient, Profile, Prospect } from "@/lib/types";
+import type { ActivityNote, AppData, Client, Commission, LapseShieldCase, LapseShieldRun, PolicyWithClient, Profile, Prospect } from "@/lib/types";
 
 const profileColumns = "id, role, full_name, email, phone_number, company_name, avatar_url, whatsapp_enabled, email_notifications_enabled, birthday_messages_enabled, agent_whatsapp_summary_enabled, reminder_30_enabled, reminder_14_enabled, reminder_7_enabled";
 const clientColumns = "id, agent_id, full_name, phone_number, email, date_of_birth, address, deleted_at, created_at, updated_at";
@@ -10,6 +10,8 @@ const commissionColumns = "id, policy_id, agent_id, commission_rate, commission_
 const notificationColumns = "id, agent_id, policy_id, client_id, message, type, is_read, created_at";
 const activityNoteColumns = "id, agent_id, client_id, policy_id, note_text, created_by, created_at";
 const prospectColumns = "id, agent_id, full_name, phone_number, status, follow_up_date, notes, created_at";
+const lapseShieldRunColumns = "id, agent_id, statement_name, statement_kind, statement_month, matched_count, missing_count, unknown_count, statement_rows_count, is_active, created_at";
+const lapseShieldCaseColumns = "id, run_id, agent_id, client_id, policy_id, status, last_contacted_at, resolved_at, created_at, updated_at";
 
 type RawPolicyWithClient = Omit<PolicyWithClient, "client"> & {
   client: Client | Client[] | null;
@@ -27,14 +29,16 @@ export async function getAuthenticatedAppData(): Promise<AppData> {
   const user = userData.user;
   if (!user) redirect("/sign-in?error=Please sign in again. Your session was not active.");
 
-  const [profileResult, clientsResult, policiesResult, commissionsResult, notificationsResult, activityNotesResult, prospectsResult] = await Promise.all([
+  const [profileResult, clientsResult, policiesResult, commissionsResult, notificationsResult, activityNotesResult, prospectsResult, lapseRunsResult, lapseCasesResult] = await Promise.all([
     supabase.from("profiles").select(profileColumns).eq("id", user.id).single(),
     supabase.from("clients").select(clientColumns).eq("agent_id", user.id).is("deleted_at", null).order("created_at", { ascending: false }),
     supabase.from("policies").select(policyColumns).eq("agent_id", user.id).order("expiry_date", { ascending: true }),
     supabase.from("commissions").select(commissionColumns).eq("agent_id", user.id).order("created_at", { ascending: false }),
     supabase.from("notifications").select(notificationColumns).eq("agent_id", user.id).order("created_at", { ascending: false }),
     supabase.from("activity_notes").select(activityNoteColumns).eq("agent_id", user.id).order("created_at", { ascending: false }).limit(250),
-    supabase.from("prospects").select(prospectColumns).eq("agent_id", user.id).order("created_at", { ascending: false }).limit(250)
+    supabase.from("prospects").select(prospectColumns).eq("agent_id", user.id).order("created_at", { ascending: false }).limit(250),
+    supabase.from("commission_statement_runs").select(lapseShieldRunColumns).eq("agent_id", user.id).eq("is_active", true).order("created_at", { ascending: false }).limit(5),
+    supabase.from("lapse_shield_cases").select(lapseShieldCaseColumns).eq("agent_id", user.id).is("resolved_at", null).order("created_at", { ascending: false }).limit(250)
   ]);
 
   let profile = profileResult.data;
@@ -88,7 +92,9 @@ export async function getAuthenticatedAppData(): Promise<AppData> {
     commissions,
     prospects: (prospectsResult.data ?? []) as Prospect[],
     notifications: notificationsResult.data ?? [],
-    activity_notes: activityNotes
+    activity_notes: activityNotes,
+    lapse_shield_runs: lapseRunsResult.error ? [] : (lapseRunsResult.data ?? []) as LapseShieldRun[],
+    lapse_shield_cases: lapseCasesResult.error ? [] : (lapseCasesResult.data ?? []) as LapseShieldCase[]
   };
 }
 

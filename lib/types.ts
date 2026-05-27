@@ -5,6 +5,7 @@ export type RenewalStatus = "Upcoming" | "Contacted" | "Quote Requested" | "Paym
 export type PaymentStatus = "Paid" | "Pending";
 export type UserRole = "admin" | "agent";
 export type ProspectStatus = "New" | "Interested" | "Not Interested" | "Call Back" | "Converted";
+export type LapseShieldCaseStatus = "Missing from statement" | "Contacted" | "Client says paid" | "Payment confirmed" | "Lapsed";
 
 export type Profile = {
   id: string;
@@ -101,6 +102,33 @@ export type ActivityNote = {
   author_name?: string | null;
 };
 
+export type LapseShieldRun = {
+  id: string;
+  agent_id: string;
+  statement_name: string | null;
+  statement_kind: string | null;
+  statement_month: string;
+  matched_count: number;
+  missing_count: number;
+  unknown_count: number;
+  statement_rows_count: number;
+  is_active: boolean;
+  created_at: string;
+};
+
+export type LapseShieldCase = {
+  id: string;
+  run_id: string;
+  agent_id: string;
+  client_id: string;
+  policy_id: string;
+  status: LapseShieldCaseStatus;
+  last_contacted_at: string | null;
+  resolved_at: string | null;
+  created_at: string;
+  updated_at: string | null;
+};
+
 export type PolicyWithClient = Policy & {
   client: Client;
   commission?: Commission;
@@ -115,4 +143,6 @@ export type AppData = {
   prospects: Prospect[];
   notifications: Notification[];
   activity_notes: ActivityNote[];
+  lapse_shield_runs: LapseShieldRun[];
+  lapse_shield_cases: LapseShieldCase[];
 };

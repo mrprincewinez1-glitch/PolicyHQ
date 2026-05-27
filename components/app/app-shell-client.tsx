@@ -38,6 +38,8 @@ import {
   addActivityNote,
   importClientsFromCsvRows,
   parseLapseShieldPdfStatement,
+  saveLapseShieldStatementReview,
+  updateLapseShieldCaseStatus,
   upsertProspect,
   updateNotificationSettings,
   updatePolicyRenewalStatus,
@@ -56,7 +58,7 @@ import { findInsuranceCompany, findInsuranceCompanyCategory, insuranceCategoryFo
 import { extractStatementPolicyNumbersFromText, type LapseShieldStatementRow } from "@/lib/lapse-shield";
 import { isValidPolicyNumber, normalizePolicyNumber, policyNumberHelpText } from "@/lib/policy-number";
 import { createClient } from "@/lib/supabase/client";
-import type { ActivityNote, AppData, Client, Commission, InsuranceCategory, Policy, PolicyStatus, PolicyType, PolicyWithClient, Prospect, ProspectStatus, RenewalStatus } from "@/lib/types";
+import type { ActivityNote, AppData, Client, Commission, InsuranceCategory, LapseShieldCase, LapseShieldCaseStatus, Policy, PolicyStatus, PolicyType, PolicyWithClient, Prospect, ProspectStatus, RenewalStatus } from "@/lib/types";
 import {
   activePolicies,
   expiringThisMonth,
@@ -260,6 +262,46 @@ export function AppShell({
       commissions: [...result.commissions, ...current.commissions]
     }));
     setModal(null);
+    notify("success", result.message);
+  }
+
+  async function saveLapseReview(input: { statement_name: string; statement_kind: string; rows: LapseShieldStatementRow[] }) {
+    if (blockWrite()) return null;
+    const kind = ["CSV", "Excel", "PDF"].includes(input.statement_kind) ? input.statement_kind as "CSV" | "Excel" | "PDF" : "CSV, Excel, or PDF";
+    const result = await saveLapseShieldStatementReview({
+      statement_name: input.statement_name,
+      statement_kind: kind,
+      rows: input.rows
+    });
+    if (!result.ok) {
+      notify("error", result.message);
+      return null;
+    }
+    setData((current) => ({
+      ...current,
+      lapse_shield_runs: [result.run],
+      lapse_shield_cases: result.cases
+    }));
+    notify("success", result.message);
+    return result;
+  }
+
+  async function updateLapseCase(caseId: string, status: LapseShieldCaseStatus) {
+    if (blockWrite()) return;
+    const previous = data.lapse_shield_cases;
+    const resolved = status === "Payment confirmed" || status === "Lapsed";
+    setData((current) => ({
+      ...current,
+      lapse_shield_cases: resolved
+        ? current.lapse_shield_cases.filter((item) => item.id !== caseId)
+        : current.lapse_shield_cases.map((item) => item.id === caseId ? { ...item, status, updated_at: new Date().toISOString() } : item)
+    }));
+    const result = await updateLapseShieldCaseStatus({ case_id: caseId, status });
+    if (!result.ok) {
+      setData((current) => ({ ...current, lapse_shield_cases: previous }));
+      notify("error", result.message);
+      return;
+    }
     notify("success", result.message);
   }
 
@@ -728,7 +770,7 @@ export function AppShell({
       onBack={() => setActive("dashboard")}
     />
   ) : dashboardFocus ? (
-    <DashboardFocusView focus={dashboardFocus} data={data} base={base} openPolicy={setDetailPolicy} />
+    <DashboardFocusView focus={dashboardFocus} data={data} base={base} openPolicy={setDetailPolicy} saveLapseReview={saveLapseReview} updateLapseCase={updateLapseCase} />
   ) : active === "dashboard" ? (
     <Dashboard
       data={data}
@@ -984,7 +1026,7 @@ function Dashboard({
   const premiumDueThisMonth = expiringThisMonth(data.policies).reduce((sum, policy) => sum + policy.premium_amount, 0);
   const followUpsDueToday = data.prospects.filter(isProspectDueToday).length;
   const dashboardMix = dashboardBusinessMix(data);
-  const revenueMetrics = dashboardRevenueMetrics(data.policies, dashboardMix, base);
+  const revenueMetrics = dashboardRevenueMetrics(data.policies, data.lapse_shield_cases, dashboardMix, base);
   const relationshipMetrics = dashboardRelationshipMetrics(data.policies, dashboardMix, todaysBirthdays.length, followUpsDueToday, base);
   const activities = dashboardActivities(data, todaysBirthdays, base, openPolicy);
 
@@ -1313,12 +1355,26 @@ function RecentActivityItem({ activity }: { activity: DashboardActivity }) {
   return <div className="flex min-h-[58px] items-center justify-between gap-4 py-3">{row}</div>;
 }
 
-function DashboardFocusView({ focus, data, base, openPolicy }: { focus: "birthdays" | "anniversaries" | "life-retention" | "lapse-shield" | "recovered-life"; data: AppData; base: string; openPolicy: (policy: PolicyWithClient) => void }) {
+function DashboardFocusView({
+  focus,
+  data,
+  base,
+  openPolicy,
+  saveLapseReview,
+  updateLapseCase
+}: {
+  focus: "birthdays" | "anniversaries" | "life-retention" | "lapse-shield" | "recovered-life";
+  data: AppData;
+  base: string;
+  openPolicy: (policy: PolicyWithClient) => void;
+  saveLapseReview: (input: { statement_name: string; statement_kind: string; rows: LapseShieldStatementRow[] }) => Promise<{ ok: true } | null>;
+  updateLapseCase: (caseId: string, status: LapseShieldCaseStatus) => void;
+}) {
   const birthdays = data.clients.filter((client) => isBirthdayToday(client.date_of_birth));
   const anniversaries = data.policies.filter((policy) => isLifePolicy(policy) && isPolicyAnniversarySoon(policy));
   const lifeRetention = data.policies.filter(isLifeRetentionWatch);
   const recoveredLife = data.policies.filter((policy) => isLifePolicy(policy) && policy.renewal_status === "Renewed");
-  const config = dashboardFocusConfig(focus, birthdays.length, anniversaries.length, lifeRetention.length, recoveredLife.length, base);
+  const config = dashboardFocusConfig(focus, birthdays.length, anniversaries.length, lifeRetention.length, recoveredLife.length, data.lapse_shield_cases.length, base);
   const policies = focus === "anniversaries" ? anniversaries : focus === "life-retention" ? lifeRetention : focus === "recovered-life" ? recoveredLife : [];
 
   return (
@@ -1334,7 +1390,7 @@ function DashboardFocusView({ focus, data, base, openPolicy }: { focus: "birthda
       {focus === "birthdays" ? (
         <DashboardBirthdayList clients={birthdays} />
       ) : focus === "lapse-shield" ? (
-        <DashboardLapseShieldPreview lifePolicies={data.policies.filter(isLifePolicy)} base={base} openPolicy={openPolicy} />
+        <DashboardLapseShieldPreview data={data} lifePolicies={data.policies.filter(isLifePolicy)} base={base} openPolicy={openPolicy} saveLapseReview={saveLapseReview} updateLapseCase={updateLapseCase} />
       ) : (
         <DashboardPolicyFocusList policies={policies} openPolicy={openPolicy} emptyTitle={config.emptyTitle} />
       )}
@@ -1399,12 +1455,31 @@ function DashboardPolicyFocusList({ policies, openPolicy, emptyTitle }: { polici
   );
 }
 
-function DashboardLapseShieldPreview({ lifePolicies, base, openPolicy }: { lifePolicies: PolicyWithClient[]; base: string; openPolicy: (policy: PolicyWithClient) => void }) {
+function DashboardLapseShieldPreview({
+  data,
+  lifePolicies,
+  base,
+  openPolicy,
+  saveLapseReview,
+  updateLapseCase
+}: {
+  data: AppData;
+  lifePolicies: PolicyWithClient[];
+  base: string;
+  openPolicy: (policy: PolicyWithClient) => void;
+  saveLapseReview: (input: { statement_name: string; statement_kind: string; rows: LapseShieldStatementRow[] }) => Promise<{ ok: true } | null>;
+  updateLapseCase: (caseId: string, status: LapseShieldCaseStatus) => void;
+}) {
   const [review, setReview] = useState<LapseShieldReview | null>(null);
   const [statementName, setStatementName] = useState("");
   const [statementKind, setStatementKind] = useState("CSV, Excel, or PDF");
   const [errors, setErrors] = useState<string[]>([]);
   const activeLifePolicies = lifePolicies.filter((policy) => policy.status === "Active" && policy.renewal_status !== "Lost");
+  const activeRun = data.lapse_shield_runs[0];
+  const activeCases = data.lapse_shield_cases.flatMap((lapseCase) => {
+    const policy = data.policies.find((item) => item.id === lapseCase.policy_id);
+    return policy ? [{ lapseCase, policy }] : [];
+  });
 
   async function handleStatementUpload(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
@@ -1436,12 +1511,18 @@ function DashboardLapseShieldPreview({ lifePolicies, base, openPolicy }: { lifeP
       setErrors(parsed.errors);
       return;
     }
-    setReview(compareLapseShieldStatement(activeLifePolicies, parsed.rows));
+    const nextReview = compareLapseShieldStatement(activeLifePolicies, parsed.rows);
+    setReview(nextReview);
+    await saveLapseReview({
+      statement_name: file.name,
+      statement_kind: statementKindForFile(file),
+      rows: parsed.rows
+    });
   }
 
-  const matchedCount = review?.matched.length ?? 0;
-  const missingCount = review?.missing.length ?? 0;
-  const unknownCount = review?.unknown.length ?? 0;
+  const matchedCount = review?.matched.length ?? activeRun?.matched_count ?? 0;
+  const missingCount = activeCases.length || review?.missing.length || 0;
+  const unknownCount = review?.unknown.length ?? activeRun?.unknown_count ?? 0;
 
   return (
     <div className="space-y-5">
@@ -1452,8 +1533,8 @@ function DashboardLapseShieldPreview({ lifePolicies, base, openPolicy }: { lifeP
             <p className="mt-2 text-sm font-semibold leading-6 text-slate-500">Upload a life commission statement. PolicyHQ checks which active life policies are missing so the agent can follow up before lapse risk turns permanent.</p>
             <div className="mt-5 grid gap-3 sm:grid-cols-3">
               <DashboardPanelMetricCard metric={{ label: "Life Policies", value: activeLifePolicies.length, href: navHref(base, "policies"), tone: "primary", helper: "Active" }} />
-              <DashboardPanelMetricCard metric={{ label: "Matched", value: matchedCount, href: `${base}/lapse-shield`, tone: matchedCount ? "success" : "primary", helper: statementName ? "In statement" : "Pending upload" }} />
-              <DashboardPanelMetricCard metric={{ label: "Missing", value: missingCount, href: `${base}/lapse-shield`, tone: missingCount ? "danger" : "success", helper: statementName ? "Needs follow-up" : "No statement yet" }} />
+              <DashboardPanelMetricCard metric={{ label: "Matched", value: matchedCount, href: `${base}/lapse-shield`, tone: matchedCount ? "success" : "primary", helper: statementName || activeRun ? "In statement" : "Pending upload" }} />
+              <DashboardPanelMetricCard metric={{ label: "Active Cases", value: missingCount, href: `${base}/lapse-shield`, tone: missingCount ? "danger" : "success", helper: missingCount ? "Needs follow-up" : "No active gaps" }} />
             </div>
           </div>
           <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-5">
@@ -1466,7 +1547,38 @@ function DashboardLapseShieldPreview({ lifePolicies, base, openPolicy }: { lifeP
           </div>
         </CardContent>
       </Card>
-      {review ? (
+      {activeCases.length ? (
+        <div className="grid gap-5 lg:grid-cols-[1.1fr_0.9fr]">
+          <Card>
+            <CardHeader>
+              <div>
+                <p className="text-xs font-extrabold uppercase tracking-[0.18em] text-danger">Active Lapse Shield cases</p>
+                <h2 className="mt-2 text-xl font-extrabold text-primary">{activeCases.length} client{activeCases.length === 1 ? "" : "s"} need follow-up</h2>
+                {activeRun ? <p className="mt-1 text-sm font-semibold text-slate-500">Latest statement: {activeRun.statement_name ?? "Commission statement"} · {formatDate(activeRun.created_at)}</p> : null}
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {activeCases.map(({ lapseCase, policy }) => (
+                <LapseShieldCaseRow
+                  key={lapseCase.id}
+                  lapseCase={lapseCase}
+                  policy={policy}
+                  openPolicy={openPolicy}
+                  updateLapseCase={updateLapseCase}
+                />
+              ))}
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader><h2 className="text-lg font-extrabold text-primary">Statement Summary</h2></CardHeader>
+            <CardContent className="grid gap-3">
+              <StatementSummaryItem label="Rows read" value={review?.statementRows ?? activeRun?.statement_rows_count ?? 0} />
+              <StatementSummaryItem label="Matched policies" value={matchedCount} />
+              <StatementSummaryItem label="Unknown in file" value={unknownCount} />
+            </CardContent>
+          </Card>
+        </div>
+      ) : review ? (
         <div className="grid gap-5 lg:grid-cols-[1.1fr_0.9fr]">
           <Card>
             <CardHeader>
@@ -1528,6 +1640,39 @@ function DashboardLapseShieldPreview({ lifePolicies, base, openPolicy }: { lifeP
           </CardContent>
         </Card>
       )}
+    </div>
+  );
+}
+
+function LapseShieldCaseRow({
+  lapseCase,
+  policy,
+  openPolicy,
+  updateLapseCase
+}: {
+  lapseCase: LapseShieldCase;
+  policy: PolicyWithClient;
+  openPolicy: (policy: PolicyWithClient) => void;
+  updateLapseCase: (caseId: string, status: LapseShieldCaseStatus) => void;
+}) {
+  return (
+    <div className="flex flex-col gap-3 rounded-xl border border-danger/20 bg-danger/5 p-4 lg:flex-row lg:items-center lg:justify-between">
+      <button type="button" onClick={() => openPolicy(policy)} className="min-w-0 text-left">
+        <div className="flex flex-wrap items-center gap-2">
+          <p className="truncate text-base font-extrabold text-primary">{policy.client.full_name}</p>
+          <Badge tone={lapseCase.status === "Client says paid" ? "amber" : lapseCase.status === "Contacted" ? "orange" : "red"}>{lapseCase.status}</Badge>
+        </div>
+        <p className="mt-1 truncate text-sm font-semibold text-slate-600">{policy.policy_number} · {policy.policy_type}</p>
+        <p className="mt-1 text-xs font-bold text-slate-500">Stays active until payment is confirmed, lapsed, or the next statement is uploaded.</p>
+      </button>
+      <div className="flex flex-wrap gap-2">
+        <Button size="sm" variant="outline" onClick={() => openPolicy(policy)}>View</Button>
+        <WhatsAppButton href={lapseShieldWhatsAppHref(policy)} label="WhatsApp" />
+        <Button size="sm" variant="outline" onClick={() => updateLapseCase(lapseCase.id, "Contacted")}>Contacted</Button>
+        <Button size="sm" variant="outline" onClick={() => updateLapseCase(lapseCase.id, "Client says paid")}>Says Paid</Button>
+        <Button size="sm" onClick={() => updateLapseCase(lapseCase.id, "Payment confirmed")}>Confirmed</Button>
+        <Button size="sm" variant="outline" onClick={() => updateLapseCase(lapseCase.id, "Lapsed")}>Lapsed</Button>
+      </div>
     </div>
   );
 }
@@ -2921,7 +3066,7 @@ function activityTime(value: string) {
   return Number.isNaN(time) ? 0 : time;
 }
 
-function dashboardFocusConfig(focus: "birthdays" | "anniversaries" | "life-retention" | "lapse-shield" | "recovered-life", birthdays: number, anniversaries: number, lifeRetention: number, recoveredLife: number, base: string) {
+function dashboardFocusConfig(focus: "birthdays" | "anniversaries" | "life-retention" | "lapse-shield" | "recovered-life", birthdays: number, anniversaries: number, lifeRetention: number, recoveredLife: number, activeLapseCases: number, base: string) {
   if (focus === "birthdays") {
     return {
       title: "Birthdays Today",
@@ -2975,7 +3120,7 @@ function dashboardFocusConfig(focus: "birthdays" | "anniversaries" | "life-reten
     description: "Statement review workspace for life policy lapse protection.",
     emptyTitle: "No statement review yet.",
     metrics: [
-      { label: "Missing Statement", value: 0, href: `${base}/lapse-shield`, tone: "success", helper: "Pending upload" },
+      { label: "Active Cases", value: activeLapseCases, href: `${base}/lapse-shield`, tone: activeLapseCases ? "danger" : "success", helper: activeLapseCases ? "Needs follow-up" : "Clear" },
       { label: "At Risk Life", value: lifeRetention, href: `${base}/life-retention`, tone: lifeRetention ? "warning" : "success", helper: "Years 1-3" },
       { label: "Recovered", value: recoveredLife, href: `${base}/life-retention/recovered`, tone: "success", helper: "Renewed" }
     ] satisfies DashboardPanelMetric[]
@@ -3026,13 +3171,13 @@ function dashboardBusinessMix(data: AppData): DashboardBusinessMix {
   return "non-life";
 }
 
-function dashboardRevenueMetrics(policies: PolicyWithClient[], mix: DashboardBusinessMix, base: string): DashboardPanelMetric[] {
+function dashboardRevenueMetrics(policies: PolicyWithClient[], lapseCases: LapseShieldCase[], mix: DashboardBusinessMix, base: string): DashboardPanelMetric[] {
   const nonLifePolicies = policies.filter((policy) => !isLifePolicy(policy));
   const lifePolicies = policies.filter(isLifePolicy);
   const thisWeek = policiesForRange(nonLifePolicies, "week").length;
   const nextWeek = policiesForRange(nonLifePolicies, "next-week").length;
   const thisMonth = policiesForRange(nonLifePolicies, "month").length;
-  const missingStatement = 0;
+  const missingStatement = lapseCases.length;
   const atRiskLife = lifePolicies.filter(isLifeRetentionWatch).length;
   const recoveredLife = lifePolicies.filter((policy) => policy.renewal_status === "Renewed").length;
 

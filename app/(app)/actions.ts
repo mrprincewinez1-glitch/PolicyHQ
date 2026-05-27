@@ -7,10 +7,11 @@ import { createClient } from "@/lib/supabase/server";
 import { findInsuranceCompany, insuranceCategoryForPolicyType } from "@/lib/insurance";
 import { extractStatementPolicyNumbersFromText, type LapseShieldStatementRow } from "@/lib/lapse-shield";
 import { normalizeGhanaPhoneNumber } from "@/lib/utils";
-import type { ActivityNote, Client, Commission, PolicyWithClient, Prospect, RenewalStatus } from "@/lib/types";
+import type { ActivityNote, Client, Commission, LapseShieldCase, LapseShieldCaseStatus, LapseShieldRun, PolicyWithClient, Prospect, RenewalStatus } from "@/lib/types";
 
 const renewalStatusValues = ["Upcoming", "Contacted", "Quote Requested", "Payment Pending", "Renewed", "Lost"] as const;
 const prospectStatusValues = ["New", "Interested", "Not Interested", "Call Back", "Converted"] as const;
+const lapseShieldCaseStatusValues = ["Missing from statement", "Contacted", "Client says paid", "Payment confirmed", "Lapsed"] as const;
 
 const clientSchema = z.object({
   id: z.string().uuid().optional(),
@@ -95,6 +96,23 @@ const notificationSchema = z.object({
   notification_id: z.string().uuid("Notification is invalid")
 });
 
+const lapseShieldStatementRowSchema = z.object({
+  rowNumber: z.number().int().positive(),
+  policy_number: z.string().transform(normalizePolicyNumber).refine(isValidPolicyNumber, policyNumberHelpText),
+  client_name: z.string().max(160).optional().or(z.literal(""))
+});
+
+const lapseShieldStatementReviewSchema = z.object({
+  statement_name: z.string().trim().max(180).optional().or(z.literal("")),
+  statement_kind: z.enum(["CSV", "Excel", "PDF", "CSV, Excel, or PDF"]).optional(),
+  rows: z.array(lapseShieldStatementRowSchema).min(1, "Upload a readable commission statement.").max(2000, "Statement is too large. Upload 2,000 rows or fewer.")
+});
+
+const lapseShieldCaseStatusSchema = z.object({
+  case_id: z.string().uuid("Lapse Shield case is invalid"),
+  status: z.enum(lapseShieldCaseStatusValues)
+});
+
 const profileSchema = z.object({
   full_name: z.string().min(2, "Full name is required"),
   phone_number: z.string().regex(/^\+?[0-9 ()-]{8,20}$/, "Phone number is invalid").optional().or(z.literal("")),
@@ -128,6 +146,8 @@ const commissionColumns = "id, policy_id, agent_id, commission_rate, commission_
 const profileColumns = "id, role, full_name, email, phone_number, company_name, avatar_url, whatsapp_enabled, email_notifications_enabled, birthday_messages_enabled, agent_whatsapp_summary_enabled, reminder_30_enabled, reminder_14_enabled, reminder_7_enabled";
 const activityNoteColumns = "id, agent_id, client_id, policy_id, note_text, created_by, created_at";
 const prospectColumns = "id, agent_id, full_name, phone_number, status, follow_up_date, notes, created_at";
+const lapseShieldRunColumns = "id, agent_id, statement_name, statement_kind, statement_month, matched_count, missing_count, unknown_count, statement_rows_count, is_active, created_at";
+const lapseShieldCaseColumns = "id, run_id, agent_id, client_id, policy_id, status, last_contacted_at, resolved_at, created_at, updated_at";
 
 function isValidDateInput(value: string) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
@@ -273,6 +293,138 @@ export async function parseLapseShieldPdfStatement(formData: FormData): Promise<
     console.error("Lapse Shield PDF parsing failed");
     return { ok: false, message: "PolicyHQ could not read that PDF. Try CSV/Excel, or upload a text-based PDF." };
   }
+}
+
+export async function saveLapseShieldStatementReview(input: {
+  statement_name?: string;
+  statement_kind?: "CSV" | "Excel" | "PDF" | "CSV, Excel, or PDF";
+  rows: LapseShieldStatementRow[];
+}): Promise<
+  | { ok: true; message: string; run: LapseShieldRun; cases: LapseShieldCase[] }
+  | { ok: false; message: string }
+> {
+  const parsed = lapseShieldStatementReviewSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, message: parsed.error.issues[0]?.message ?? "Check the commission statement." };
+
+  const { supabase, agentId } = await currentUserId();
+  const limited = assertActionRateLimit(agentId, "save-lapse-shield-review", 20);
+  if (limited) return { ok: false, message: limited };
+
+  const { data: policies, error: policiesError } = await supabase
+    .from("policies")
+    .select("id, client_id, policy_number")
+    .eq("agent_id", agentId)
+    .eq("status", "Active")
+    .neq("renewal_status", "Lost")
+    .or("insurance_category.eq.Life,policy_type.eq.Life")
+    .range(0, 999);
+
+  if (policiesError) return { ok: false, message: "PolicyHQ could not check your life policies." };
+
+  const statementPolicyNumbers = new Set(parsed.data.rows.map((row) => row.policy_number));
+  const agentPolicies = (policies ?? []) as Array<{ id: string; client_id: string; policy_number: string }>;
+  const agentPolicyNumbers = new Set(agentPolicies.map((policy) => normalizePolicyNumber(policy.policy_number)));
+  const missingPolicies = agentPolicies.filter((policy) => !statementPolicyNumbers.has(normalizePolicyNumber(policy.policy_number)));
+  const unknownCount = parsed.data.rows.filter((row) => !agentPolicyNumbers.has(row.policy_number)).length;
+  const statementMonth = new Date();
+  statementMonth.setUTCDate(1);
+
+  const { error: deactivateRunsError } = await supabase
+    .from("commission_statement_runs")
+    .update({ is_active: false })
+    .eq("agent_id", agentId)
+    .eq("is_active", true);
+  if (deactivateRunsError) {
+    if (deactivateRunsError.code === "42P01" || deactivateRunsError.code === "PGRST205") {
+      return { ok: false, message: "Lapse Shield setup is not complete yet. Run the Lapse Shield SQL in Supabase, then upload again." };
+    }
+    return { ok: false, message: "PolicyHQ could not prepare the new statement review." };
+  }
+
+  const { error: closeCasesError } = await supabase
+    .from("lapse_shield_cases")
+    .update({ resolved_at: new Date().toISOString() })
+    .eq("agent_id", agentId)
+    .is("resolved_at", null);
+  if (closeCasesError) return { ok: false, message: "PolicyHQ could not close the previous Lapse Shield review." };
+
+  const { data: run, error: runError } = await supabase
+    .from("commission_statement_runs")
+    .insert({
+      agent_id: agentId,
+      statement_name: sanitizeText(parsed.data.statement_name) || null,
+      statement_kind: parsed.data.statement_kind ?? null,
+      statement_month: statementMonth.toISOString().slice(0, 10),
+      matched_count: agentPolicies.length - missingPolicies.length,
+      missing_count: missingPolicies.length,
+      unknown_count: unknownCount,
+      statement_rows_count: parsed.data.rows.length,
+      is_active: true
+    })
+    .select(lapseShieldRunColumns)
+    .single();
+
+  if (runError || !run) return { ok: false, message: "PolicyHQ could not save this statement review." };
+
+  if (!missingPolicies.length) {
+    revalidatePath("/dashboard");
+    revalidatePath("/lapse-shield");
+    return { ok: true, message: "Statement review saved. No active life policies are missing.", run: run as LapseShieldRun, cases: [] };
+  }
+
+  const { data: cases, error: casesError } = await supabase
+    .from("lapse_shield_cases")
+    .insert(missingPolicies.map((policy) => ({
+      run_id: run.id,
+      agent_id: agentId,
+      client_id: policy.client_id,
+      policy_id: policy.id,
+      status: "Missing from statement" satisfies LapseShieldCaseStatus
+    })))
+    .select(lapseShieldCaseColumns);
+
+  if (casesError || !cases) return { ok: false, message: "Statement saved, but PolicyHQ could not save the missing-client cases." };
+
+  revalidatePath("/dashboard");
+  revalidatePath("/lapse-shield");
+  return {
+    ok: true,
+    message: `${missingPolicies.length} missing client${missingPolicies.length === 1 ? "" : "s"} saved to Lapse Shield.`,
+    run: run as LapseShieldRun,
+    cases: cases as LapseShieldCase[]
+  };
+}
+
+export async function updateLapseShieldCaseStatus(input: {
+  case_id: string;
+  status: LapseShieldCaseStatus;
+}): Promise<
+  | { ok: true; message: string; case: LapseShieldCase }
+  | { ok: false; message: string }
+> {
+  const parsed = lapseShieldCaseStatusSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, message: parsed.error.issues[0]?.message ?? "Check the Lapse Shield status." };
+
+  const { supabase, agentId } = await currentUserId();
+  const resolved = parsed.data.status === "Payment confirmed" || parsed.data.status === "Lapsed";
+  const now = new Date().toISOString();
+  const { data: lapseCase, error } = await supabase
+    .from("lapse_shield_cases")
+    .update({
+      status: parsed.data.status,
+      last_contacted_at: parsed.data.status === "Contacted" ? now : undefined,
+      resolved_at: resolved ? now : null,
+      updated_at: now
+    })
+    .eq("id", parsed.data.case_id)
+    .eq("agent_id", agentId)
+    .select(lapseShieldCaseColumns)
+    .single();
+
+  if (error || !lapseCase) return { ok: false, message: "PolicyHQ could not update this Lapse Shield case." };
+  revalidatePath("/dashboard");
+  revalidatePath("/lapse-shield");
+  return { ok: true, message: "Lapse Shield case updated.", case: lapseCase as LapseShieldCase };
 }
 
 async function currentUserId() {
