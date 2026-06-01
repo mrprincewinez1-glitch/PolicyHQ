@@ -1944,16 +1944,16 @@ function ProspectCard({ prospect, onEdit, onDelete, onConvert }: { prospect: Pro
           </div>
           {prospect.notes ? <p className="line-clamp-2 text-sm leading-6 text-slate-600">{prospect.notes}</p> : null}
         </div>
-        <div className="grid gap-2 sm:grid-cols-2 lg:w-[420px] lg:grid-cols-5">
-          <Button asChild variant="outline" className="min-h-11">
+        <div className="grid gap-2 sm:grid-cols-2 lg:flex lg:flex-nowrap lg:items-center lg:justify-end">
+          <Button asChild variant="outline" className="min-h-11 whitespace-nowrap lg:min-w-[92px]">
             <a href={`tel:${normalizeGhanaPhoneNumber(prospect.phone_number)}`}><Phone className="h-4 w-4" /> Call</a>
           </Button>
-          <Button asChild variant="outline" className="min-h-11">
+          <Button asChild variant="outline" className="min-h-11 whitespace-nowrap lg:min-w-[124px]">
             <a href={prospectWhatsAppHref(prospect)} target="_blank" rel="noreferrer"><MessageCircle className="h-4 w-4" /> WhatsApp</a>
           </Button>
-          <Button variant="ghost" className="min-h-11" onClick={onEdit}>Edit</Button>
-          <Button variant="ghost" className="min-h-11 text-danger hover:bg-danger/10" onClick={onDelete}><Trash2 className="h-4 w-4" /> Delete</Button>
-          <Button className="min-h-11 sm:col-span-2 lg:col-span-1" onClick={onConvert} disabled={inactive}>Add Policy</Button>
+          <Button variant="ghost" className="min-h-11 whitespace-nowrap lg:min-w-[72px]" onClick={onEdit}>Edit</Button>
+          <Button variant="ghost" className="min-h-11 whitespace-nowrap text-danger hover:bg-danger/10 lg:min-w-[92px]" onClick={onDelete}><Trash2 className="h-4 w-4" /> Delete</Button>
+          <Button className="min-h-11 whitespace-nowrap sm:col-span-2 lg:min-w-[104px]" onClick={onConvert} disabled={inactive}>Add Policy</Button>
         </div>
       </CardContent>
     </Card>
