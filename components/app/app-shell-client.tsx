@@ -83,7 +83,7 @@ type ModalState =
   | { type: "demo" }
   | { type: "client"; client?: Client }
   | { type: "prospect"; prospect?: Prospect }
-  | { type: "policy"; policy?: PolicyWithClient }
+  | { type: "policy"; policy?: PolicyWithClient; prospect?: Prospect }
   | { type: "import" }
   | { type: "confirm"; title: string; body: string; action: () => Promise<void> | void }
   | null;
@@ -91,6 +91,7 @@ type PolicySavePayload = Partial<Policy> & {
   commission_rate?: number;
   payment_status?: "Paid" | "Pending";
   new_client?: Partial<Client>;
+  source_prospect_id?: string;
 };
 type ImportClientRow = {
   client_name: string;
@@ -530,10 +531,13 @@ export function AppShell({
         ...current,
         clients: existingClient ? current.clients : [client, ...current.clients],
         policies: payload.id ? current.policies.map((policy) => policy.id === nextPolicy.id ? nextPolicy : policy) : [nextPolicy, ...current.policies],
-        commissions: payload.id ? current.commissions.map((item) => item.policy_id === nextPolicy.id ? commission : item) : [commission, ...current.commissions]
+        commissions: payload.id ? current.commissions.map((item) => item.policy_id === nextPolicy.id ? commission : item) : [commission, ...current.commissions],
+        prospects: payload.source_prospect_id
+          ? current.prospects.map((prospect) => prospect.id === payload.source_prospect_id ? { ...prospect, status: "Converted" } : prospect)
+          : current.prospects
       }));
       setModal(null);
-      notify("success", "Policy and client saved in local preview.");
+      notify("success", payload.source_prospect_id ? "Prospect converted in local preview." : "Policy and client saved in local preview.");
       return;
     }
 
@@ -558,7 +562,8 @@ export function AppShell({
       renewal_status: payload.renewal_status ?? "Upcoming",
       notes: payload.notes?.trim() || "",
       commission_rate: Number(payload.commission_rate ?? 10),
-      payment_status: payload.payment_status ?? "Pending"
+      payment_status: payload.payment_status ?? "Pending",
+      source_prospect_id: payload.source_prospect_id ?? ""
     });
     const result = await upsertPolicy(null, formData);
     if (!result.ok || !result.policy || !result.client || !result.commission) {
@@ -576,7 +581,10 @@ export function AppShell({
       policies: payload.id ? current.policies.map((policy) => policy.id === nextPolicy.id ? nextPolicy : policy) : [nextPolicy, ...current.policies],
       commissions: existingCommission
         ? current.commissions.map((item) => item.id === commission.id ? commission : item)
-        : [commission, ...current.commissions]
+        : [commission, ...current.commissions],
+      prospects: payload.source_prospect_id
+        ? current.prospects.map((prospect) => prospect.id === payload.source_prospect_id ? { ...prospect, status: "Converted" } : prospect)
+        : current.prospects
     }));
     setModal(null);
     posthog.capture("policy_saved", {
@@ -834,6 +842,7 @@ export function AppShell({
       onAdd={() => blockWrite() || setModal({ type: "prospect" })}
       onEdit={(prospect) => blockWrite() || setModal({ type: "prospect", prospect })}
       onDelete={(prospect) => blockWrite() || setModal({ type: "confirm", title: "Delete prospect?", body: `This will permanently delete ${prospect.full_name} from your prospects list.`, action: () => deleteProspect(prospect) })}
+      onConvert={(prospect) => blockWrite() || setModal({ type: "policy", prospect })}
     />
   ) : active === "policies" ? (
     <Policies
@@ -1031,7 +1040,7 @@ export function AppShell({
       {modal?.type === "demo" ? <DemoModal onClose={() => setModal(null)} /> : null}
       {modal?.type === "client" ? <ClientModal client={modal.client} onClose={() => setModal(null)} onSave={saveClient} /> : null}
       {modal?.type === "prospect" ? <ProspectModal prospect={modal.prospect} onClose={() => setModal(null)} onSave={saveProspect} onDelete={(prospect) => setModal({ type: "confirm", title: "Delete prospect?", body: `This will permanently delete ${prospect.full_name} from your prospects list.`, action: () => deleteProspect(prospect) })} /> : null}
-      {modal?.type === "policy" ? <PolicyModal policy={modal.policy} clients={data.clients} onClose={() => setModal(null)} onSave={savePolicy} /> : null}
+      {modal?.type === "policy" ? <PolicyModal policy={modal.policy} prospect={modal.prospect} clients={data.clients} onClose={() => setModal(null)} onSave={savePolicy} /> : null}
       {modal?.type === "import" ? <ImportClientsModal onClose={() => setModal(null)} onImport={importClients} /> : null}
       {modal?.type === "confirm" ? <ConfirmModal title={modal.title} body={modal.body} onClose={() => setModal(null)} onConfirm={modal.action} /> : null}
       {detailPolicy ? <PolicyDetailPanel policy={detailPolicy} onClose={() => setDetailPolicy(null)} updateRenewal={updateRenewal} saveNote={saveActivityNote} /> : null}
@@ -1827,29 +1836,48 @@ function RenewalList({ title, policies, base, updateRenewal, openPolicy, onBack 
   );
 }
 
-function Prospects({ prospects, dueTodayOnly, onAdd, onEdit, onDelete }: { prospects: Prospect[]; dueTodayOnly: boolean; onAdd: () => void; onEdit: (prospect: Prospect) => void; onDelete: (prospect: Prospect) => void }) {
-  const [status, setStatus] = useState<ProspectStatus | "All">("All");
-  const visible = prospects.filter((prospect) => {
-    const matchesStatus = status === "All" || prospect.status === status;
-    const matchesDue = !dueTodayOnly || isProspectDueToday(prospect);
-    return matchesStatus && matchesDue;
+type ProspectTimeFilter = "Today" | "This Week" | "Next Week" | "This Month" | "All";
+type ProspectStatusFilter = "All Active" | "Interested" | "Call Back" | "Converted" | "Not Interested";
+
+function Prospects({ prospects, dueTodayOnly, onAdd, onEdit, onDelete, onConvert }: { prospects: Prospect[]; dueTodayOnly: boolean; onAdd: () => void; onEdit: (prospect: Prospect) => void; onDelete: (prospect: Prospect) => void; onConvert: (prospect: Prospect) => void }) {
+  const [timeFilter, setTimeFilter] = useState<ProspectTimeFilter>(dueTodayOnly ? "Today" : "This Week");
+  const [statusFilter, setStatusFilter] = useState<ProspectStatusFilter>("All Active");
+  const sortedProspects = useMemo(() => sortProspectsByFollowUp(prospects), [prospects]);
+  const visible = sortedProspects.filter((prospect) => {
+    return prospectMatchesStatusFilter(prospect, statusFilter) && prospectMatchesTimeFilter(prospect, timeFilter);
   });
+  const metrics = prospectQueueMetrics(prospects);
 
   return (
-    <div className="max-w-[1062px] space-y-6">
-      <div className="flex items-center justify-between gap-4">
-        <h1 className="text-[32px] font-extrabold leading-[44px] text-primary">Prospects</h1>
-        <Button onClick={onAdd}><Plus className="h-4 w-4" /> Add Prospect</Button>
+    <div className="max-w-[1062px] space-y-5">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <h1 className="text-[32px] font-extrabold leading-[44px] text-primary">Prospects</h1>
+          <p className="mt-1 text-sm font-semibold text-slate-500">Follow-ups sorted by date, with one-tap calling and policy conversion.</p>
+        </div>
+        <Button onClick={onAdd} className="min-h-11 self-start sm:self-auto"><Plus className="h-4 w-4" /> Add Prospect</Button>
       </div>
       <Card>
-        <CardContent className="p-4">
-          <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-6">
-            {(["All", ...prospectStatuses] as Array<ProspectStatus | "All">).map((item) => (
+        <CardContent className="space-y-4 p-4">
+          <div className="grid gap-2 sm:grid-cols-5">
+            {(["Today", "This Week", "Next Week", "This Month", "All"] as ProspectTimeFilter[]).map((item) => (
               <button
                 key={item}
                 type="button"
-                onClick={() => setStatus(item)}
-                className={`h-11 rounded-xl px-4 text-sm font-extrabold ${status === item ? "bg-primary text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"}`}
+                onClick={() => setTimeFilter(item)}
+                className={`h-11 rounded-xl px-3 text-sm font-extrabold ${timeFilter === item ? "bg-primary text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"}`}
+              >
+                {item}
+              </button>
+            ))}
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {(["All Active", "Interested", "Call Back", "Converted", "Not Interested"] as ProspectStatusFilter[]).map((item) => (
+              <button
+                key={item}
+                type="button"
+                onClick={() => setStatusFilter(item)}
+                className={`min-h-9 rounded-full px-4 text-xs font-extrabold ${statusFilter === item ? "bg-accent text-white" : "bg-slate-50 text-slate-600 hover:bg-slate-100"}`}
               >
                 {item}
               </button>
@@ -1858,18 +1886,25 @@ function Prospects({ prospects, dueTodayOnly, onAdd, onEdit, onDelete }: { prosp
         </CardContent>
       </Card>
 
+      <div className="grid gap-3 sm:grid-cols-4">
+        <ProspectMetricCard label="Overdue" value={metrics.overdue} tone="danger" onClick={() => setTimeFilter("Today")} />
+        <ProspectMetricCard label="Today" value={metrics.today} tone="orange" onClick={() => setTimeFilter("Today")} />
+        <ProspectMetricCard label="This Week" value={metrics.thisWeek} tone="primary" onClick={() => setTimeFilter("This Week")} />
+        <ProspectMetricCard label="Converted" value={metrics.converted} tone="success" onClick={() => setStatusFilter("Converted")} />
+      </div>
+
       {visible.length ? (
-        <div className="grid gap-6 lg:grid-cols-2">
+        <div className="space-y-3">
           {visible.map((prospect) => (
-            <ProspectCard key={prospect.id} prospect={prospect} onEdit={() => onEdit(prospect)} onDelete={() => onDelete(prospect)} />
+            <ProspectCard key={prospect.id} prospect={prospect} onEdit={() => onEdit(prospect)} onDelete={() => onDelete(prospect)} onConvert={() => onConvert(prospect)} />
           ))}
         </div>
       ) : (
         <Card>
           <CardContent className="flex min-h-80 flex-col items-center justify-center text-center">
             <UserPlus className="h-12 w-12 text-slate-300" />
-            <h2 className="mt-4 text-xl font-bold">{dueTodayOnly ? "No follow-ups due today." : "No prospects yet."}</h2>
-            <p className="mt-2 max-w-md text-sm text-slate-500">Add prospects you are speaking with before they become full clients with policies.</p>
+            <h2 className="mt-4 text-xl font-bold">No prospects match this view.</h2>
+            <p className="mt-2 max-w-md text-sm text-slate-500">Change the date or status filter, or add a new prospect to your follow-up queue.</p>
             <Button className="mt-5" onClick={onAdd}><Plus className="h-4 w-4" /> Add Prospect</Button>
           </CardContent>
         </Card>
@@ -1878,25 +1913,38 @@ function Prospects({ prospects, dueTodayOnly, onAdd, onEdit, onDelete }: { prosp
   );
 }
 
-function ProspectCard({ prospect, onEdit, onDelete }: { prospect: Prospect; onEdit: () => void; onDelete: () => void }) {
-  const due = prospect.follow_up_date ? isTodayOrPast(prospect.follow_up_date) && !["Converted", "Not Interested"].includes(prospect.status) : false;
+function ProspectMetricCard({ label, value, tone, onClick }: { label: string; value: number; tone: "danger" | "orange" | "primary" | "success"; onClick: () => void }) {
+  const toneClass = tone === "danger" ? "text-danger" : tone === "orange" ? "text-accent" : tone === "success" ? "text-success" : "text-primary";
   return (
-    <Card className="min-h-[210px]">
-      <CardContent className="space-y-4 p-6">
-        <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0">
-            <h2 className="truncate text-xl font-extrabold text-primary">{prospect.full_name}</h2>
-            <a href={`tel:${normalizeGhanaPhoneNumber(prospect.phone_number)}`} className="mt-1 block truncate text-sm font-semibold text-slate-600">{prospect.phone_number}</a>
+    <button type="button" onClick={onClick} className="rounded-xl border border-slate-200 bg-white p-4 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-md">
+      <p className="text-xs font-extrabold uppercase tracking-[0.08em] text-slate-500">{label}</p>
+      <p className={`mt-2 text-3xl font-extrabold ${toneClass}`}>{value}</p>
+    </button>
+  );
+}
+
+function ProspectCard({ prospect, onEdit, onDelete, onConvert }: { prospect: Prospect; onEdit: () => void; onDelete: () => void; onConvert: () => void }) {
+  const followUp = prospectFollowUpLabel(prospect);
+  const inactive = prospect.status === "Converted" || prospect.status === "Not Interested";
+  return (
+    <Card className={`overflow-hidden ${followUp.tone === "danger" ? "border-danger/30 bg-danger/5" : ""}`}>
+      <CardContent className="grid gap-4 p-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
+        <div className="min-w-0 space-y-3">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-2">
+                <h2 className="truncate text-lg font-extrabold text-primary">{prospect.full_name}</h2>
+                <ProspectStatusBadge status={prospect.status} />
+              </div>
+              <a href={`tel:${normalizeGhanaPhoneNumber(prospect.phone_number)}`} className="mt-1 block truncate text-sm font-semibold text-slate-600">{prospect.phone_number}</a>
+            </div>
+            <span className={`inline-flex min-h-8 items-center rounded-full px-3 text-xs font-extrabold ${prospectFollowUpToneClass(followUp.tone)}`}>
+              {followUp.label}
+            </span>
           </div>
-          <div className="shrink-0"><ProspectStatusBadge status={prospect.status} /></div>
+          {prospect.notes ? <p className="line-clamp-2 text-sm leading-6 text-slate-600">{prospect.notes}</p> : null}
         </div>
-        {prospect.follow_up_date ? (
-          <p className={`rounded-xl px-3 py-2 text-sm font-bold ${due ? "bg-accent/10 text-accent" : "bg-slate-50 text-slate-600"}`}>
-            Follow-up: {formatDate(prospect.follow_up_date)}
-          </p>
-        ) : null}
-        {prospect.notes ? <p className="line-clamp-3 text-sm leading-6 text-slate-600">{prospect.notes}</p> : null}
-        <div className="grid gap-3 sm:grid-cols-4">
+        <div className="grid gap-2 sm:grid-cols-2 lg:w-[420px] lg:grid-cols-5">
           <Button asChild variant="outline" className="min-h-11">
             <a href={`tel:${normalizeGhanaPhoneNumber(prospect.phone_number)}`}><Phone className="h-4 w-4" /> Call</a>
           </Button>
@@ -1905,6 +1953,7 @@ function ProspectCard({ prospect, onEdit, onDelete }: { prospect: Prospect; onEd
           </Button>
           <Button variant="ghost" className="min-h-11" onClick={onEdit}>Edit</Button>
           <Button variant="ghost" className="min-h-11 text-danger hover:bg-danger/10" onClick={onDelete}><Trash2 className="h-4 w-4" /> Delete</Button>
+          <Button className="min-h-11 sm:col-span-2 lg:col-span-1" onClick={onConvert} disabled={inactive}>Add Policy</Button>
         </div>
       </CardContent>
     </Card>
@@ -2373,7 +2422,7 @@ function ProspectModal({ prospect, onClose, onSave, onDelete }: { prospect?: Pro
   );
 }
 
-function PolicyModal({ policy, clients, onClose, onSave }: { policy?: PolicyWithClient; clients: Client[]; onClose: () => void; onSave: (payload: PolicySavePayload) => void }) {
+function PolicyModal({ policy, prospect, clients, onClose, onSave }: { policy?: PolicyWithClient; prospect?: Prospect; clients: Client[]; onClose: () => void; onSave: (payload: PolicySavePayload) => void }) {
   const [selectedType, setSelectedType] = useState<PolicyType>(policy?.policy_type ?? "Life");
   const [clientMode, setClientMode] = useState<"new" | "existing">(policy ? "existing" : "new");
   const [selectedClientId, setSelectedClientId] = useState(policy?.client_id ?? "");
@@ -2429,11 +2478,12 @@ function PolicyModal({ policy, clients, onClose, onSave }: { policy?: PolicyWith
       renewal_status: String(form.get("renewal_status") ?? "Upcoming") as RenewalStatus,
       notes: String(form.get("notes") ?? ""),
       commission_rate: Number(form.get("commission_rate") ?? policy?.commission?.commission_rate ?? 10),
-      payment_status: String(form.get("payment_status") ?? policy?.commission?.payment_status ?? "Pending") as "Paid" | "Pending"
+      payment_status: String(form.get("payment_status") ?? policy?.commission?.payment_status ?? "Pending") as "Paid" | "Pending",
+      source_prospect_id: prospect?.id
     });
   }
   return (
-    <ModalFrame title={policy ? "Edit Policy" : "Add New Policy"} onClose={onClose}>
+    <ModalFrame title={policy ? "Edit Policy" : prospect ? "Create Policy from Prospect" : "Add New Policy"} onClose={onClose}>
       <form onSubmit={submit} className="grid gap-4 md:grid-cols-2">
         <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 md:col-span-2">
           <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -2450,8 +2500,8 @@ function PolicyModal({ policy, clients, onClose, onSave }: { policy?: PolicyWith
             </div>
           ) : (
             <div className="grid gap-4 md:grid-cols-2">
-              <label className="block text-sm font-semibold">Full Name<Input name="client_full_name" required className="mt-1 bg-white" /></label>
-              <label className="block text-sm font-semibold">Phone Number<Input name="client_phone_number" required className="mt-1 bg-white" /></label>
+              <label className="block text-sm font-semibold">Full Name<Input name="client_full_name" required defaultValue={prospect?.full_name ?? ""} className="mt-1 bg-white" /></label>
+              <label className="block text-sm font-semibold">Phone Number<Input name="client_phone_number" required defaultValue={prospect?.phone_number ?? ""} className="mt-1 bg-white" /></label>
               <label className="block text-sm font-semibold">Email<Input name="client_email" type="email" className="mt-1 bg-white" /></label>
               <label className="block text-sm font-semibold">Date of Birth<Input name="client_date_of_birth" inputMode="numeric" placeholder="DD/MM/YYYY" pattern="(0?[1-9]|[12][0-9]|3[01])[/.-](0?[1-9]|1[0-2])[/.-](19|20)\\d\\d|\\d{4}-\\d{2}-\\d{2}" title="Use DD/MM/YYYY, for example 23/04/1993" className="mt-1 bg-white" /></label>
               <label className="block text-sm font-semibold">Address<Input name="client_address" className="mt-1 bg-white" /></label>
@@ -3020,6 +3070,113 @@ function isProspectDueToday(prospect: Prospect) {
   if (!prospect.follow_up_date || ["Converted", "Not Interested"].includes(prospect.status)) return false;
   const today = new Date().toISOString().slice(0, 10);
   return prospect.follow_up_date === today;
+}
+
+function localDate(value?: string | null) {
+  const date = value ? new Date(`${value}T00:00:00`) : null;
+  return date && !Number.isNaN(date.getTime()) ? date : null;
+}
+
+function dateKey(date: Date) {
+  return date.toISOString().slice(0, 10);
+}
+
+function startOfLocalDay(date: Date) {
+  const next = new Date(date);
+  next.setHours(0, 0, 0, 0);
+  return next;
+}
+
+function addDays(date: Date, days: number) {
+  const next = new Date(date);
+  next.setDate(next.getDate() + days);
+  return next;
+}
+
+function weekBounds(offsetWeeks: number) {
+  const today = startOfLocalDay(new Date());
+  const day = today.getDay();
+  const mondayOffset = day === 0 ? -6 : 1 - day;
+  const start = addDays(today, mondayOffset + offsetWeeks * 7);
+  const end = addDays(start, 6);
+  return { start, end };
+}
+
+function prospectMatchesTimeFilter(prospect: Prospect, filter: ProspectTimeFilter) {
+  if (filter === "All") return true;
+  const date = localDate(prospect.follow_up_date);
+  if (!date) return false;
+  const today = startOfLocalDay(new Date());
+  if (filter === "Today") return date.getTime() <= today.getTime();
+  if (filter === "This Week") {
+    const { start, end } = weekBounds(0);
+    return date.getTime() >= start.getTime() && date.getTime() <= end.getTime();
+  }
+  if (filter === "Next Week") {
+    const { start, end } = weekBounds(1);
+    return date.getTime() >= start.getTime() && date.getTime() <= end.getTime();
+  }
+  const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
+  const monthEnd = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+  return date.getTime() >= monthStart.getTime() && date.getTime() <= monthEnd.getTime();
+}
+
+function prospectMatchesStatusFilter(prospect: Prospect, filter: ProspectStatusFilter) {
+  if (filter === "All Active") return prospect.status !== "Converted" && prospect.status !== "Not Interested";
+  return prospect.status === filter;
+}
+
+function sortProspectsByFollowUp(prospects: Prospect[]) {
+  return [...prospects].sort((a, b) => {
+    const aInactive = a.status === "Converted" || a.status === "Not Interested";
+    const bInactive = b.status === "Converted" || b.status === "Not Interested";
+    if (aInactive !== bInactive) return aInactive ? 1 : -1;
+    const aTime = localDate(a.follow_up_date)?.getTime() ?? Number.POSITIVE_INFINITY;
+    const bTime = localDate(b.follow_up_date)?.getTime() ?? Number.POSITIVE_INFINITY;
+    if (aTime !== bTime) return aTime - bTime;
+    return a.full_name.localeCompare(b.full_name);
+  });
+}
+
+function prospectQueueMetrics(prospects: Prospect[]) {
+  const today = startOfLocalDay(new Date());
+  const todayKey = dateKey(today);
+  const { start, end } = weekBounds(0);
+  const active = prospects.filter((prospect) => prospect.status !== "Converted" && prospect.status !== "Not Interested");
+  return {
+    overdue: active.filter((prospect) => {
+      const date = localDate(prospect.follow_up_date);
+      return date ? date.getTime() < today.getTime() : false;
+    }).length,
+    today: active.filter((prospect) => prospect.follow_up_date === todayKey).length,
+    thisWeek: active.filter((prospect) => {
+      const date = localDate(prospect.follow_up_date);
+      return date ? date.getTime() >= start.getTime() && date.getTime() <= end.getTime() : false;
+    }).length,
+    converted: prospects.filter((prospect) => prospect.status === "Converted").length
+  };
+}
+
+function prospectFollowUpLabel(prospect: Prospect) {
+  if (prospect.status === "Converted") return { label: "Converted", tone: "success" as const };
+  if (prospect.status === "Not Interested") return { label: "Closed", tone: "muted" as const };
+  const date = localDate(prospect.follow_up_date);
+  if (!date) return { label: "No date", tone: "muted" as const };
+  const today = startOfLocalDay(new Date());
+  const diffDays = Math.round((date.getTime() - today.getTime()) / 86_400_000);
+  if (diffDays < 0) return { label: `Overdue · ${formatDate(prospect.follow_up_date!)}`, tone: "danger" as const };
+  if (diffDays === 0) return { label: "Today", tone: "warning" as const };
+  if (diffDays === 1) return { label: "Tomorrow", tone: "orange" as const };
+  return { label: formatDate(prospect.follow_up_date!), tone: "neutral" as const };
+}
+
+function prospectFollowUpToneClass(tone: "danger" | "warning" | "orange" | "neutral" | "success" | "muted") {
+  if (tone === "danger") return "bg-danger/10 text-danger";
+  if (tone === "warning") return "bg-amber-100 text-amber-700";
+  if (tone === "orange") return "bg-accent/10 text-accent";
+  if (tone === "success") return "bg-success/10 text-success";
+  if (tone === "muted") return "bg-slate-100 text-slate-500";
+  return "bg-slate-50 text-slate-600";
 }
 
 function ProspectStatusBadge({ status }: { status: ProspectStatus }) {

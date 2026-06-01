@@ -2,7 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { createServerClient } from "@supabase/ssr";
 import type { CookieOptions } from "@supabase/ssr";
 
-const publicRoutes = ["/", "/forgot-password", "/reset-password", "/demo", "/privacy", "/terms", "/feedback"];
+const publicRoutes = ["/", "/forgot-password", "/reset-password", "/demo", "/privacy", "/terms", "/feedback", "/ingest"];
 const authRoutes = ["/sign-in", "/sign-up", "/login", "/signup"];
 const authRouteAliases: Record<string, string> = {
   "/login": "/sign-in",

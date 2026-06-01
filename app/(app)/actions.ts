@@ -43,7 +43,8 @@ const policySchema = z.object({
   payment_status: z.enum(["Paid", "Pending"]),
   status: z.enum(["Active", "Expired", "Cancelled"]),
   renewal_status: z.enum(renewalStatusValues),
-  notes: z.string().optional()
+  notes: z.string().optional(),
+  source_prospect_id: z.string().uuid("Prospect is invalid").optional().or(z.literal(""))
 });
 
 const renewalStatusSchema = z.object({
@@ -574,6 +575,7 @@ export async function upsertPolicy(_: unknown, formData: FormData) {
     client_address,
     commission_rate,
     payment_status,
+    source_prospect_id,
     ...policyData
   } = parsed.data;
 
@@ -617,9 +619,22 @@ export async function upsertPolicy(_: unknown, formData: FormData) {
     .single();
   if (clientFetchError || !client) return { ok: false, message: "Policy saved, but client details could not be loaded." };
 
+  if (source_prospect_id) {
+    const { error: prospectError } = await supabase
+      .from("prospects")
+      .update({ status: "Converted" })
+      .eq("id", source_prospect_id)
+      .eq("agent_id", agentId);
+    if (prospectError) {
+      console.error("Prospect conversion update failed", { code: prospectError.code });
+      return { ok: false, message: "Policy saved, but the prospect could not be marked as converted." };
+    }
+    revalidatePath("/prospects");
+  }
+
   revalidatePath("/policies");
   revalidatePath("/dashboard");
-  return { ok: true, message: "Policy saved successfully.", policy: { ...policy, client, commission }, client, commission };
+  return { ok: true, message: source_prospect_id ? "Prospect converted to policy successfully." : "Policy saved successfully.", policy: { ...policy, client, commission }, client, commission };
 }
 
 export async function deletePolicy(policyId: string) {

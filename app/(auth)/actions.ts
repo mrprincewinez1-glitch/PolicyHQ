@@ -51,7 +51,7 @@ export async function signUp(formData: FormData) {
   if (error) authRedirect("/sign-up", "error", "We could not create your account. Please try again.");
   if (!data.session) authRedirect("/sign-in", "success", "Account created. Please check your email to confirm your account, then sign in.");
   const userId = data.user?.id ?? email;
-  getPostHogClient().capture({
+  getPostHogClient()?.capture({
     distinctId: userId,
     event: "user_signed_up",
     properties: { email, company_name: companyName || null },
@@ -72,7 +72,7 @@ export async function signIn(formData: FormData) {
     authRedirect("/sign-in", "error", message);
   }
   const signedInUserId = signInData?.user?.id ?? email;
-  getPostHogClient().capture({
+  getPostHogClient()?.capture({
     distinctId: signedInUserId,
     event: "user_signed_in",
     properties: { email },
