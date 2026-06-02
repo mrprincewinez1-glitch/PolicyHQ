@@ -171,6 +171,7 @@ export function AppShell({
   const [modal, setModal] = useState<ModalState>(null);
   const [toast, setToast] = useState<{ tone: "success" | "error"; message: string } | null>(null);
   const [detailPolicy, setDetailPolicy] = useState<PolicyWithClient | null>(null);
+  const [clientContactsOpen, setClientContactsOpen] = useState(false);
   const base = demo ? "/demo" : "";
 
   useEffect(() => {
@@ -823,6 +824,7 @@ export function AppShell({
       todaysBirthdays={todaysBirthdays}
       onAddPolicy={() => blockWrite() || setModal({ type: "policy" })}
       onImportClients={() => blockWrite() || setModal({ type: "import" })}
+      onOpenClientContacts={() => setClientContactsOpen(true)}
     />
   ) : active === "clients" ? (
     <Clients
@@ -1043,6 +1045,7 @@ export function AppShell({
       {modal?.type === "policy" ? <PolicyModal policy={modal.policy} prospect={modal.prospect} clients={data.clients} onClose={() => setModal(null)} onSave={savePolicy} /> : null}
       {modal?.type === "import" ? <ImportClientsModal onClose={() => setModal(null)} onImport={importClients} /> : null}
       {modal?.type === "confirm" ? <ConfirmModal title={modal.title} body={modal.body} onClose={() => setModal(null)} onConfirm={modal.action} /> : null}
+      {clientContactsOpen ? <ClientsToContactDrawer policies={clientContactPolicies(data.policies)} onClose={() => setClientContactsOpen(false)} openPolicy={setDetailPolicy} /> : null}
       {detailPolicy ? <PolicyDetailPanel policy={detailPolicy} onClose={() => setDetailPolicy(null)} updateRenewal={updateRenewal} saveNote={saveActivityNote} /> : null}
       {toast ? <div className={`fixed bottom-5 right-5 z-[70] rounded-xl px-4 py-3 text-sm font-bold text-white shadow-soft ${toast.tone === "success" ? "bg-success" : "bg-danger"}`}>{toast.message}</div> : null}
     </div>
@@ -1056,7 +1059,8 @@ function Dashboard({
   openPolicy,
   todaysBirthdays,
   onAddPolicy,
-  onImportClients
+  onImportClients,
+  onOpenClientContacts
 }: {
   data: AppData;
   base: string;
@@ -1065,6 +1069,7 @@ function Dashboard({
   todaysBirthdays: Client[];
   onAddPolicy: () => void;
   onImportClients: () => void;
+  onOpenClientContacts: () => void;
 }) {
   const active = activePolicies(data.policies);
   const premiumDueThisMonth = expiringThisMonth(data.policies).reduce((sum, policy) => sum + policy.premium_amount, 0);
@@ -1105,7 +1110,7 @@ function Dashboard({
       </div>
       <div className="grid gap-6 lg:grid-cols-2">
         <RevenueProtectionPanel mix={dashboardMix} metrics={revenueMetrics} base={base} />
-        <RelationshipManagerPanel metrics={relationshipMetrics} birthdays={todaysBirthdays} base={base} />
+        <RelationshipManagerPanel metrics={relationshipMetrics} birthdays={todaysBirthdays} base={base} onOpenClientContacts={onOpenClientContacts} />
       </div>
       <RecentActivityPanel activities={activities} />
     </div>
@@ -1279,7 +1284,7 @@ function RevenueProtectionPanel({ mix, metrics, base }: { mix: DashboardBusiness
   );
 }
 
-function RelationshipManagerPanel({ metrics, birthdays, base }: { metrics: DashboardPanelMetric[]; birthdays: Client[]; base: string }) {
+function RelationshipManagerPanel({ metrics, birthdays, base, onOpenClientContacts }: { metrics: DashboardPanelMetric[]; birthdays: Client[]; base: string; onOpenClientContacts: () => void }) {
   return (
     <Card className="min-h-[250px] overflow-hidden">
       <CardHeader className="border-b-0 p-[23px] pb-0">
@@ -1295,7 +1300,13 @@ function RelationshipManagerPanel({ metrics, birthdays, base }: { metrics: Dashb
       </CardHeader>
       <CardContent className="p-[23px] pt-[22px]">
         <div className="grid gap-3 sm:grid-cols-3">
-          {metrics.map((item) => <DashboardPanelMetricCard key={item.label} metric={item} />)}
+          {metrics.map((item) => (
+            <DashboardPanelMetricCard
+              key={item.label}
+              metric={item}
+              onClick={item.label === "Clients to Contact" ? onOpenClientContacts : undefined}
+            />
+          ))}
         </div>
         {birthdays.length ? (
           <DashboardBirthdayAction client={birthdays[0]} href={`${base}/birthdays`} />
@@ -1305,13 +1316,27 @@ function RelationshipManagerPanel({ metrics, birthdays, base }: { metrics: Dashb
   );
 }
 
-function DashboardPanelMetricCard({ metric }: { metric: DashboardPanelMetric }) {
+function DashboardPanelMetricCard({ metric, onClick }: { metric: DashboardPanelMetric; onClick?: () => void }) {
   const color = metric.tone === "danger" ? "text-danger" : metric.tone === "warning" ? "text-warning" : metric.tone === "success" ? "text-success" : metric.tone === "accent" ? "text-accent" : "text-primary";
-  return (
-    <Link href={metric.href} className="min-h-[76px] rounded-[10px] border border-slate-200 bg-slate-50 p-3 transition hover:border-accent hover:bg-accent/5 focus:outline-none focus:ring-2 focus:ring-accent">
+  const content = (
+    <>
       <p className="text-[10px] font-extrabold leading-[14px] text-slate-500">{metric.label}</p>
       <strong className={`mt-2 block text-[26px] font-extrabold leading-none tracking-[-0.04em] ${color}`}>{metric.value}</strong>
       {metric.helper ? <p className="mt-1 truncate text-[10px] font-bold text-slate-400">{metric.helper}</p> : null}
+    </>
+  );
+
+  if (onClick) {
+    return (
+      <button type="button" onClick={onClick} className="min-h-[76px] rounded-[10px] border border-slate-200 bg-slate-50 p-3 text-left transition hover:border-accent hover:bg-accent/5 focus:outline-none focus:ring-2 focus:ring-accent">
+        {content}
+      </button>
+    );
+  }
+
+  return (
+    <Link href={metric.href} className="min-h-[76px] rounded-[10px] border border-slate-200 bg-slate-50 p-3 transition hover:border-accent hover:bg-accent/5 focus:outline-none focus:ring-2 focus:ring-accent">
+      {content}
     </Link>
   );
 }
@@ -1340,6 +1365,81 @@ function DashboardBirthdayAction({ client, href }: { client: Client; href: strin
       </div>
       <WhatsAppButton href={birthdayWhatsAppHref(client)} label="WhatsApp" className="relative z-10 shrink-0 rounded-[10px] text-[10px] font-extrabold" />
     </div>
+  );
+}
+
+function ClientsToContactDrawer({ policies, onClose, openPolicy }: { policies: PolicyWithClient[]; onClose: () => void; openPolicy: (policy: PolicyWithClient) => void }) {
+  const paymentPending = policies.filter((policy) => policy.renewal_status === "Payment Pending").length;
+  const expiringThisMonthCount = policies.filter((policy) => policiesForRange([policy], "month").length > 0).length;
+
+  function openPolicyAndClose(policy: PolicyWithClient) {
+    onClose();
+    openPolicy(policy);
+  }
+
+  return (
+    <div className="fixed inset-0 z-[60] bg-primary/40 p-0 sm:p-5" role="dialog" aria-modal="true" aria-labelledby="clients-to-contact-title">
+      <div className="flex h-full items-end justify-stretch sm:items-center sm:justify-end">
+        <div className="flex max-h-[92vh] w-full flex-col overflow-hidden rounded-t-[22px] border border-slate-200 bg-white shadow-soft sm:max-h-[calc(100vh-40px)] sm:max-w-[500px] sm:rounded-[18px]">
+          <div className="flex items-start justify-between gap-4 border-b border-slate-200 p-4 sm:p-5">
+            <div className="min-w-0">
+              <h2 id="clients-to-contact-title" className="text-xl font-extrabold tracking-[-0.04em] text-primary">Clients to Contact</h2>
+              <p className="mt-1 text-xs font-semibold leading-5 text-slate-500">
+                {policies.length} client{policies.length === 1 ? "" : "s"} · {paymentPending} payment pending · {expiringThisMonthCount} expiring this month
+              </p>
+            </div>
+            <Button variant="ghost" size="icon" onClick={onClose} aria-label="Close clients to contact">
+              <X className="h-5 w-5" />
+            </Button>
+          </div>
+
+          <div className="flex-1 overflow-y-auto p-4 sm:p-5">
+            {policies.length ? (
+              <div className="space-y-3">
+                {policies.map((policy) => (
+                  <ClientContactRow key={`${policy.client_id}-${policy.id}`} policy={policy} openPolicy={openPolicyAndClose} />
+                ))}
+              </div>
+            ) : (
+              <EmptyInlineState title="No clients to contact." body="Clients appear here when they have renewal conversations in progress or policies expiring this month." />
+            )}
+          </div>
+
+          <div className="border-t border-slate-200 bg-slate-50 px-4 py-3 text-xs font-semibold leading-5 text-slate-500 sm:px-5">
+            Update the renewal status from the policy detail once the conversation is complete.
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ClientContactRow({ policy, openPolicy }: { policy: PolicyWithClient; openPolicy: (policy: PolicyWithClient) => void }) {
+  const reason = clientContactReason(policy);
+  return (
+    <article className="rounded-[14px] border border-slate-200 bg-white p-4">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <h3 className="truncate text-base font-extrabold tracking-[-0.03em] text-primary">{policy.client.full_name}</h3>
+            <Badge tone={reason.tone}>{reason.label}</Badge>
+          </div>
+          <a href={`tel:${normalizeGhanaPhoneNumber(policy.client.phone_number)}`} className="mt-1 block text-sm font-bold text-slate-500">{policy.client.phone_number}</a>
+          <p className="mt-2 text-xs font-semibold leading-5 text-slate-600">{policy.policy_type} · {formatDate(policy.expiry_date)}</p>
+          <p className="mt-2 rounded-[10px] bg-slate-50 px-3 py-2 text-xs font-bold leading-5 text-slate-600">{reason.body}</p>
+        </div>
+        <div className="grid shrink-0 grid-cols-2 gap-2 sm:w-[168px]">
+          <Button asChild variant="outline" size="sm" className="min-h-10 rounded-[10px]">
+            <a href={`tel:${normalizeGhanaPhoneNumber(policy.client.phone_number)}`}>
+              <Phone className="h-4 w-4" />
+              Call
+            </a>
+          </Button>
+          <WhatsAppButton href={renewalWhatsAppHref(policy)} label="WhatsApp" className="min-h-10 justify-center rounded-[10px] text-[11px]" />
+          <Button type="button" size="sm" className="col-span-2 min-h-10 rounded-[10px]" onClick={() => openPolicy(policy)}>View Policy</Button>
+        </div>
+      </div>
+    </article>
   );
 }
 
@@ -3397,7 +3497,7 @@ function dashboardRevenueMetrics(policies: PolicyWithClient[], lapseCases: Lapse
 }
 
 function dashboardRelationshipMetrics(policies: PolicyWithClient[], mix: DashboardBusinessMix, birthdaysToday: number, followUpsDueToday: number, base: string): DashboardPanelMetric[] {
-  const clientsToContact = countClientsToContact(policies);
+  const clientsToContact = clientContactPolicies(policies).length;
   const anniversaryCount = policies.filter((policy) => isLifePolicy(policy) && isPolicyAnniversarySoon(policy)).length;
   const thirdMetric: DashboardPanelMetric = mix === "life"
     ? { label: "Anniversaries", value: anniversaryCount, href: `${base}/anniversaries`, tone: anniversaryCount ? "success" : "primary", helper: "Life reviews" }
@@ -3410,12 +3510,34 @@ function dashboardRelationshipMetrics(policies: PolicyWithClient[], mix: Dashboa
   ];
 }
 
-function countClientsToContact(policies: PolicyWithClient[]) {
-  const clientIds = new Set<string>();
-  for (const policy of policies) {
-    if (isClientContactCandidate(policy)) clientIds.add(policy.client_id);
+function clientContactPolicies(policies: PolicyWithClient[]) {
+  const byClient = new Map<string, PolicyWithClient>();
+  const candidates = policies.filter(isClientContactCandidate).sort((a, b) => clientContactPriority(a) - clientContactPriority(b) || sortByExpiry(a, b));
+  for (const policy of candidates) {
+    if (!byClient.has(policy.client_id)) byClient.set(policy.client_id, policy);
   }
-  return clientIds.size;
+  return Array.from(byClient.values());
+}
+
+function clientContactPriority(policy: PolicyWithClient) {
+  if (policy.renewal_status === "Payment Pending") return 0;
+  if (policy.renewal_status === "Quote Requested") return 1;
+  if (policy.renewal_status === "Contacted") return 2;
+  if (policiesForRange([policy], "month").length > 0) return 3;
+  return 4;
+}
+
+function clientContactReason(policy: PolicyWithClient): { label: string; body: string; tone: "slate" | "orange" | "green" | "red" | "amber" } {
+  if (policy.renewal_status === "Payment Pending") {
+    return { label: "Payment Pending", body: "Renewal conversation is already in the payment stage.", tone: "amber" };
+  }
+  if (policy.renewal_status === "Quote Requested") {
+    return { label: "Quote Requested", body: "Client is waiting for a quote or needs quote follow-up.", tone: "orange" };
+  }
+  if (policy.renewal_status === "Contacted") {
+    return { label: "Contacted", body: "Renewal conversation has started and needs the next follow-up.", tone: "slate" };
+  }
+  return { label: "Expires This Month", body: `${policy.policy_type} policy expires on ${formatDate(policy.expiry_date)}.`, tone: "red" };
 }
 
 function isClientContactCandidate(policy: PolicyWithClient) {
