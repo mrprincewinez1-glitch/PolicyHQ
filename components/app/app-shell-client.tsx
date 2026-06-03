@@ -847,6 +847,7 @@ export function AppShell({
       onEdit={(prospect) => blockWrite() || setModal({ type: "prospect", prospect })}
       onDelete={(prospect) => blockWrite() || setModal({ type: "confirm", title: "Delete prospect?", body: `This will permanently delete ${prospect.full_name} from your prospects list.`, action: () => deleteProspect(prospect) })}
       onConvert={(prospect) => blockWrite() || setModal({ type: "policy", prospect })}
+      onStatusChange={(prospect, status) => saveProspect({ ...prospect, status })}
     />
   ) : active === "policies" ? (
     <Policies
@@ -1964,9 +1965,25 @@ function RenewalList({ title, policies, base, updateRenewal, openPolicy, onBack 
 }
 
 type ProspectTimeFilter = "Today" | "This Week" | "Next Week" | "This Month" | "All";
-type ProspectStatusFilter = "All Active" | "Interested" | "Call Back" | "Converted" | "Not Interested";
+type ProspectStatusFilter = "All Active" | "New" | "Interested" | "Call Back" | "Converted" | "Not Interested";
 
-function Prospects({ prospects, dueTodayOnly, onAdd, onEdit, onDelete, onConvert }: { prospects: Prospect[]; dueTodayOnly: boolean; onAdd: () => void; onEdit: (prospect: Prospect) => void; onDelete: (prospect: Prospect) => void; onConvert: (prospect: Prospect) => void }) {
+function Prospects({
+  prospects,
+  dueTodayOnly,
+  onAdd,
+  onEdit,
+  onDelete,
+  onConvert,
+  onStatusChange
+}: {
+  prospects: Prospect[];
+  dueTodayOnly: boolean;
+  onAdd: () => void;
+  onEdit: (prospect: Prospect) => void;
+  onDelete: (prospect: Prospect) => void;
+  onConvert: (prospect: Prospect) => void;
+  onStatusChange: (prospect: Prospect, status: ProspectStatus) => void;
+}) {
   const [timeFilter, setTimeFilter] = useState<ProspectTimeFilter>(dueTodayOnly ? "Today" : "This Week");
   const [statusFilter, setStatusFilter] = useState<ProspectStatusFilter>("All Active");
   const sortedProspects = useMemo(() => sortProspectsByFollowUp(prospects), [prospects]);
@@ -1980,7 +1997,7 @@ function Prospects({ prospects, dueTodayOnly, onAdd, onEdit, onDelete, onConvert
       <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <h1 className="text-[32px] font-extrabold leading-[44px] text-primary">Prospects</h1>
-          <p className="mt-1 text-sm font-semibold text-slate-500">Follow-ups sorted by date, with one-tap calling and policy conversion.</p>
+          <p className="mt-1 text-sm font-semibold text-slate-500">A date-sorted queue for calls, WhatsApp follow-ups, and policy conversion.</p>
         </div>
         <Button onClick={onAdd} className="min-h-11 self-start sm:self-auto"><Plus className="h-4 w-4" /> Add Prospect</Button>
       </div>
@@ -1999,7 +2016,7 @@ function Prospects({ prospects, dueTodayOnly, onAdd, onEdit, onDelete, onConvert
             ))}
           </div>
           <div className="flex flex-wrap gap-2">
-            {(["All Active", "Interested", "Call Back", "Converted", "Not Interested"] as ProspectStatusFilter[]).map((item) => (
+            {(["All Active", "New", "Interested", "Call Back", "Converted", "Not Interested"] as ProspectStatusFilter[]).map((item) => (
               <button
                 key={item}
                 type="button"
@@ -2023,7 +2040,14 @@ function Prospects({ prospects, dueTodayOnly, onAdd, onEdit, onDelete, onConvert
       {visible.length ? (
         <div className="space-y-3">
           {visible.map((prospect) => (
-            <ProspectCard key={prospect.id} prospect={prospect} onEdit={() => onEdit(prospect)} onDelete={() => onDelete(prospect)} onConvert={() => onConvert(prospect)} />
+            <ProspectCard
+              key={prospect.id}
+              prospect={prospect}
+              onEdit={() => onEdit(prospect)}
+              onDelete={() => onDelete(prospect)}
+              onConvert={() => onConvert(prospect)}
+              onStatusChange={(status) => onStatusChange(prospect, status)}
+            />
           ))}
         </div>
       ) : (
@@ -2050,12 +2074,24 @@ function ProspectMetricCard({ label, value, tone, onClick }: { label: string; va
   );
 }
 
-function ProspectCard({ prospect, onEdit, onDelete, onConvert }: { prospect: Prospect; onEdit: () => void; onDelete: () => void; onConvert: () => void }) {
+function ProspectCard({
+  prospect,
+  onEdit,
+  onDelete,
+  onConvert,
+  onStatusChange
+}: {
+  prospect: Prospect;
+  onEdit: () => void;
+  onDelete: () => void;
+  onConvert: () => void;
+  onStatusChange: (status: ProspectStatus) => void;
+}) {
   const followUp = prospectFollowUpLabel(prospect);
   const inactive = prospect.status === "Converted" || prospect.status === "Not Interested";
   return (
     <Card className={`overflow-hidden ${followUp.tone === "danger" ? "border-danger/30 bg-danger/5" : ""}`}>
-      <CardContent className="grid gap-4 p-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
+      <CardContent className="grid gap-4 p-4 xl:grid-cols-[minmax(0,1fr)_minmax(360px,auto)] xl:items-center">
         <div className="min-w-0 space-y-3">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
             <div className="min-w-0">
@@ -2071,16 +2107,23 @@ function ProspectCard({ prospect, onEdit, onDelete, onConvert }: { prospect: Pro
           </div>
           {prospect.notes ? <p className="line-clamp-2 text-sm leading-6 text-slate-600">{prospect.notes}</p> : null}
         </div>
-        <div className="grid gap-2 sm:grid-cols-2 lg:flex lg:flex-nowrap lg:items-center lg:justify-end">
-          <Button asChild variant="outline" className="min-h-11 whitespace-nowrap lg:min-w-[92px]">
+        <div className="grid min-w-0 gap-2 sm:grid-cols-3 xl:grid-cols-[128px_90px_118px_74px_86px_108px] xl:items-center xl:justify-end">
+          <Select
+            value={prospect.status}
+            onChange={(event) => onStatusChange(event.target.value as ProspectStatus)}
+            className="min-h-11 text-sm font-bold sm:col-span-3 xl:col-span-1"
+          >
+            {prospectStatuses.map((status) => <option key={status}>{status}</option>)}
+          </Select>
+          <Button asChild variant="outline" className="min-h-11 whitespace-nowrap px-3">
             <a href={`tel:${normalizeGhanaPhoneNumber(prospect.phone_number)}`}><Phone className="h-4 w-4" /> Call</a>
           </Button>
-          <Button asChild variant="outline" className="min-h-11 whitespace-nowrap lg:min-w-[124px]">
-            <a href={prospectWhatsAppHref(prospect)} target="_blank" rel="noreferrer"><MessageCircle className="h-4 w-4" /> WhatsApp</a>
+          <Button asChild variant="outline" className="min-h-11 whitespace-nowrap px-3">
+            <a href={prospectWhatsAppHref(prospect)} target="_blank" rel="noreferrer" aria-label={`Open WhatsApp for ${prospect.full_name}`}><MessageCircle className="h-4 w-4" /> <span className="hidden sm:inline xl:hidden 2xl:inline">WhatsApp</span><span className="sm:hidden xl:inline 2xl:hidden">WA</span></a>
           </Button>
-          <Button variant="ghost" className="min-h-11 whitespace-nowrap lg:min-w-[72px]" onClick={onEdit}>Edit</Button>
-          <Button variant="ghost" className="min-h-11 whitespace-nowrap text-danger hover:bg-danger/10 lg:min-w-[92px]" onClick={onDelete}><Trash2 className="h-4 w-4" /> Delete</Button>
-          <Button className="min-h-11 whitespace-nowrap sm:col-span-2 lg:min-w-[104px]" onClick={onConvert} disabled={inactive}>Add Policy</Button>
+          <Button variant="ghost" className="min-h-11 whitespace-nowrap px-3" onClick={onEdit}>Edit</Button>
+          <Button variant="ghost" className="min-h-11 whitespace-nowrap px-3 text-danger hover:bg-danger/10" onClick={onDelete}><Trash2 className="h-4 w-4" /><span className="sr-only sm:not-sr-only xl:sr-only 2xl:not-sr-only">Delete</span></Button>
+          <Button className="min-h-11 whitespace-nowrap px-3 sm:col-span-2 xl:col-span-1" onClick={onConvert} disabled={inactive}>Add Policy</Button>
         </div>
       </CardContent>
     </Card>
