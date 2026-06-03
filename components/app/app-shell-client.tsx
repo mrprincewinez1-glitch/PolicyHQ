@@ -265,6 +265,7 @@ export function AppShell({
 
   async function importClients(rows: ImportClientRow[]) {
     if (blockWrite()) return;
+    const needsReviewCount = rows.filter((row) => importRowReviewNotes(row).length > 0).length;
     const result = await importClientsFromCsvRows(rows);
     if (!result.ok || !result.clients || !result.policies || !result.commissions) {
       notify("error", result.message);
@@ -278,7 +279,7 @@ export function AppShell({
     }));
     setModal(null);
     posthog.capture("clients_imported", { client_count: result.clients.length, policy_count: result.policies.length });
-    notify("success", result.message);
+    notify("success", needsReviewCount ? `${result.message} ${needsReviewCount} need review.` : result.message);
   }
 
   async function saveLapseReview(input: { statement_name: string; statement_kind: string; rows: LapseShieldStatementRow[] }) {
@@ -824,6 +825,7 @@ export function AppShell({
       todaysBirthdays={todaysBirthdays}
       onAddPolicy={() => blockWrite() || setModal({ type: "policy" })}
       onImportClients={() => blockWrite() || setModal({ type: "import" })}
+      onAddProspect={() => blockWrite() || setModal({ type: "prospect" })}
       onOpenClientContacts={() => setClientContactsOpen(true)}
     />
   ) : active === "clients" ? (
@@ -1060,6 +1062,7 @@ function Dashboard({
   todaysBirthdays,
   onAddPolicy,
   onImportClients,
+  onAddProspect,
   onOpenClientContacts
 }: {
   data: AppData;
@@ -1069,6 +1072,7 @@ function Dashboard({
   todaysBirthdays: Client[];
   onAddPolicy: () => void;
   onImportClients: () => void;
+  onAddProspect: () => void;
   onOpenClientContacts: () => void;
 }) {
   const active = activePolicies(data.policies);
@@ -1078,9 +1082,10 @@ function Dashboard({
   const revenueMetrics = dashboardRevenueMetrics(data.policies, data.lapse_shield_cases, dashboardMix, base);
   const relationshipMetrics = dashboardRelationshipMetrics(data.policies, dashboardMix, todaysBirthdays.length, followUpsDueToday, base);
   const activities = dashboardActivities(data, todaysBirthdays, base, openPolicy);
+  const needsReviewCount = data.policies.filter(needsPolicyReview).length;
 
   if (dashboardMix === "empty") {
-    return <NoDataDashboard base={base} profileName={data.profile.full_name} onAddPolicy={onAddPolicy} onImportClients={onImportClients} />;
+    return <NoDataDashboard base={base} profileName={data.profile.full_name} onAddPolicy={onAddPolicy} onImportClients={onImportClients} onAddProspect={onAddProspect} />;
   }
 
   return (
@@ -1108,6 +1113,7 @@ function Dashboard({
         <DashboardStatLink label="Premium Due" value={formatDashboardCurrency(premiumDueThisMonth)} href={`${base}/renewals/month`} wide />
         <ProspectsDashboardCard total={data.prospects.length} dueToday={followUpsDueToday} href={navHref(base, "prospects")} />
       </div>
+      {needsReviewCount ? <NeedsReviewPrompt count={needsReviewCount} href={navHref(base, "policies")} /> : null}
       <div className="grid gap-6 lg:grid-cols-2">
         <RevenueProtectionPanel mix={dashboardMix} metrics={revenueMetrics} base={base} />
         <RelationshipManagerPanel metrics={relationshipMetrics} birthdays={todaysBirthdays} base={base} onOpenClientContacts={onOpenClientContacts} />
@@ -1136,59 +1142,62 @@ type DashboardPanelMetric = {
   helper?: string;
 };
 
-function NoDataDashboard({ base, profileName, onAddPolicy, onImportClients }: { base: string; profileName: string; onAddPolicy: () => void; onImportClients: () => void }) {
+function NoDataDashboard({ base, profileName, onAddPolicy, onImportClients, onAddProspect }: { base: string; profileName: string; onAddPolicy: () => void; onImportClients: () => void; onAddProspect: () => void }) {
+  const name = firstName(profileName);
   return (
     <div className="max-w-[1062px] space-y-[26px]">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-        <div>
-          <h1 className="text-[30px] font-extrabold leading-[35px] tracking-[-0.04em] text-primary">Welcome to PolicyHQ</h1>
-          <p className="mt-2 text-[13px] font-semibold leading-5 text-slate-500">Set up your book once. PolicyHQ will turn it into daily actions.</p>
-        </div>
-        <div className="grid gap-2 sm:grid-cols-2">
-          <Button type="button" onClick={onAddPolicy} className="min-h-11 rounded-[10px] text-[10px] font-extrabold">
-            <Plus className="h-4 w-4" />
-            Add Policy
-          </Button>
-          <Button type="button" onClick={onImportClients} variant="outline" className="min-h-11 rounded-[10px] text-[10px] font-extrabold">
-            <Upload className="h-4 w-4" />
-            Import Clients
-          </Button>
-        </div>
-      </div>
       <div className="grid gap-6 lg:grid-cols-[1.15fr_0.85fr]">
-        <Card className="min-h-[248px] overflow-hidden">
+        <Card className="min-h-[292px] overflow-hidden">
           <CardHeader className="border-b-0 p-7 pb-0">
-            <h2 className="text-[22px] font-extrabold leading-[26px] tracking-[-0.04em] text-primary">Start with your existing clients</h2>
-            <p className="mt-3 text-[13px] font-semibold leading-6 text-slate-500">Most agents already have a book of business. Import it first, then fill in any missing fields.</p>
+            <p className="text-[10px] font-extrabold uppercase tracking-[0.12em] text-accent">First setup</p>
+            <h1 className="mt-3 text-[30px] font-extrabold leading-[35px] tracking-[-0.04em] text-primary">{name ? `Welcome, ${name}` : "Welcome to PolicyHQ"}</h1>
+            <p className="mt-3 max-w-xl text-[13px] font-semibold leading-6 text-slate-500">Bring in your policy book first. PolicyHQ will turn it into renewals, commissions, and daily contact actions.</p>
           </CardHeader>
           <CardContent className="p-7 pt-6">
-            <div className="grid gap-3.5 sm:grid-cols-3">
-              <SetupStep number="1" title="Import clients" body="Upload Excel or CSV from your insurer." onClick={onImportClients} />
-              <SetupStep number="2" title="Review policies" body="Confirm class, expiry, and premium." href={navHref(base, "policies")} />
-              <SetupStep number="3" title="Track actions" body="Renewals, birthdays, contacts, and commissions appear here." href={navHref(base, "dashboard")} />
+            <div className="grid gap-3 sm:grid-cols-2">
+              <button type="button" onClick={onImportClients} className="min-h-[112px] rounded-[14px] border border-accent bg-accent p-5 text-left text-white shadow-soft transition hover:-translate-y-0.5 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-accent">
+                <Upload className="h-5 w-5" />
+                <strong className="mt-4 block text-lg font-extrabold tracking-[-0.04em]">Import Clients</strong>
+                <span className="mt-2 block text-xs font-bold leading-5 text-white/85">Best for agents with an existing Excel or CSV list.</span>
+              </button>
+              <button type="button" onClick={onAddPolicy} className="min-h-[112px] rounded-[14px] border border-slate-200 bg-white p-5 text-left transition hover:border-accent hover:bg-accent/5 focus:outline-none focus:ring-2 focus:ring-accent">
+                <Plus className="h-5 w-5 text-accent" />
+                <strong className="mt-4 block text-lg font-extrabold tracking-[-0.04em] text-primary">Add Policy</strong>
+                <span className="mt-2 block text-xs font-bold leading-5 text-slate-500">Best for adding one new customer at a time.</span>
+              </button>
             </div>
-            <Button type="button" onClick={onImportClients} className="mt-6 min-w-[118px] rounded-[10px] text-[10px] font-extrabold">
-              Import Clients
-            </Button>
+            <button type="button" onClick={onAddProspect} className="mt-3 flex min-h-[58px] w-full items-center justify-between gap-4 rounded-[13px] border border-slate-200 bg-slate-50 px-4 py-3 text-left transition hover:border-accent hover:bg-accent/5 focus:outline-none focus:ring-2 focus:ring-accent">
+              <span className="min-w-0">
+                <strong className="block text-sm font-extrabold text-primary">Add Prospect</strong>
+                <span className="mt-1 block text-[11px] font-bold leading-5 text-slate-500">Track a lead before they buy a policy.</span>
+              </span>
+              <span className="inline-flex min-h-9 shrink-0 items-center rounded-[10px] bg-primary px-3 text-[10px] font-extrabold text-white">Add Prospect</span>
+            </button>
+            <div className="mt-5 grid gap-3 sm:grid-cols-3">
+              <SetupStep number="1" title="Add book" body="Import a list or add the first policy." />
+              <SetupStep number="2" title="Review gaps" body="Fix any Needs Review records." />
+              <SetupStep number="3" title="Work daily" body="Use renewals, follow-ups, and commissions." />
+            </div>
           </CardContent>
         </Card>
-        <Card className="min-h-[248px]">
+        <Card className="min-h-[292px]">
           <CardHeader className="border-b-0 p-7 pb-0">
-            <h2 className="text-[22px] font-extrabold leading-[26px] tracking-[-0.04em] text-primary">What becomes active after setup?</h2>
+            <h2 className="text-[22px] font-extrabold leading-[26px] tracking-[-0.04em] text-primary">What activates next</h2>
+            <p className="mt-3 text-[13px] font-semibold leading-6 text-slate-500">These areas wake up as soon as your first policy records exist.</p>
           </CardHeader>
           <CardContent className="space-y-[13px] p-7 pt-6">
-            <DashboardChecklistItem title="Revenue protection" body="Renewals, lapse risk, and premium windows." />
-            <DashboardChecklistItem title="Relationship manager" body="Birthdays, follow-ups, and clients to contact." />
-            <DashboardChecklistItem title="Daily activity" body="Recent actions and priority records." />
+            <DashboardChecklistItem title="Revenue protection" body="Expiring policies and premium due windows." />
+            <DashboardChecklistItem title="Relationship manager" body="Birthdays, prospects, and clients to contact." />
+            <DashboardChecklistItem title="Commission tracking" body="Paid, pending, and month totals." />
             <Button asChild variant="outline" className="mt-1 min-w-[118px] rounded-[10px] text-[10px] font-extrabold">
-              <Link href={navHref(base, "prospects")}>Add Prospect</Link>
+              <Link href={navHref(base, "prospects")}>View Prospects</Link>
             </Button>
           </CardContent>
         </Card>
       </div>
       <div className="grid gap-6 lg:grid-cols-2">
-        <DashboardEmptyPillar title="Revenue Protection" body="Waiting for policy data" helper="Import clients or add a first policy to activate this card." href={navHref(base, "policies")} />
-        <DashboardEmptyPillar title="Relationship Manager" body="Waiting for client activity" helper="Birthdays and follow-ups appear when client details are captured." href={navHref(base, "clients")} />
+        <DashboardEmptyPillar title="Revenue Protection" body="Activates after the first policy" helper="PolicyHQ will sort renewals into this week, next week, and this month." href={navHref(base, "policies")} />
+        <DashboardEmptyPillar title="Relationship Manager" body="Activates after client activity" helper="Birthdays, prospect follow-ups, and clients to contact will appear here." href={navHref(base, "clients")} />
       </div>
     </div>
   );
@@ -1203,7 +1212,7 @@ function SetupStep({ number, title, body, href, onClick }: { number: string; tit
     </>
   );
 
-  const className = "min-h-28 rounded-xl border border-slate-200 bg-white p-[18px] text-left transition hover:border-accent hover:bg-accent/5 focus:outline-none focus:ring-2 focus:ring-accent";
+  const className = "min-h-[92px] rounded-xl border border-slate-200 bg-white p-[16px] text-left transition hover:border-accent hover:bg-accent/5 focus:outline-none focus:ring-2 focus:ring-accent";
   if (onClick) {
     return (
       <button type="button" onClick={onClick} className={className}>
@@ -1212,8 +1221,12 @@ function SetupStep({ number, title, body, href, onClick }: { number: string; tit
     );
   }
 
+  if (!href) {
+    return <div className={className}>{content}</div>;
+  }
+
   return (
-    <Link href={href ?? "#"} className={className}>
+    <Link href={href} className={className}>
       {content}
     </Link>
   );
@@ -1240,6 +1253,20 @@ function DashboardEmptyPillar({ title, body, helper, href }: { title: string; bo
         <DashboardActionRow title="Get started" body={helper} badge="Empty" tone="neutral" href={href} />
       </CardContent>
     </Card>
+  );
+}
+
+function NeedsReviewPrompt({ count, href }: { count: number; href: string }) {
+  return (
+    <Link href={href} className="block rounded-xl focus:outline-none focus:ring-2 focus:ring-accent">
+      <div className="flex flex-col gap-3 rounded-xl border border-warning/30 bg-warning/10 p-4 transition hover:border-accent hover:bg-accent/10 sm:flex-row sm:items-center sm:justify-between">
+        <div className="min-w-0">
+          <p className="text-sm font-extrabold text-primary">{count} polic{count === 1 ? "y" : "ies"} need review</p>
+          <p className="mt-1 text-xs font-bold leading-5 text-slate-600">Imported records with missing details are waiting in Policies.</p>
+        </div>
+        <span className="inline-flex min-h-10 shrink-0 items-center justify-center rounded-[10px] bg-accent px-4 text-[10px] font-extrabold text-white">Review Policies</span>
+      </div>
+    </Link>
   );
 }
 
@@ -2657,6 +2684,9 @@ function ImportClientsModal({ onClose, onImport }: { onClose: () => void; onImpo
   const reviewWarnings = useMemo(() => importReviewWarnings(rows), [rows]);
   const importErrors = [...errors, ...rowErrors];
   const canImport = rows.length > 0 && importErrors.length === 0;
+  const readyRows = useMemo(() => rows.filter((row, index) => importRowIssues(row, index + 2).length === 0 && importRowReviewNotes(row).length === 0).length, [rows]);
+  const reviewRows = useMemo(() => rows.filter((row, index) => importRowIssues(row, index + 2).length === 0 && importRowReviewNotes(row).length > 0).length, [rows]);
+  const blockedRows = useMemo(() => rows.filter((row, index) => importRowIssues(row, index + 2).length > 0).length, [rows]);
 
   function updateImportRow(index: number, field: keyof ImportClientRow, value: string) {
     setRows((current) => current.map((row, rowIndex) => {
@@ -2726,17 +2756,21 @@ function ImportClientsModal({ onClose, onImport }: { onClose: () => void; onImpo
         ) : null}
         {rows.length ? (
           <div className="space-y-3">
-            <p className="text-sm font-bold text-slate-600">
-              {rows.length} row{rows.length === 1 ? "" : "s"} loaded. Some rows may need review before import.
-            </p>
+            <div className="grid gap-3 sm:grid-cols-4">
+              <ImportSummaryCard label="Rows Loaded" value={rows.length} tone="slate" />
+              <ImportSummaryCard label="Ready" value={readyRows} tone="green" />
+              <ImportSummaryCard label="Needs Review" value={reviewRows} tone="amber" />
+              <ImportSummaryCard label="Must Fix" value={blockedRows} tone="red" />
+            </div>
             {rowErrors.length ? (
               <div className="rounded-xl bg-warning/10 p-4 text-sm font-semibold text-warning">
+                <p className="mb-2 font-extrabold text-primary">Fix these before importing.</p>
                 {rowErrors.slice(0, 8).map((error) => <p key={error}>{error}</p>)}
                 {rowErrors.length > 8 ? <p>Plus {rowErrors.length - 8} more item{rowErrors.length - 8 === 1 ? "" : "s"} to fix.</p> : null}
               </div>
             ) : reviewWarnings.length ? (
               <div className="rounded-xl bg-warning/10 p-4 text-sm font-semibold text-warning">
-                <p>{reviewWarnings.length} row{reviewWarnings.length === 1 ? "" : "s"} will be imported as Needs Review.</p>
+                <p className="font-extrabold text-primary">{reviewRows} row{reviewRows === 1 ? "" : "s"} will be imported as Needs Review.</p>
                 {reviewWarnings.slice(0, 5).map((warning) => <p key={warning}>{warning}</p>)}
                 {reviewWarnings.length > 5 ? <p>Plus {reviewWarnings.length - 5} more review note{reviewWarnings.length - 5 === 1 ? "" : "s"}.</p> : null}
               </div>
@@ -2749,6 +2783,8 @@ function ImportClientsModal({ onClose, onImport }: { onClose: () => void; onImpo
                   key={`${row.policy_number}-${index}`}
                   row={row}
                   index={index}
+                  issues={importRowIssues(row, index + 2)}
+                  reviewNotes={importRowReviewNotes(row)}
                   onUpdate={(field, value) => updateImportRow(index, field, value)}
                 />
               ))}
@@ -2764,14 +2800,37 @@ function ImportClientsModal({ onClose, onImport }: { onClose: () => void; onImpo
   );
 }
 
-function ImportRowCard({ row, index, onUpdate }: { row: ImportClientRow; index: number; onUpdate: (field: keyof ImportClientRow, value: string) => void }) {
+function ImportSummaryCard({ label, value, tone }: { label: string; value: number; tone: "slate" | "green" | "amber" | "red" }) {
+  const color = tone === "green" ? "text-success" : tone === "amber" ? "text-warning" : tone === "red" ? "text-danger" : "text-primary";
+  return (
+    <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
+      <p className="text-[10px] font-extrabold uppercase tracking-[0.08em] text-slate-500">{label}</p>
+      <strong className={`mt-1 block text-2xl font-extrabold ${color}`}>{value}</strong>
+    </div>
+  );
+}
+
+function ImportRowCard({ row, index, issues, reviewNotes, onUpdate }: { row: ImportClientRow; index: number; issues: string[]; reviewNotes: string[]; onUpdate: (field: keyof ImportClientRow, value: string) => void }) {
+  const status = issues.length ? { label: "Must Fix", tone: "red" as const } : reviewNotes.length ? { label: "Needs Review", tone: "amber" as const } : { label: "Ready", tone: "green" as const };
   return (
     <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-      <div className="mb-4 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-        <h3 className="font-extrabold text-primary">Row {index + 2}</h3>
-        <p className="text-sm font-semibold text-slate-500">{row.client_name || "Client name needed"} · {row.policy_number || "Policy number needed"}</p>
+      <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <h3 className="font-extrabold text-primary">Row {index + 2}</h3>
+          <p className="text-sm font-semibold text-slate-500">{row.client_name || "Client name needed"} · {row.policy_number || "Policy number needed"}</p>
+        </div>
+        <Badge tone={status.tone}>{status.label}</Badge>
       </div>
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      {issues.length ? (
+        <div className="mb-4 rounded-xl bg-danger/10 p-3 text-xs font-bold leading-5 text-danger">
+          {issues.map((issue) => <p key={issue}>{issue}</p>)}
+        </div>
+      ) : reviewNotes.length ? (
+        <div className="mb-4 rounded-xl bg-warning/10 p-3 text-xs font-bold leading-5 text-warning">
+          {reviewNotes.map((note) => <p key={note}>{note}</p>)}
+        </div>
+      ) : null}
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
         <ImportField label="Client" value={row.client_name} onChange={(value) => onUpdate("client_name", value)} required />
         <ImportField label="Phone" value={row.phone_number} onChange={(value) => onUpdate("phone_number", value)} review={!row.phone_number.trim()} />
         <ImportField label="Policy No." value={row.policy_number} onChange={(value) => onUpdate("policy_number", value)} required />
@@ -2783,22 +2842,27 @@ function ImportRowCard({ row, index, onUpdate }: { row: ImportClientRow; index: 
           </Select>
         </label>
         <ImportField label="Insurer" value={row.insurer_name} onChange={(value) => onUpdate("insurer_name", value)} required />
-        <ImportField label="Start Date" type="date" value={row.policy_start_date} onChange={(value) => onUpdate("policy_start_date", value)} review={!row.policy_start_date} />
         <ImportField label="End Date" type="date" value={row.policy_end_date} onChange={(value) => onUpdate("policy_end_date", value)} required />
-        {row.policy_type === "Motor" ? <ImportField label="Vehicle Number" value={row.vehicle_number ?? ""} onChange={(value) => onUpdate("vehicle_number", value)} review={!row.vehicle_number?.trim()} /> : null}
-        {row.policy_type === "Property" ? <ImportField label="Property Location" value={row.property_location ?? ""} onChange={(value) => onUpdate("property_location", value)} review={!row.property_location?.trim()} /> : null}
         <ImportField label="Premium" type="number" value={row.premium ? String(row.premium) : ""} onChange={(value) => onUpdate("premium", value)} review={row.premium === undefined} />
-        <ImportField label="Commission Amount" type="number" value={row.commission_amount ? String(row.commission_amount) : ""} onChange={(value) => onUpdate("commission_amount", value)} />
-        <ImportField label="Commission Rate" type="number" value={row.commission_rate !== undefined ? String(row.commission_rate) : ""} onChange={(value) => onUpdate("commission_rate", value)} review={row.commission_rate === undefined} />
-        <label className="block text-sm font-semibold">
-          Commission Status
-          <Select value={row.commission_status ?? "Pending"} onChange={(event) => onUpdate("commission_status", event.target.value)} className="mt-1">
-            <option>Paid</option>
-            <option>Pending</option>
-          </Select>
-        </label>
-        <ImportField label="Payment Date" type="date" value={row.commission_payment_date ?? ""} onChange={(value) => onUpdate("commission_payment_date", value)} />
       </div>
+      <details className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-3">
+        <summary className="cursor-pointer text-xs font-extrabold uppercase tracking-[0.08em] text-slate-500">More fields</summary>
+        <div className="mt-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+          <ImportField label="Start Date" type="date" value={row.policy_start_date} onChange={(value) => onUpdate("policy_start_date", value)} review={!row.policy_start_date} />
+          {row.policy_type === "Motor" ? <ImportField label="Vehicle Number" value={row.vehicle_number ?? ""} onChange={(value) => onUpdate("vehicle_number", value)} review={!row.vehicle_number?.trim()} /> : null}
+          {row.policy_type === "Property" ? <ImportField label="Property Location" value={row.property_location ?? ""} onChange={(value) => onUpdate("property_location", value)} review={!row.property_location?.trim()} /> : null}
+          <ImportField label="Commission Amount" type="number" value={row.commission_amount ? String(row.commission_amount) : ""} onChange={(value) => onUpdate("commission_amount", value)} />
+          <ImportField label="Commission Rate" type="number" value={row.commission_rate !== undefined ? String(row.commission_rate) : ""} onChange={(value) => onUpdate("commission_rate", value)} review={row.commission_rate === undefined} />
+          <label className="block text-sm font-semibold">
+            Commission Status
+            <Select value={row.commission_status ?? "Pending"} onChange={(event) => onUpdate("commission_status", event.target.value)} className="mt-1">
+              <option>Paid</option>
+              <option>Pending</option>
+            </Select>
+          </label>
+          <ImportField label="Payment Date" type="date" value={row.commission_payment_date ?? ""} onChange={(value) => onUpdate("commission_payment_date", value)} />
+        </div>
+      </details>
     </div>
   );
 }
@@ -3771,40 +3835,46 @@ function compareLapseShieldStatement(lifePolicies: PolicyWithClient[], statement
 }
 
 function validateImportRows(rows: ImportClientRow[]) {
+  return rows.flatMap((row, index) => importRowIssues(row, index + 2));
+}
+
+function importRowIssues(row: ImportClientRow, rowNumber: number) {
   const errors: string[] = [];
-  rows.forEach((row, index) => {
-    const rowNumber = index + 2;
-    if (!row.client_name.trim()) errors.push(`Row ${rowNumber}: add the client name.`);
-    if (!row.policy_number.trim()) errors.push(`Row ${rowNumber}: add the policy number.`);
-    if (row.policy_number && !isValidPolicyNumber(row.policy_number)) errors.push(`Row ${rowNumber}: policy number format needs checking.`);
-    if (!row.policy_type) errors.push(`Row ${rowNumber}: choose the policy type.`);
-    if (!row.insurer_name.trim()) errors.push(`Row ${rowNumber}: add the insurer name.`);
-    if (row.insurer_name && !resolveImportInsurerName(row.insurer_name, row.policy_type)) errors.push(`Row ${rowNumber}: choose an approved insurer name.`);
-    if (!row.policy_end_date) errors.push(`Row ${rowNumber}: add the policy end date.`);
-    if (row.policy_start_date && !/^\d{4}-\d{2}-\d{2}$/.test(row.policy_start_date)) errors.push(`Row ${rowNumber}: start date must be YYYY-MM-DD.`);
-    if (row.policy_end_date && !/^\d{4}-\d{2}-\d{2}$/.test(row.policy_end_date)) errors.push(`Row ${rowNumber}: end date must be YYYY-MM-DD.`);
-    if (row.date_of_birth && !/^\d{4}-\d{2}-\d{2}$/.test(row.date_of_birth)) errors.push(`Row ${rowNumber}: date of birth must be YYYY-MM-DD.`);
-    if (row.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(row.email)) errors.push(`Row ${rowNumber}: email is invalid.`);
-    if (row.phone_number && !/^\+?[0-9 ()-]{8,20}$/.test(row.phone_number)) errors.push(`Row ${rowNumber}: phone number format needs checking.`);
-    if (row.commission_rate !== undefined && row.commission_rate < 0) errors.push(`Row ${rowNumber}: commission rate cannot be negative.`);
-    if (row.commission_status === "Paid" && row.commission_payment_date && !/^\d{4}-\d{2}-\d{2}$/.test(row.commission_payment_date)) errors.push(`Row ${rowNumber}: commission payment date must be YYYY-MM-DD.`);
-  });
+  if (!row.client_name.trim()) errors.push(`Row ${rowNumber}: add the client name.`);
+  if (!row.policy_number.trim()) errors.push(`Row ${rowNumber}: add the policy number.`);
+  if (row.policy_number && !isValidPolicyNumber(row.policy_number)) errors.push(`Row ${rowNumber}: policy number format needs checking.`);
+  if (!row.policy_type) errors.push(`Row ${rowNumber}: choose the policy type.`);
+  if (!row.insurer_name.trim()) errors.push(`Row ${rowNumber}: add the insurer name.`);
+  if (row.insurer_name && !resolveImportInsurerName(row.insurer_name, row.policy_type)) errors.push(`Row ${rowNumber}: choose an approved insurer name.`);
+  if (!row.policy_end_date) errors.push(`Row ${rowNumber}: add the policy end date.`);
+  if (row.policy_start_date && !/^\d{4}-\d{2}-\d{2}$/.test(row.policy_start_date)) errors.push(`Row ${rowNumber}: start date must be YYYY-MM-DD.`);
+  if (row.policy_end_date && !/^\d{4}-\d{2}-\d{2}$/.test(row.policy_end_date)) errors.push(`Row ${rowNumber}: end date must be YYYY-MM-DD.`);
+  if (row.date_of_birth && !/^\d{4}-\d{2}-\d{2}$/.test(row.date_of_birth)) errors.push(`Row ${rowNumber}: date of birth must be YYYY-MM-DD.`);
+  if (row.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(row.email)) errors.push(`Row ${rowNumber}: email is invalid.`);
+  if (row.phone_number && !/^\+?[0-9 ()-]{8,20}$/.test(row.phone_number)) errors.push(`Row ${rowNumber}: phone number format needs checking.`);
+  if (row.commission_rate !== undefined && row.commission_rate < 0) errors.push(`Row ${rowNumber}: commission rate cannot be negative.`);
+  if (row.commission_status === "Paid" && row.commission_payment_date && !/^\d{4}-\d{2}-\d{2}$/.test(row.commission_payment_date)) errors.push(`Row ${rowNumber}: commission payment date must be YYYY-MM-DD.`);
   return errors;
 }
 
 function importReviewWarnings(rows: ImportClientRow[]) {
   const warnings: string[] = [];
   rows.forEach((row, index) => {
-    const missing: string[] = [];
-    if (!row.phone_number.trim()) missing.push("phone");
-    if (!row.policy_start_date) missing.push("start date");
-    if (row.premium === undefined) missing.push("premium");
-    if (row.commission_rate === undefined) missing.push("commission rate");
-    if (row.policy_type === "Motor" && !row.vehicle_number?.trim()) missing.push("vehicle number");
-    if (row.policy_type === "Property" && !row.property_location?.trim()) missing.push("property location");
+    const missing = importRowReviewNotes(row);
     if (missing.length) warnings.push(`Row ${index + 2}: ${missing.join(", ")} missing.`);
   });
   return warnings;
+}
+
+function importRowReviewNotes(row: ImportClientRow) {
+  const missing: string[] = [];
+  if (!row.phone_number.trim()) missing.push("phone");
+  if (!row.policy_start_date) missing.push("start date");
+  if (row.premium === undefined) missing.push("premium");
+  if (row.commission_rate === undefined) missing.push("commission rate");
+  if (row.policy_type === "Motor" && !row.vehicle_number?.trim()) missing.push("vehicle number");
+  if (row.policy_type === "Property" && !row.property_location?.trim()) missing.push("property location");
+  return missing;
 }
 
 function normalizeImportPolicyType(value: string | undefined): PolicyType | "" {
