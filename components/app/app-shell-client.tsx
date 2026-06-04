@@ -123,6 +123,7 @@ type LapseShieldReview = {
   statementRows: number;
 };
 type CommissionPaymentFilter = "All" | "Paid" | "Pending";
+type CommissionPeriodFilter = "All" | "This Month";
 type CommissionDisplayStatus = "Pending" | "Overdue" | "Paid";
 type CommissionClassFilter = "All" | InsuranceCategory;
 type NavItem = readonly [Section | "admin", LucideIcon, string];
@@ -154,7 +155,8 @@ export function AppShell({
   renewalRange,
   dashboardFocus,
   clientId,
-  prospectFilter
+  prospectFilter,
+  commissionFilter
 }: {
   initialData: AppData;
   section?: Section;
@@ -163,6 +165,7 @@ export function AppShell({
   dashboardFocus?: "birthdays" | "anniversaries" | "life-retention" | "lapse-shield" | "recovered-life";
   clientId?: string;
   prospectFilter?: "today";
+  commissionFilter?: "paid-this-month";
 }) {
   const [data, setData] = useState(initialData);
   const [active, setActive] = useState<Section>(section);
@@ -866,6 +869,7 @@ export function AppShell({
       totalEarned={totalEarned}
       totalPaidThisMonth={totalPaidThisMonth}
       base={base}
+      initialFilter={commissionFilter}
       markPaid={markPaid}
       openPolicy={setDetailPolicy}
       onExport={(commissions) => downloadCsv("policyhq-commissions", commissionRows(commissions, data.policies))}
@@ -1110,7 +1114,7 @@ function Dashboard({
       <div className="grid gap-[13px] md:grid-cols-2 xl:grid-cols-[136px_136px_168px_168px_168px]">
         <DashboardStatLink label="Total Clients" value={data.clients.length} href={navHref(base, "clients")} />
         <DashboardStatLink label="Active Policies" value={active.length} href={navHref(base, "policies")} />
-        <DashboardStatLink label="Commissions" value={formatDashboardCurrency(totalPaidThisMonth)} href={navHref(base, "commissions")} wide />
+        <DashboardStatLink label="Commissions" value={formatDashboardCurrency(totalPaidThisMonth)} href={`${navHref(base, "commissions")}?filter=paid-this-month`} wide />
         <DashboardStatLink label="Premium Due" value={formatDashboardCurrency(premiumDueThisMonth)} href={`${base}/renewals/month`} wide />
         <ProspectsDashboardCard total={data.prospects.length} dueToday={followUpsDueToday} href={navHref(base, "prospects")} />
       </div>
@@ -1313,6 +1317,7 @@ function RevenueProtectionPanel({ mix, metrics, base }: { mix: DashboardBusiness
 }
 
 function RelationshipManagerPanel({ metrics, birthdays, base, onOpenClientContacts }: { metrics: DashboardPanelMetric[]; birthdays: Client[]; base: string; onOpenClientContacts: () => void }) {
+  const action = dashboardRelationshipAction(metrics, base);
   return (
     <Card className="min-h-[250px] overflow-hidden">
       <CardHeader className="border-b-0 p-[23px] pb-0">
@@ -1338,7 +1343,7 @@ function RelationshipManagerPanel({ metrics, birthdays, base, onOpenClientContac
         </div>
         {birthdays.length ? (
           <DashboardBirthdayAction client={birthdays[0]} href={`${base}/birthdays`} />
-        ) : <DashboardActionRow {...dashboardRelationshipAction(metrics, base)} />}
+        ) : <DashboardActionRow {...action} onClick={action.title === "Clients to contact" ? onOpenClientContacts : undefined} />}
       </CardContent>
     </Card>
   );
@@ -1369,16 +1374,29 @@ function DashboardPanelMetricCard({ metric, onClick }: { metric: DashboardPanelM
   );
 }
 
-function DashboardActionRow({ title, body, badge, tone, href }: { title: string; body: string; badge: string; tone: "neutral" | "danger" | "warning" | "success"; href: string }) {
+function DashboardActionRow({ title, body, badge, tone, href, onClick }: { title: string; body: string; badge: string; tone: "neutral" | "danger" | "warning" | "success"; href: string; onClick?: () => void }) {
   const background = tone === "danger" ? "bg-danger/10" : tone === "warning" ? "bg-warning/10" : tone === "success" ? "bg-success/10" : "bg-slate-50";
   const badgeColor = tone === "danger" ? "bg-danger" : tone === "warning" ? "bg-warning" : tone === "success" ? "bg-success" : "bg-primary";
-  return (
-    <Link href={href} className={`mt-[17px] flex min-h-[58px] items-center justify-between gap-4 rounded-[10px] border border-slate-200 px-3.5 py-[13px] transition hover:border-accent hover:bg-accent/5 focus:outline-none focus:ring-2 focus:ring-accent ${background}`}>
+  const content = (
+    <>
       <div className="min-w-0">
         <strong className="block truncate text-[13px] font-extrabold text-primary">{title}</strong>
         <span className="mt-1 block text-[10px] font-bold leading-[1.35] text-slate-500">{body}</span>
       </div>
       <span className={`min-w-[68px] shrink-0 rounded-full px-2.5 py-2 text-center text-[9px] font-extrabold text-white ${badgeColor}`}>{badge}</span>
+    </>
+  );
+  const className = `mt-[17px] flex min-h-[58px] items-center justify-between gap-4 rounded-[10px] border border-slate-200 px-3.5 py-[13px] transition hover:border-accent hover:bg-accent/5 focus:outline-none focus:ring-2 focus:ring-accent ${background}`;
+  if (onClick) {
+    return (
+      <button type="button" onClick={onClick} className={`${className} w-full text-left`}>
+        {content}
+      </button>
+    );
+  }
+  return (
+    <Link href={href} className={className}>
+      {content}
     </Link>
   );
 }
@@ -2291,8 +2309,29 @@ function Policies({ policies, clients, onAdd, onEdit, onDelete, onExport, update
   );
 }
 
-function Commissions({ data, totalEarned, totalPaidThisMonth, base, markPaid, openPolicy, onExport, onWriteAttempt }: { data: AppData; totalEarned: number; totalPaidThisMonth: number; base: string; markPaid: (commission: Commission) => void; openPolicy: (policy: PolicyWithClient) => void; onExport: (commissions: Commission[]) => void; onWriteAttempt: () => boolean }) {
-  const [paymentFilter, setPaymentFilter] = useState<CommissionPaymentFilter>("All");
+function Commissions({
+  data,
+  totalEarned,
+  totalPaidThisMonth,
+  base,
+  initialFilter,
+  markPaid,
+  openPolicy,
+  onExport,
+  onWriteAttempt
+}: {
+  data: AppData;
+  totalEarned: number;
+  totalPaidThisMonth: number;
+  base: string;
+  initialFilter?: "paid-this-month";
+  markPaid: (commission: Commission) => void;
+  openPolicy: (policy: PolicyWithClient) => void;
+  onExport: (commissions: Commission[]) => void;
+  onWriteAttempt: () => boolean;
+}) {
+  const [paymentFilter, setPaymentFilter] = useState<CommissionPaymentFilter>(initialFilter === "paid-this-month" ? "Paid" : "All");
+  const [periodFilter, setPeriodFilter] = useState<CommissionPeriodFilter>(initialFilter === "paid-this-month" ? "This Month" : "All");
   const [classFilter, setClassFilter] = useState<CommissionClassFilter>("All");
   const [confirmingId, setConfirmingId] = useState<string | null>(null);
   const [flaggedIds, setFlaggedIds] = useState<Set<string>>(new Set());
@@ -2307,8 +2346,9 @@ function Commissions({ data, totalEarned, totalPaidThisMonth, base, markPaid, op
   });
   const rows = commissionItems.filter((item) => {
     const paymentMatches = paymentFilter === "All" || item.commission.payment_status === paymentFilter;
+    const periodMatches = periodFilter === "All" || isCurrentMonth(commissionEarnedDate(item.commission));
     const classMatches = classFilter === "All" || item.businessClass === classFilter;
-    return paymentMatches && classMatches;
+    return paymentMatches && periodMatches && classMatches;
   }).sort(sortCommissionItems);
   const pendingTotal = commissionItems.filter((item) => item.displayStatus === "Pending").reduce((sum, item) => sum + item.amount, 0);
   const overdueItems = commissionItems.filter((item) => item.displayStatus === "Overdue");
@@ -2374,6 +2414,10 @@ function Commissions({ data, totalEarned, totalPaidThisMonth, base, markPaid, op
             </div>
           </div>
           <div className="flex flex-wrap gap-2">
+            <Select value={periodFilter} onChange={(event) => setPeriodFilter(event.target.value as CommissionPeriodFilter)}>
+              <option>All</option>
+              <option>This Month</option>
+            </Select>
             <Select value={paymentFilter} onChange={(e) => setPaymentFilter(e.target.value as CommissionPaymentFilter)}>
               <option>All</option>
               <option>Paid</option>

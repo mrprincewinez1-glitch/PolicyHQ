@@ -11,6 +11,7 @@ type AppShellProps = {
   dashboardFocus?: "birthdays" | "anniversaries" | "life-retention" | "lapse-shield" | "recovered-life";
   clientId?: string;
   prospectFilter?: "today";
+  commissionFilter?: "paid-this-month";
 };
 
 const AppShellClient = dynamic(
