@@ -79,6 +79,7 @@ import {
 } from "@/lib/utils";
 
 type Section = "dashboard" | "clients" | "prospects" | "policies" | "commissions" | "notifications" | "profile";
+type PolicyPageFilter = "all" | "needs-review";
 type ModalState =
   | { type: "demo" }
   | { type: "client"; client?: Client }
@@ -156,6 +157,7 @@ export function AppShell({
   dashboardFocus,
   clientId,
   prospectFilter,
+  policyFilter,
   commissionFilter
 }: {
   initialData: AppData;
@@ -165,6 +167,7 @@ export function AppShell({
   dashboardFocus?: "birthdays" | "anniversaries" | "life-retention" | "lapse-shield" | "recovered-life";
   clientId?: string;
   prospectFilter?: "today";
+  policyFilter?: "needs-review";
   commissionFilter?: "paid-this-month";
 }) {
   const [data, setData] = useState(initialData);
@@ -860,6 +863,7 @@ export function AppShell({
       onEdit={(policy) => blockWrite() || setModal({ type: "policy", policy })}
       onDelete={(policy) => blockWrite() || setModal({ type: "confirm", title: "Delete policy?", body: `This will permanently delete ${policy.policy_number}.`, action: () => deletePolicy(policy) })}
       onExport={() => downloadCsv("policyhq-policies", policyRows(data.policies))}
+      initialFilter={policyFilter}
       updateRenewal={updateRenewal}
       openPolicy={setDetailPolicy}
     />
@@ -1118,7 +1122,7 @@ function Dashboard({
         <DashboardStatLink label="Premium Due" value={formatDashboardCurrency(premiumDueThisMonth)} href={`${base}/renewals/month`} wide />
         <ProspectsDashboardCard total={data.prospects.length} dueToday={followUpsDueToday} href={navHref(base, "prospects")} />
       </div>
-      {needsReviewCount ? <NeedsReviewPrompt count={needsReviewCount} href={navHref(base, "policies")} /> : null}
+      {needsReviewCount ? <NeedsReviewPrompt count={needsReviewCount} href={`${navHref(base, "policies")}?filter=needs-review`} /> : null}
       <div className="grid gap-6 lg:grid-cols-2">
         <RevenueProtectionPanel mix={dashboardMix} metrics={revenueMetrics} base={base} />
         <RelationshipManagerPanel metrics={relationshipMetrics} birthdays={todaysBirthdays} base={base} onOpenClientContacts={onOpenClientContacts} />
@@ -2247,19 +2251,32 @@ function ClientDetail({ client, policies, base, openPolicy, notes, saveNote }: {
   );
 }
 
-function Policies({ policies, clients, onAdd, onEdit, onDelete, onExport, updateRenewal, openPolicy }: { policies: PolicyWithClient[]; clients: Client[]; onAdd: () => void; onEdit: (policy: PolicyWithClient) => void; onDelete: (policy: PolicyWithClient) => void; onExport: () => void; updateRenewal: (id: string, status: RenewalStatus) => void; openPolicy: (policy: PolicyWithClient) => void }) {
+function Policies({ policies, clients, initialFilter, onAdd, onEdit, onDelete, onExport, updateRenewal, openPolicy }: { policies: PolicyWithClient[]; clients: Client[]; initialFilter?: "needs-review"; onAdd: () => void; onEdit: (policy: PolicyWithClient) => void; onDelete: (policy: PolicyWithClient) => void; onExport: () => void; updateRenewal: (id: string, status: RenewalStatus) => void; openPolicy: (policy: PolicyWithClient) => void }) {
   const [status, setStatus] = useState("All");
   const [type, setType] = useState("All");
-  const filtered = policies.filter((p) => (status === "All" || p.status === status) && (type === "All" || p.policy_type === type));
+  const [pageFilter, setPageFilter] = useState<PolicyPageFilter>(initialFilter === "needs-review" ? "needs-review" : "all");
+  const reviewCount = policies.filter(needsPolicyReview).length;
+  const filtered = policies.filter((p) => {
+    const reviewMatches = pageFilter === "all" || needsPolicyReview(p);
+    return reviewMatches && (status === "All" || p.status === status) && (type === "All" || p.policy_type === type);
+  });
   if (!policies.length) return <Empty title="No policies yet. Add your first policy to get started." action="Add Policy" onAction={onAdd} />;
   return (
     <div className="max-w-[1062px] space-y-6">
       <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-        <h1 className="text-[32px] font-extrabold leading-[44px] text-primary">Policies</h1>
+        <div>
+          <h1 className="text-[32px] font-extrabold leading-[44px] text-primary">Policies</h1>
+          {pageFilter === "needs-review" ? <p className="mt-1 text-sm font-bold text-slate-500">Imported records that need a quick cleanup before they are fully useful.</p> : null}
+        </div>
         <Button onClick={onAdd}><Plus className="h-4 w-4" /> Add Policy</Button>
       </div>
       <Card>
         <CardContent className="flex flex-wrap items-end gap-3 p-4">
+          <div className="flex flex-wrap gap-2">
+            <button type="button" onClick={() => setPageFilter("all")} className={`h-9 rounded-full px-5 text-xs font-extrabold ${pageFilter === "all" ? "bg-primary text-white" : "bg-slate-100 text-slate-600"}`}>All Policies</button>
+            <button type="button" onClick={() => setPageFilter("needs-review")} className={`h-9 rounded-full px-5 text-xs font-extrabold ${pageFilter === "needs-review" ? "bg-warning text-white" : "bg-warning/10 text-warning"}`}>Needs Review {reviewCount ? `(${reviewCount})` : ""}</button>
+          </div>
+          <div className="h-px w-full bg-slate-100" />
           <div className="flex flex-wrap gap-2">
             {["All", "Life", "Health", "Motor", "Property"].map((item) => (
               <button key={item} type="button" onClick={() => setType(item)} className={`h-9 rounded-full px-5 text-xs font-extrabold ${type === item ? "bg-accent/10 text-accent" : "bg-slate-100 text-slate-600"}`}>{item}</button>
@@ -2270,9 +2287,23 @@ function Policies({ policies, clients, onAdd, onEdit, onDelete, onExport, update
         </CardContent>
       </Card>
       <Card className="min-h-[520px]">
+      {!filtered.length ? (
+        <CardContent className="flex min-h-[420px] flex-col items-center justify-center p-6 text-center">
+          <ShieldCheck className="h-11 w-11 text-slate-300" />
+          <h2 className="mt-4 text-xl font-extrabold text-primary">{pageFilter === "needs-review" ? "No policies need review" : "No policies match these filters"}</h2>
+          <p className="mt-2 max-w-md text-sm font-semibold leading-6 text-slate-500">
+            {pageFilter === "needs-review" ? "All imported policy records have the key details PolicyHQ needs for renewals, commissions, and reports." : "Try clearing the status or policy type filter."}
+          </p>
+          <div className="mt-5 flex flex-wrap justify-center gap-3">
+            {pageFilter === "needs-review" ? <Button variant="outline" onClick={() => setPageFilter("all")}>View All Policies</Button> : <Button variant="outline" onClick={() => { setStatus("All"); setType("All"); setPageFilter("all"); }}>Clear Filters</Button>}
+            <Button onClick={onAdd}><Plus className="h-4 w-4" /> Add Policy</Button>
+          </div>
+        </CardContent>
+      ) : (
+      <>
       <div className="space-y-3 p-4 md:hidden">
         {filtered.map((policy) => (
-          <div key={policy.id} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+          <div key={policy.id} className={`rounded-xl border bg-white p-4 shadow-sm ${needsPolicyReview(policy) ? "border-warning/50" : "border-slate-200"}`}>
             <button type="button" onClick={() => openPolicy(policy)} className="block w-full text-left">
               <div className="flex items-start justify-between gap-3">
                 <div>
@@ -2289,6 +2320,7 @@ function Policies({ policies, clients, onAdd, onEdit, onDelete, onExport, update
                 <Info label="Expiry" value={formatDate(policy.expiry_date)} />
                 <div><UrgencyBadge date={policy.expiry_date} status={policy.renewal_status} /></div>
               </div>
+              {needsPolicyReview(policy) ? <PolicyReviewSummary policy={policy} /> : null}
             </button>
             <div className="mt-4 grid gap-2" onClick={(event) => event.stopPropagation()}>
               <Select value={policy.renewal_status} onChange={(event) => updateRenewal(policy.id, event.target.value as RenewalStatus)}>{renewalStatuses.map((item) => <option key={item}>{item}</option>)}</Select>
@@ -2301,7 +2333,9 @@ function Policies({ policies, clients, onAdd, onEdit, onDelete, onExport, update
           </div>
         ))}
       </div>
-      <div className="hidden overflow-auto md:block"><table className="w-full min-w-[1200px] text-sm"><thead className="sticky top-0 bg-slate-50"><tr>{["Client Name", "Policy Number", "Type", "Insurer", "Start Date", "Expiry Date", "Premium (GHS)", "Status", "Renewal Status", "Actions"].map((h) => <th className="px-4 py-3 text-left" key={h}>{h}</th>)}</tr></thead><tbody>{filtered.map((p) => <tr key={p.id} onClick={() => openPolicy(p)} className={`cursor-pointer border-t ${urgency(p.expiry_date) === "urgent" ? "bg-danger/10" : urgency(p.expiry_date) === "soon" ? "bg-warning/10" : "odd:bg-white even:bg-slate-50"}`}><td className="px-4 py-3 font-bold">{p.client.full_name}</td><td className="px-4 py-3"><div className="flex flex-wrap items-center gap-2"><span>{p.policy_number}</span><NeedsReviewBadge policy={p} /></div></td><td className="px-4 py-3">{p.policy_type}</td><td className="px-4 py-3">{p.insurer_name}</td><td className="px-4 py-3">{formatDate(p.start_date)}</td><td className="px-4 py-3">{formatDate(p.expiry_date)} <UrgencyBadge date={p.expiry_date} status={p.renewal_status} /></td><td className="px-4 py-3">{formatCurrency(p.premium_amount)}</td><td className="px-4 py-3"><Badge tone={p.status === "Active" ? "green" : "slate"}>{p.status}</Badge></td><td className="px-4 py-3" onClick={(e) => e.stopPropagation()}><Select value={p.renewal_status} onChange={(e) => updateRenewal(p.id, e.target.value as RenewalStatus)}>{renewalStatuses.map((s) => <option key={s}>{s}</option>)}</Select></td><td className="px-4 py-3" onClick={(e) => e.stopPropagation()}><WhatsAppButton href={renewalWhatsAppHref(p)} label="WhatsApp" /><Button variant="ghost" size="sm" onClick={() => onEdit(p)}>Edit</Button><Button variant="ghost" size="sm" onClick={() => onDelete(p)}><Trash2 className="h-4 w-4 text-danger" /></Button></td></tr>)}</tbody></table></div>
+      <div className="hidden overflow-auto md:block"><table className="w-full min-w-[1200px] text-sm"><thead className="sticky top-0 bg-slate-50"><tr>{["Client Name", "Policy Number", "Type", "Insurer", "Start Date", "Expiry Date", "Premium (GHS)", "Status", "Renewal Status", "Actions"].map((h) => <th className="px-4 py-3 text-left" key={h}>{h}</th>)}</tr></thead><tbody>{filtered.map((p) => <tr key={p.id} onClick={() => openPolicy(p)} className={`cursor-pointer border-t ${needsPolicyReview(p) ? "bg-warning/10" : urgency(p.expiry_date) === "urgent" ? "bg-danger/10" : urgency(p.expiry_date) === "soon" ? "bg-warning/10" : "odd:bg-white even:bg-slate-50"}`}><td className="px-4 py-3 font-bold">{p.client.full_name}</td><td className="px-4 py-3"><div className="flex flex-wrap items-center gap-2"><span>{p.policy_number}</span><NeedsReviewBadge policy={p} /></div>{needsPolicyReview(p) ? <PolicyReviewSummary policy={p} compact /> : null}</td><td className="px-4 py-3">{p.policy_type}</td><td className="px-4 py-3">{p.insurer_name}</td><td className="px-4 py-3">{formatDate(p.start_date)}</td><td className="px-4 py-3">{formatDate(p.expiry_date)} <UrgencyBadge date={p.expiry_date} status={p.renewal_status} /></td><td className="px-4 py-3">{formatCurrency(p.premium_amount)}</td><td className="px-4 py-3"><Badge tone={p.status === "Active" ? "green" : "slate"}>{p.status}</Badge></td><td className="px-4 py-3" onClick={(e) => e.stopPropagation()}><Select value={p.renewal_status} onChange={(e) => updateRenewal(p.id, e.target.value as RenewalStatus)}>{renewalStatuses.map((s) => <option key={s}>{s}</option>)}</Select></td><td className="px-4 py-3" onClick={(e) => e.stopPropagation()}><WhatsAppButton href={renewalWhatsAppHref(p)} label="WhatsApp" /><Button variant="ghost" size="sm" onClick={() => onEdit(p)}>Edit</Button><Button variant="ghost" size="sm" onClick={() => onDelete(p)}><Trash2 className="h-4 w-4 text-danger" /></Button></td></tr>)}</tbody></table></div>
+      </>
+      )}
     </Card>
     </div>
   );
@@ -3028,6 +3062,17 @@ function BusinessClassBadge({ value }: { value: InsuranceCategory }) {
 
 function NeedsReviewBadge({ policy }: { policy: PolicyWithClient }) {
   return needsPolicyReview(policy) ? <Badge tone="amber">Needs Review</Badge> : null;
+}
+
+function PolicyReviewSummary({ policy, compact = false }: { policy: PolicyWithClient; compact?: boolean }) {
+  if (!needsPolicyReview(policy)) return null;
+  const note = policy.notes?.replace(/^Needs Review:\s*/i, "").trim();
+  const text = note || "Open this policy and fill the missing details.";
+  return (
+    <p className={`${compact ? "mt-1 max-w-xs" : "mt-3 rounded-xl bg-warning/10 p-3"} text-xs font-bold leading-5 text-warning`}>
+      {compact ? `Review: ${text}` : text}
+    </p>
+  );
 }
 
 function ExistingClientDetails({ client }: { client: Client }) {
