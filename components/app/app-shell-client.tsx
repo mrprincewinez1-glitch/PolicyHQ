@@ -2677,6 +2677,12 @@ function PolicyModal({ policy, prospect, clients, onClose, onSave }: { policy?: 
   const selectedClient = clients.find((client) => client.id === selectedClientId);
   const normalizedPolicyNumber = normalizePolicyNumber(policyNumber);
   const showPolicyNumberError = policyNumber.trim().length > 0 && !isValidPolicyNumber(policyNumber);
+  const modalTitle = policy ? "Edit Policy" : prospect ? "Create Policy from Prospect" : "Add Policy";
+  const modalSubtitle = prospect
+    ? "Name and phone are prefilled. Add the policy details to convert this prospect into an active client."
+    : policy
+      ? "Update only what changed. PolicyHQ will keep renewals, commissions, and client records aligned."
+      : "Capture the client and policy together so renewals, commissions, and contact actions start working immediately.";
 
   function changePolicyType(nextType: PolicyType) {
     const nextCategory = insuranceCategoryForPolicyType(nextType);
@@ -2705,7 +2711,7 @@ function PolicyModal({ policy, prospect, clients, onClose, onSave }: { policy?: 
       client_id: existingClientId || undefined,
       new_client: clientMode === "new" ? {
         full_name: String(form.get("client_full_name") ?? ""),
-        phone_number: String(form.get("client_phone_number") ?? ""),
+        phone_number: normalizeGhanaPhoneNumber(String(form.get("client_phone_number") ?? "")),
         email: String(form.get("client_email") ?? ""),
         date_of_birth: dateOfBirthToIso(String(form.get("client_date_of_birth") ?? "")),
         address: String(form.get("client_address") ?? "")
@@ -2728,16 +2734,22 @@ function PolicyModal({ policy, prospect, clients, onClose, onSave }: { policy?: 
     });
   }
   return (
-    <ModalFrame title={policy ? "Edit Policy" : prospect ? "Create Policy from Prospect" : "Add New Policy"} onClose={onClose}>
-      <form onSubmit={submit} className="grid gap-4 md:grid-cols-2">
-        <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 md:col-span-2">
+    <ModalFrame title={modalTitle} onClose={onClose} wide>
+      <form onSubmit={submit} className="space-y-5">
+        <div className="rounded-2xl border border-accent/20 bg-accent/5 p-4">
+          <p className="text-sm font-bold leading-6 text-primary">{modalSubtitle}</p>
+          {policy && needsPolicyReview(policy) ? <p className="mt-2 rounded-xl bg-warning/10 p-3 text-xs font-bold leading-5 text-warning">This imported policy needs review. Fill the missing fields, then save to make reports and reminders cleaner.</p> : null}
+        </div>
+
+        <PolicyFormSection number="1" title="Client" helper="Choose an existing client or capture the person who bought the policy.">
+          {!policy ? (
           <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <h3 className="font-bold">Client</h3>
-            {!policy ? <div className="inline-flex rounded-xl bg-white p-1">
+            <div className="inline-flex rounded-xl bg-white p-1">
               <button type="button" className={`rounded-lg px-3 py-2 text-sm font-bold ${clientMode === "new" ? "bg-primary text-white" : "text-slate-500"}`} onClick={() => setClientMode("new")}>New client</button>
               <button type="button" className={`rounded-lg px-3 py-2 text-sm font-bold ${clientMode === "existing" ? "bg-primary text-white" : "text-slate-500"}`} onClick={() => setClientMode("existing")}>Existing client</button>
-            </div> : null}
+            </div>
           </div>
+          ) : null}
           {clientMode === "existing" ? (
             <div className="space-y-4">
               <label className="block text-sm font-semibold">Client<Select name="client_id" required value={selectedClientId} onChange={(event) => setSelectedClientId(event.target.value)} className="mt-1"><option value="" disabled>Select client</option>{clients.map((client) => <option value={client.id} key={client.id}>{client.full_name}</option>)}</Select></label>
@@ -2752,46 +2764,79 @@ function PolicyModal({ policy, prospect, clients, onClose, onSave }: { policy?: 
               <label className="block text-sm font-semibold">Address<Input name="client_address" className="mt-1 bg-white" /></label>
             </div>
           )}
+        </PolicyFormSection>
+
+        <div className="grid gap-5 lg:grid-cols-[1.12fr_0.88fr]">
+          <PolicyFormSection number="2" title="Policy Details" helper="These fields power renewal alerts and class-specific reporting.">
+            <div className="grid gap-4 sm:grid-cols-2">
+              <label className="block text-sm font-semibold">Policy Type<Select name="policy_type" value={selectedType} onChange={(event) => changePolicyType(event.target.value as PolicyType)} className="mt-1">{policyTypes.map((item) => <option key={item}>{item}</option>)}</Select></label>
+              <label className="block text-sm font-semibold">Business Class<Select name="insurance_category" value={insuranceCategory} onChange={(event) => changeInsuranceCategory(event.target.value as InsuranceCategory)} className="mt-1"><option>Life</option><option>Non-Life</option><option>Health</option></Select></label>
+              <label className="block text-sm font-semibold sm:col-span-2">
+                Policy Number
+                <Input
+                  name="policy_number"
+                  required
+                  value={policyNumber}
+                  onChange={(event) => setPolicyNumber(event.target.value)}
+                  onBlur={() => setPolicyNumber(normalizedPolicyNumber)}
+                  placeholder="e.g. MOT/ENT/24590"
+                  pattern="[A-Za-z0-9./-]{3,40}"
+                  title={policyNumberHelpText}
+                  className="mt-1"
+                />
+                <span className={`mt-1 block text-xs ${showPolicyNumberError ? "text-danger" : "text-slate-500"}`}>
+                  {showPolicyNumberError ? policyNumberHelpText : "Lowercase is accepted and saved as uppercase."}
+                </span>
+              </label>
+              {selectedType === "Motor" ? <label className="block text-sm font-semibold sm:col-span-2">Vehicle Number<Input name="vehicle_number" required defaultValue={policy?.vehicle_number ?? ""} placeholder="e.g. GR-4421-26" className="mt-1" /></label> : null}
+              {selectedType === "Property" ? <label className="block text-sm font-semibold sm:col-span-2">Property Address/Location<Input name="property_location" required defaultValue={policy?.property_location ?? ""} placeholder="e.g. East Legon Hills, Accra" className="mt-1" /></label> : null}
+              <div className="sm:col-span-2">
+                <InsurerAutocomplete category={insuranceCategory} value={insurerName} onChange={setInsurerName} />
+              </div>
+              <label className="block text-sm font-semibold">Start Date<Input name="start_date" type="date" required defaultValue={policy?.start_date} className="mt-1" /></label>
+              <label className="block text-sm font-semibold">Expiry Date<Input name="expiry_date" type="date" required defaultValue={policy?.expiry_date} className="mt-1" /></label>
+              <label className="block text-sm font-semibold">Policy Status<Select name="status" defaultValue={policy?.status ?? "Active"} className="mt-1">{policyStatuses.map((item) => <option key={item}>{item}</option>)}</Select></label>
+              <label className="block text-sm font-semibold">Renewal Status<Select name="renewal_status" defaultValue={policy?.renewal_status ?? "Upcoming"} className="mt-1">{renewalStatuses.map((item) => <option key={item}>{item}</option>)}</Select></label>
+            </div>
+          </PolicyFormSection>
+
+          <PolicyFormSection number="3" title="Money & Commission" helper="Enter what the client paid and how commission should be tracked.">
+            <div className="space-y-4">
+              <label className="block text-sm font-semibold">Premium Amount<Input name="premium_amount" type="number" min="0" step="0.01" required defaultValue={policy?.premium_amount} placeholder="0.00" className="mt-1" /></label>
+              <label className="block text-sm font-semibold">Commission Rate (%)<Input name="commission_rate" type="number" min="0" step="0.1" required defaultValue={policy?.commission?.commission_rate ?? 10} className="mt-1" /></label>
+              <label className="block text-sm font-semibold">Commission Status<Select name="payment_status" defaultValue={policy?.commission?.payment_status ?? "Pending"} className="mt-1"><option>Pending</option><option>Paid</option></Select></label>
+              <div className="rounded-xl bg-slate-50 p-3 text-xs font-bold leading-5 text-slate-500">
+                Use <span className="text-primary">Paid</span> for old policies where commission has already been received. Use <span className="text-primary">Pending</span> for new business still awaiting payment.
+              </div>
+            </div>
+          </PolicyFormSection>
         </div>
-        <div className="grid gap-4 md:col-span-2 md:grid-cols-2">
-          <div className="space-y-4">
-            <label className="block text-sm font-semibold">Policy Type<Select name="policy_type" value={selectedType} onChange={(event) => changePolicyType(event.target.value as PolicyType)} className="mt-1">{policyTypes.map((item) => <option key={item}>{item}</option>)}</Select></label>
-            <label className="block text-sm font-semibold">Business Class<Select name="insurance_category" value={insuranceCategory} onChange={(event) => changeInsuranceCategory(event.target.value as InsuranceCategory)} className="mt-1"><option>Life</option><option>Non-Life</option><option>Health</option></Select></label>
-            {selectedType === "Motor" ? <label className="block text-sm font-semibold">Vehicle Number<Input name="vehicle_number" required defaultValue={policy?.vehicle_number ?? ""} placeholder="e.g. GR-4421-26" className="mt-1" /></label> : null}
-            {selectedType === "Property" ? <label className="block text-sm font-semibold">Property Address/Location<Input name="property_location" required defaultValue={policy?.property_location ?? ""} placeholder="e.g. East Legon Hills, Accra" className="mt-1" /></label> : null}
-            <InsurerAutocomplete category={insuranceCategory} value={insurerName} onChange={setInsurerName} />
-            <label className="block text-sm font-semibold">Expiry Date<Input name="expiry_date" type="date" required defaultValue={policy?.expiry_date} className="mt-1" /></label>
-            <label className="block text-sm font-semibold">Status<Select name="status" defaultValue={policy?.status ?? "Active"} className="mt-1">{policyStatuses.map((item) => <option key={item}>{item}</option>)}</Select></label>
-            <label className="block text-sm font-semibold">Renewal Status<Select name="renewal_status" defaultValue={policy?.renewal_status ?? "Upcoming"} className="mt-1">{renewalStatuses.map((item) => <option key={item}>{item}</option>)}</Select></label>
-          </div>
-          <div className="space-y-4">
-            <label className="block text-sm font-semibold">
-              Policy Number
-              <Input
-                name="policy_number"
-                required
-                value={policyNumber}
-                onChange={(event) => setPolicyNumber(event.target.value)}
-                onBlur={() => setPolicyNumber(normalizedPolicyNumber)}
-                placeholder="e.g. MOT/ENT/24590"
-                pattern="[A-Za-z0-9./-]{3,40}"
-                title={policyNumberHelpText}
-                className="mt-1"
-              />
-              <span className={`mt-1 block text-xs ${showPolicyNumberError ? "text-danger" : "text-slate-500"}`}>
-                {showPolicyNumberError ? policyNumberHelpText : "Lowercase is accepted and saved as uppercase."}
-              </span>
-            </label>
-            <label className="block text-sm font-semibold">Start Date<Input name="start_date" type="date" required defaultValue={policy?.start_date} className="mt-1" /></label>
-            <label className="block text-sm font-semibold">Premium Amount<Input name="premium_amount" type="number" min="0" step="0.01" required defaultValue={policy?.premium_amount} className="mt-1" /></label>
-            <label className="block text-sm font-semibold">Commission Rate (%)<Input name="commission_rate" type="number" min="0" step="0.1" required defaultValue={policy?.commission?.commission_rate ?? 10} className="mt-1" /></label>
-            <label className="block text-sm font-semibold">Payment Status<Select name="payment_status" defaultValue={policy?.commission?.payment_status ?? "Pending"} className="mt-1"><option>Pending</option><option>Paid</option></Select></label>
-          </div>
+
+        <PolicyFormSection number="4" title="Notes" helper="Optional. Use this for special instructions, review comments, or follow-up context.">
+          <Textarea name="notes" defaultValue={policy?.notes ?? ""} className="mt-1" />
+        </PolicyFormSection>
+
+        <div className="sticky bottom-0 -mx-6 flex flex-col-reverse gap-3 border-t border-slate-200 bg-white px-6 py-4 sm:flex-row sm:justify-end">
+          <Button type="button" variant="outline" onClick={onClose}>Cancel</Button>
+          <Button>Save Policy</Button>
         </div>
-        <label className="block text-sm font-semibold md:col-span-2">Notes<Textarea name="notes" defaultValue={policy?.notes ?? ""} className="mt-1" /></label>
-        <div className="md:col-span-2 mt-2 flex justify-end gap-3"><Button type="button" variant="outline" onClick={onClose}>Cancel</Button><Button>Save Policy</Button></div>
       </form>
     </ModalFrame>
+  );
+}
+
+function PolicyFormSection({ number, title, helper, children }: { number: string; title: string; helper: string; children: ReactNode }) {
+  return (
+    <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+      <div className="mb-4 flex items-start gap-3">
+        <span className="flex h-8 min-w-8 items-center justify-center rounded-full bg-accent/10 text-xs font-extrabold text-accent">{number}</span>
+        <div>
+          <h3 className="text-base font-extrabold text-primary">{title}</h3>
+          <p className="mt-1 text-xs font-bold leading-5 text-slate-500">{helper}</p>
+        </div>
+      </div>
+      {children}
+    </section>
   );
 }
 
