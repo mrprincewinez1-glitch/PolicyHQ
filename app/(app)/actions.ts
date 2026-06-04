@@ -342,13 +342,6 @@ export async function saveLapseShieldStatementReview(input: {
     return { ok: false, message: "PolicyHQ could not prepare the new statement review." };
   }
 
-  const { error: closeCasesError } = await supabase
-    .from("lapse_shield_cases")
-    .update({ resolved_at: new Date().toISOString() })
-    .eq("agent_id", agentId)
-    .is("resolved_at", null);
-  if (closeCasesError) return { ok: false, message: "PolicyHQ could not close the previous Lapse Shield review." };
-
   const { data: run, error: runError } = await supabase
     .from("commission_statement_runs")
     .insert({
@@ -367,32 +360,66 @@ export async function saveLapseShieldStatementReview(input: {
 
   if (runError || !run) return { ok: false, message: "PolicyHQ could not save this statement review." };
 
-  if (!missingPolicies.length) {
-    revalidatePath("/dashboard");
-    revalidatePath("/lapse-shield");
-    return { ok: true, message: "Statement review saved. No active life policies are missing.", run: run as LapseShieldRun, cases: [] };
+  const now = new Date().toISOString();
+  const matchedPolicyIds = agentPolicies
+    .filter((policy) => statementPolicyNumbers.has(normalizePolicyNumber(policy.policy_number)))
+    .map((policy) => policy.id);
+
+  if (matchedPolicyIds.length) {
+    const { error: resolveMatchedError } = await supabase
+      .from("lapse_shield_cases")
+      .update({
+        status: "Payment confirmed" satisfies LapseShieldCaseStatus,
+        resolved_at: now,
+        updated_at: now
+      })
+      .eq("agent_id", agentId)
+      .is("resolved_at", null)
+      .in("policy_id", matchedPolicyIds);
+    if (resolveMatchedError) return { ok: false, message: "PolicyHQ could not clear matched Lapse Shield cases." };
   }
 
-  const { data: cases, error: casesError } = await supabase
+  const { data: existingOpenCases, error: existingOpenCasesError } = await supabase
     .from("lapse_shield_cases")
-    .insert(missingPolicies.map((policy) => ({
-      run_id: run.id,
-      agent_id: agentId,
-      client_id: policy.client_id,
-      policy_id: policy.id,
-      status: "Missing from statement" satisfies LapseShieldCaseStatus
-    })))
-    .select(lapseShieldCaseColumns);
+    .select(lapseShieldCaseColumns)
+    .eq("agent_id", agentId)
+    .is("resolved_at", null);
+  if (existingOpenCasesError) return { ok: false, message: "PolicyHQ could not check existing Lapse Shield cases." };
 
-  if (casesError || !cases) return { ok: false, message: "Statement saved, but PolicyHQ could not save the missing-client cases." };
+  const existingOpenPolicyIds = new Set((existingOpenCases ?? []).map((lapseCase) => lapseCase.policy_id));
+  const newMissingPolicies = missingPolicies.filter((policy) => !existingOpenPolicyIds.has(policy.id));
+
+  if (newMissingPolicies.length) {
+    const { error: casesError } = await supabase
+      .from("lapse_shield_cases")
+      .insert(newMissingPolicies.map((policy) => ({
+        run_id: run.id,
+        agent_id: agentId,
+        client_id: policy.client_id,
+        policy_id: policy.id,
+        status: "Missing from statement" satisfies LapseShieldCaseStatus
+      })));
+
+    if (casesError) return { ok: false, message: "Statement saved, but PolicyHQ could not save the missing-client cases." };
+  }
+
+  const { data: openCases, error: openCasesError } = await supabase
+    .from("lapse_shield_cases")
+    .select(lapseShieldCaseColumns)
+    .eq("agent_id", agentId)
+    .is("resolved_at", null)
+    .order("created_at", { ascending: false });
+  if (openCasesError || !openCases) return { ok: false, message: "Statement saved, but PolicyHQ could not reload active Lapse Shield cases." };
 
   revalidatePath("/dashboard");
   revalidatePath("/lapse-shield");
   return {
     ok: true,
-    message: `${missingPolicies.length} missing client${missingPolicies.length === 1 ? "" : "s"} saved to Lapse Shield.`,
+    message: openCases.length
+      ? `${openCases.length} active Lapse Shield case${openCases.length === 1 ? "" : "s"} need follow-up.`
+      : "Statement review saved. No active life policies are missing.",
     run: run as LapseShieldRun,
-    cases: cases as LapseShieldCase[]
+    cases: openCases as LapseShieldCase[]
   };
 }
 

@@ -1679,14 +1679,7 @@ function DashboardLapseShieldPreview({
     setErrors([]);
     setReview(null);
 
-    const parsed = await parseLapseShieldStatementFile(file).catch(async () => {
-      if (!file.name.toLowerCase().endsWith(".pdf")) {
-        return {
-          rows: [],
-          errors: ["PolicyHQ could not read that statement. Try CSV/Excel, or upload a text-based PDF."]
-        };
-      }
-
+    const parsed = file.name.toLowerCase().endsWith(".pdf") ? await (async (): Promise<LapseShieldStatementParseResult> => {
       const formData = new FormData();
       formData.set("statement", file);
       const serverParsed = await parseLapseShieldPdfStatement(formData);
@@ -1695,6 +1688,11 @@ function DashboardLapseShieldPreview({
       return {
         rows: [],
         errors: [serverParsed.message]
+      };
+    })() : await parseLapseShieldStatementFile(file).catch(() => {
+      return {
+        rows: [],
+        errors: ["PolicyHQ could not read that statement. Try CSV/Excel, or upload a text-based PDF."]
       };
     });
     if (parsed.errors.length) {
@@ -3828,9 +3826,6 @@ async function parseLapseShieldStatementFile(file: File): Promise<LapseShieldSta
     const rows = await readSheet(file);
     return parseLapseShieldStatementTable(rows.map((row) => row.map((cell) => formatStatementCell(cell))));
   }
-  if (lowerName.endsWith(".pdf")) {
-    return parseLapseShieldStatementPdf(file);
-  }
   return {
     rows: [],
     errors: ["Upload a CSV, Excel .xlsx, or text-based PDF commission statement."]
@@ -3874,38 +3869,6 @@ function parseLapseShieldStatementTable(table: string[][]): LapseShieldStatement
     };
   });
   if (!rows.length) return { rows: [], errors: ["PolicyHQ found the policy number column, but no policy numbers were readable."] };
-  return { rows, errors: [] };
-}
-
-async function parseLapseShieldStatementPdf(file: File): Promise<LapseShieldStatementParseResult> {
-  const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
-  pdfjs.GlobalWorkerOptions.workerSrc = new URL("pdfjs-dist/legacy/build/pdf.worker.mjs", import.meta.url).toString();
-  const pdf = await pdfjs.getDocument({
-    data: new Uint8Array(await file.arrayBuffer()),
-    useWorkerFetch: false,
-    useWasm: false,
-    disableFontFace: true
-  }).promise;
-  const textParts: string[] = [];
-  for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber += 1) {
-    const page = await pdf.getPage(pageNumber);
-    const content = await page.getTextContent();
-    textParts.push(content.items.map((item) => "str" in item ? item.str : "").join(" "));
-  }
-  const text = textParts.join("\n").trim();
-  if (!text) {
-    return {
-      rows: [],
-      errors: ["PolicyHQ could not read text from this PDF. It may be scanned; upload CSV/Excel for now, or add OCR later."]
-    };
-  }
-  const rows = extractStatementPolicyNumbersFromText(text);
-  if (!rows.length) {
-    return {
-      rows: [],
-      errors: ["PolicyHQ read the PDF, but could not find policy-number-like values. Try Excel/CSV or check the statement format."]
-    };
-  }
   return { rows, errors: [] };
 }
 
