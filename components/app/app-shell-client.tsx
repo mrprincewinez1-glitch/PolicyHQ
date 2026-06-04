@@ -1984,12 +1984,11 @@ function Prospects({
   onConvert: (prospect: Prospect) => void;
   onStatusChange: (prospect: Prospect, status: ProspectStatus) => void;
 }) {
-  const [timeFilter, setTimeFilter] = useState<ProspectTimeFilter>(dueTodayOnly ? "Today" : "This Week");
+  const [timeFilter, setTimeFilter] = useState<ProspectTimeFilter>(dueTodayOnly ? "Today" : "All");
   const [statusFilter, setStatusFilter] = useState<ProspectStatusFilter>("All Active");
-  const sortedProspects = useMemo(() => sortProspectsByFollowUp(prospects), [prospects]);
-  const visible = sortedProspects.filter((prospect) => {
+  const visible = useMemo(() => sortProspectsByFollowUp(prospects.filter((prospect) => {
     return prospectMatchesStatusFilter(prospect, statusFilter) && prospectMatchesTimeFilter(prospect, timeFilter);
-  });
+  })), [prospects, statusFilter, timeFilter]);
   const metrics = prospectQueueMetrics(prospects);
 
   return (
