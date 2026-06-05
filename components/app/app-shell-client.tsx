@@ -80,6 +80,12 @@ import {
 
 type Section = "dashboard" | "clients" | "prospects" | "policies" | "commissions" | "notifications" | "profile";
 type PolicyPageFilter = "all" | "needs-review";
+type DashboardQuickAction =
+  | { type: "birthdays" }
+  | { type: "follow-ups" }
+  | { type: "clients-to-contact" }
+  | { type: "anniversaries" }
+  | { type: "renewals"; range: "week" | "next-week" | "month" };
 type ModalState =
   | { type: "demo" }
   | { type: "client"; client?: Client }
@@ -177,7 +183,7 @@ export function AppShell({
   const [modal, setModal] = useState<ModalState>(null);
   const [toast, setToast] = useState<{ tone: "success" | "error"; message: string } | null>(null);
   const [detailPolicy, setDetailPolicy] = useState<PolicyWithClient | null>(null);
-  const [clientContactsOpen, setClientContactsOpen] = useState(false);
+  const [quickAction, setQuickAction] = useState<DashboardQuickAction | null>(null);
   const base = demo ? "/demo" : "";
 
   useEffect(() => {
@@ -832,7 +838,7 @@ export function AppShell({
       onAddPolicy={() => blockWrite() || setModal({ type: "policy" })}
       onImportClients={() => blockWrite() || setModal({ type: "import" })}
       onAddProspect={() => blockWrite() || setModal({ type: "prospect" })}
-      onOpenClientContacts={() => setClientContactsOpen(true)}
+      onOpenQuickAction={setQuickAction}
     />
   ) : active === "clients" ? (
     <Clients
@@ -1056,7 +1062,19 @@ export function AppShell({
       {modal?.type === "policy" ? <PolicyModal policy={modal.policy} prospect={modal.prospect} clients={data.clients} onClose={() => setModal(null)} onSave={savePolicy} /> : null}
       {modal?.type === "import" ? <ImportClientsModal onClose={() => setModal(null)} onImport={importClients} /> : null}
       {modal?.type === "confirm" ? <ConfirmModal title={modal.title} body={modal.body} onClose={() => setModal(null)} onConfirm={modal.action} /> : null}
-      {clientContactsOpen ? <ClientsToContactDrawer policies={clientContactPolicies(data.policies)} onClose={() => setClientContactsOpen(false)} openPolicy={setDetailPolicy} /> : null}
+      {quickAction ? (
+        <DashboardQuickActionDrawer
+          action={quickAction}
+          data={data}
+          base={base}
+          onClose={() => setQuickAction(null)}
+          updateRenewal={updateRenewal}
+          openPolicy={(policy) => {
+            setQuickAction(null);
+            setDetailPolicy(policy);
+          }}
+        />
+      ) : null}
       {detailPolicy ? <PolicyDetailPanel policy={detailPolicy} onClose={() => setDetailPolicy(null)} updateRenewal={updateRenewal} saveNote={saveActivityNote} /> : null}
       {toast ? <div className={`fixed bottom-5 right-5 z-[70] rounded-xl px-4 py-3 text-sm font-bold text-white shadow-soft ${toast.tone === "success" ? "bg-success" : "bg-danger"}`}>{toast.message}</div> : null}
     </div>
@@ -1072,7 +1090,7 @@ function Dashboard({
   onAddPolicy,
   onImportClients,
   onAddProspect,
-  onOpenClientContacts
+  onOpenQuickAction
 }: {
   data: AppData;
   base: string;
@@ -1082,7 +1100,7 @@ function Dashboard({
   onAddPolicy: () => void;
   onImportClients: () => void;
   onAddProspect: () => void;
-  onOpenClientContacts: () => void;
+  onOpenQuickAction: (action: DashboardQuickAction) => void;
 }) {
   const active = activePolicies(data.policies);
   const premiumDueThisMonth = expiringThisMonth(data.policies).reduce((sum, policy) => sum + policy.premium_amount, 0);
@@ -1124,8 +1142,8 @@ function Dashboard({
       </div>
       {needsReviewCount ? <NeedsReviewPrompt count={needsReviewCount} href={`${navHref(base, "policies")}?filter=needs-review`} /> : null}
       <div className="grid gap-6 lg:grid-cols-2">
-        <RevenueProtectionPanel mix={dashboardMix} metrics={revenueMetrics} base={base} />
-        <RelationshipManagerPanel metrics={relationshipMetrics} birthdays={todaysBirthdays} base={base} onOpenClientContacts={onOpenClientContacts} />
+        <RevenueProtectionPanel mix={dashboardMix} metrics={revenueMetrics} base={base} onOpenQuickAction={onOpenQuickAction} />
+        <RelationshipManagerPanel metrics={relationshipMetrics} birthdays={todaysBirthdays} base={base} onOpenQuickAction={onOpenQuickAction} />
       </div>
       <RecentActivityPanel activities={activities} />
     </div>
@@ -1292,10 +1310,12 @@ function DashboardStatLink({ label, value, href, wide = false }: { label: string
   );
 }
 
-function RevenueProtectionPanel({ mix, metrics, base }: { mix: DashboardBusinessMix; metrics: DashboardPanelMetric[]; base: string }) {
+function RevenueProtectionPanel({ mix, metrics, base, onOpenQuickAction }: { mix: DashboardBusinessMix; metrics: DashboardPanelMetric[]; base: string; onOpenQuickAction: (action: DashboardQuickAction) => void }) {
   const copy = mix === "life" ? "Life retention" : mix === "mixed" ? "Renewals and retention" : "Renewals";
   const href = mix === "life" ? navHref(base, "policies") : `${base}/renewals/week`;
   const cta = mix === "life" ? "Review Book" : "View Queue";
+  const action = dashboardRevenueAction(mix, metrics, base);
+  const renewalAction = mix === "non-life" ? renewalActionForHref(action.href) : null;
 
   return (
     <Card className="min-h-[250px] overflow-hidden">
@@ -1312,16 +1332,26 @@ function RevenueProtectionPanel({ mix, metrics, base }: { mix: DashboardBusiness
       </CardHeader>
       <CardContent className="p-[23px] pt-[22px]">
         <div className="grid gap-3 sm:grid-cols-3">
-          {metrics.map((item) => <DashboardPanelMetricCard key={item.label} metric={item} />)}
+          {metrics.map((item) => {
+            const range = renewalActionForHref(item.href);
+            return (
+              <DashboardPanelMetricCard
+                key={item.label}
+                metric={item}
+                onClick={range ? () => onOpenQuickAction({ type: "renewals", range }) : undefined}
+              />
+            );
+          })}
         </div>
-        <DashboardActionRow {...dashboardRevenueAction(mix, metrics, base)} />
+        <DashboardActionRow {...action} onClick={renewalAction ? () => onOpenQuickAction({ type: "renewals", range: renewalAction }) : undefined} />
       </CardContent>
     </Card>
   );
 }
 
-function RelationshipManagerPanel({ metrics, birthdays, base, onOpenClientContacts }: { metrics: DashboardPanelMetric[]; birthdays: Client[]; base: string; onOpenClientContacts: () => void }) {
+function RelationshipManagerPanel({ metrics, birthdays, base, onOpenQuickAction }: { metrics: DashboardPanelMetric[]; birthdays: Client[]; base: string; onOpenQuickAction: (action: DashboardQuickAction) => void }) {
   const action = dashboardRelationshipAction(metrics, base);
+  const rowAction = relationshipActionForHref(action.href);
   return (
     <Card className="min-h-[250px] overflow-hidden">
       <CardHeader className="border-b-0 p-[23px] pb-0">
@@ -1341,13 +1371,13 @@ function RelationshipManagerPanel({ metrics, birthdays, base, onOpenClientContac
             <DashboardPanelMetricCard
               key={item.label}
               metric={item}
-              onClick={item.label === "Clients to Contact" ? onOpenClientContacts : undefined}
+              onClick={quickActionForRelationshipMetric(item.label) ? () => onOpenQuickAction(quickActionForRelationshipMetric(item.label)!) : undefined}
             />
           ))}
         </div>
         {birthdays.length ? (
-          <DashboardBirthdayAction client={birthdays[0]} href={`${base}/birthdays`} />
-        ) : <DashboardActionRow {...action} onClick={action.title === "Clients to contact" ? onOpenClientContacts : undefined} />}
+          <DashboardBirthdayAction client={birthdays[0]} onClick={() => onOpenQuickAction({ type: "birthdays" })} />
+        ) : <DashboardActionRow {...action} onClick={rowAction ? () => onOpenQuickAction(rowAction) : undefined} />}
       </CardContent>
     </Card>
   );
@@ -1405,22 +1435,32 @@ function DashboardActionRow({ title, body, badge, tone, href, onClick }: { title
   );
 }
 
-function DashboardBirthdayAction({ client, href }: { client: Client; href: string }) {
+function DashboardBirthdayAction({ client, onClick }: { client: Client; onClick: () => void }) {
   return (
-    <div className="relative mt-[17px] flex min-h-[58px] items-center justify-between gap-4 rounded-[10px] border border-slate-200 bg-warning/10 px-3.5 py-[13px] transition hover:border-accent">
-      <Link href={href} aria-label={`View birthday clients including ${client.full_name}`} className="absolute inset-0 rounded-[10px] focus:outline-none focus:ring-2 focus:ring-accent" />
-      <div className="relative z-10 min-w-0 pointer-events-none">
+    <button type="button" onClick={onClick} className="relative mt-[17px] flex min-h-[58px] w-full items-center justify-between gap-4 rounded-[10px] border border-slate-200 bg-warning/10 px-3.5 py-[13px] text-left transition hover:border-accent hover:bg-accent/5 focus:outline-none focus:ring-2 focus:ring-accent">
+      <div className="min-w-0 pointer-events-none">
         <strong className="block truncate text-[13px] font-extrabold text-primary">{client.full_name}</strong>
         <span className="mt-1 block truncate text-[10px] font-bold leading-[1.35] text-slate-500">Birthday today · {client.phone_number}</span>
       </div>
-      <WhatsAppButton href={birthdayWhatsAppHref(client)} label="WhatsApp" className="relative z-10 shrink-0 rounded-[10px] text-[10px] font-extrabold" />
-    </div>
+      <span className="min-w-[68px] shrink-0 rounded-full bg-warning px-2.5 py-2 text-center text-[9px] font-extrabold text-white">Open</span>
+    </button>
   );
 }
 
-function ClientsToContactDrawer({ policies, onClose, openPolicy }: { policies: PolicyWithClient[]; onClose: () => void; openPolicy: (policy: PolicyWithClient) => void }) {
-  const paymentPending = policies.filter((policy) => policy.renewal_status === "Payment Pending").length;
-  const expiringThisMonthCount = policies.filter((policy) => policiesForRange([policy], "month").length > 0).length;
+function DashboardQuickActionDrawer({ action, data, base, onClose, updateRenewal, openPolicy }: { action: DashboardQuickAction; data: AppData; base: string; onClose: () => void; updateRenewal: (id: string, status: RenewalStatus) => void; openPolicy: (policy: PolicyWithClient) => void }) {
+  const config = dashboardQuickActionConfig(action, data, base);
+  const policies = action.type === "clients-to-contact"
+    ? clientContactPolicies(data.policies)
+    : action.type === "anniversaries"
+      ? data.policies.filter((policy) => isLifePolicy(policy) && isPolicyAnniversarySoon(policy)).sort(sortByExpiry)
+      : action.type === "renewals"
+        ? policiesForRange(data.policies.filter((policy) => !isLifePolicy(policy)), action.range).sort(sortByExpiry)
+        : [];
+  const birthdays = action.type === "birthdays" ? data.clients.filter((client) => isBirthdayToday(client.date_of_birth)) : [];
+  const followUps = action.type === "follow-ups"
+    ? sortProspectsByFollowUp(data.prospects.filter((prospect) => prospectMatchesTimeFilter(prospect, "Today") && prospectMatchesStatusFilter(prospect, "All Active")))
+    : [];
+  const total = policies.length + birthdays.length + followUps.length;
 
   function openPolicyAndClose(policy: PolicyWithClient) {
     onClose();
@@ -1428,39 +1468,152 @@ function ClientsToContactDrawer({ policies, onClose, openPolicy }: { policies: P
   }
 
   return (
-    <div className="fixed inset-0 z-[60] bg-primary/40 p-0 sm:p-5" role="dialog" aria-modal="true" aria-labelledby="clients-to-contact-title">
+    <div className="fixed inset-0 z-[60] bg-primary/40 p-0 sm:p-5" role="dialog" aria-modal="true" aria-labelledby="dashboard-quick-action-title">
       <div className="flex h-full items-end justify-stretch sm:items-center sm:justify-end">
         <div className="flex max-h-[92vh] w-full flex-col overflow-hidden rounded-t-[22px] border border-slate-200 bg-white shadow-soft sm:max-h-[calc(100vh-40px)] sm:max-w-[500px] sm:rounded-[18px]">
           <div className="flex items-start justify-between gap-4 border-b border-slate-200 p-4 sm:p-5">
             <div className="min-w-0">
-              <h2 id="clients-to-contact-title" className="text-xl font-extrabold tracking-[-0.04em] text-primary">Clients to Contact</h2>
+              <h2 id="dashboard-quick-action-title" className="text-xl font-extrabold tracking-[-0.04em] text-primary">{config.title}</h2>
               <p className="mt-1 text-xs font-semibold leading-5 text-slate-500">
-                {policies.length} client{policies.length === 1 ? "" : "s"} · {paymentPending} payment pending · {expiringThisMonthCount} expiring this month
+                {total} item{total === 1 ? "" : "s"} · {config.subtitle}
               </p>
             </div>
-            <Button variant="ghost" size="icon" onClick={onClose} aria-label="Close clients to contact">
+            <Button variant="ghost" size="icon" onClick={onClose} aria-label={`Close ${config.title}`}>
               <X className="h-5 w-5" />
             </Button>
           </div>
 
-          <div className="flex-1 overflow-y-auto p-4 sm:p-5">
-            {policies.length ? (
+          <div className="max-h-[390px] flex-1 overflow-y-auto p-4 sm:max-h-[430px] sm:p-5">
+            {action.type === "birthdays" && birthdays.length ? (
+              <div className="space-y-3">
+                {birthdays.map((client) => <BirthdayQuickActionRow key={client.id} client={client} />)}
+              </div>
+            ) : null}
+
+            {action.type === "follow-ups" && followUps.length ? (
+              <div className="space-y-3">
+                {followUps.map((prospect) => <ProspectQuickActionRow key={prospect.id} prospect={prospect} />)}
+              </div>
+            ) : null}
+
+            {action.type === "clients-to-contact" && policies.length ? (
               <div className="space-y-3">
                 {policies.map((policy) => (
                   <ClientContactRow key={`${policy.client_id}-${policy.id}`} policy={policy} openPolicy={openPolicyAndClose} />
                 ))}
               </div>
-            ) : (
-              <EmptyInlineState title="No clients to contact." body="Clients appear here when they have renewal conversations in progress or policies expiring this month." />
-            )}
+            ) : null}
+
+            {action.type === "anniversaries" && policies.length ? (
+              <div className="space-y-3">
+                {policies.map((policy) => <AnniversaryQuickActionRow key={policy.id} policy={policy} openPolicy={openPolicyAndClose} />)}
+              </div>
+            ) : null}
+
+            {action.type === "renewals" && policies.length ? (
+              <div className="space-y-3">
+                {policies.map((policy) => <RenewalQuickActionRow key={policy.id} policy={policy} updateRenewal={updateRenewal} openPolicy={openPolicyAndClose} />)}
+              </div>
+            ) : null}
+
+            {!total ? <EmptyInlineState title={config.emptyTitle} body={config.emptyBody} /> : null}
           </div>
 
-          <div className="border-t border-slate-200 bg-slate-50 px-4 py-3 text-xs font-semibold leading-5 text-slate-500 sm:px-5">
-            Update the renewal status from the policy detail once the conversation is complete.
+          <div className="flex flex-col gap-3 border-t border-slate-200 bg-slate-50 px-4 py-3 text-xs font-semibold leading-5 text-slate-500 sm:flex-row sm:items-center sm:justify-between sm:px-5">
+            <span>{config.footer}</span>
+            <Button asChild variant="outline" size="sm" className="min-h-9 rounded-[10px] text-[10px] font-extrabold">
+              <Link href={config.fullHref} onClick={onClose}>{config.fullLabel}</Link>
+            </Button>
           </div>
         </div>
       </div>
     </div>
+  );
+}
+
+function BirthdayQuickActionRow({ client }: { client: Client }) {
+  return (
+    <article className="rounded-[14px] border border-slate-200 bg-white p-4">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="min-w-0">
+          <h3 className="truncate text-base font-extrabold tracking-[-0.03em] text-primary">{client.full_name}</h3>
+          <a href={`tel:${normalizeGhanaPhoneNumber(client.phone_number)}`} className="mt-1 block text-sm font-bold text-slate-500">{client.phone_number}</a>
+          <p className="mt-2 rounded-[10px] bg-warning/10 px-3 py-2 text-xs font-bold leading-5 text-warning">Birthday today. Send a warm message or call.</p>
+        </div>
+        <div className="grid shrink-0 grid-cols-2 gap-2 sm:w-[168px]">
+          <Button asChild variant="outline" size="sm" className="min-h-10 rounded-[10px]"><a href={`tel:${normalizeGhanaPhoneNumber(client.phone_number)}`}><Phone className="h-4 w-4" />Call</a></Button>
+          <WhatsAppButton href={birthdayWhatsAppHref(client)} label="WhatsApp" className="min-h-10 justify-center rounded-[10px] text-[11px]" />
+        </div>
+      </div>
+    </article>
+  );
+}
+
+function ProspectQuickActionRow({ prospect }: { prospect: Prospect }) {
+  const followUp = prospectFollowUpLabel(prospect);
+  return (
+    <article className="rounded-[14px] border border-slate-200 bg-white p-4">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <h3 className="truncate text-base font-extrabold tracking-[-0.03em] text-primary">{prospect.full_name}</h3>
+            <Badge tone={prospect.status === "Interested" ? "green" : prospect.status === "Call Back" ? "amber" : "slate"}>{prospect.status}</Badge>
+          </div>
+          <a href={`tel:${normalizeGhanaPhoneNumber(prospect.phone_number)}`} className="mt-1 block text-sm font-bold text-slate-500">{prospect.phone_number}</a>
+          <p className={`mt-2 inline-flex rounded-[10px] px-3 py-2 text-xs font-bold leading-5 ${prospectFollowUpToneClass(followUp.tone)}`}>{followUp.label}</p>
+          {prospect.notes ? <p className="mt-2 text-xs font-semibold leading-5 text-slate-600">{prospect.notes}</p> : null}
+        </div>
+        <div className="grid shrink-0 grid-cols-2 gap-2 sm:w-[168px]">
+          <Button asChild variant="outline" size="sm" className="min-h-10 rounded-[10px]"><a href={`tel:${normalizeGhanaPhoneNumber(prospect.phone_number)}`}><Phone className="h-4 w-4" />Call</a></Button>
+          <WhatsAppButton href={prospectWhatsAppHref(prospect)} label="WhatsApp" className="min-h-10 justify-center rounded-[10px] text-[11px]" />
+        </div>
+      </div>
+    </article>
+  );
+}
+
+function AnniversaryQuickActionRow({ policy, openPolicy }: { policy: PolicyWithClient; openPolicy: (policy: PolicyWithClient) => void }) {
+  return (
+    <article className="rounded-[14px] border border-slate-200 bg-white p-4">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0">
+          <h3 className="truncate text-base font-extrabold tracking-[-0.03em] text-primary">{policy.client.full_name}</h3>
+          <p className="mt-1 text-sm font-bold text-slate-500">{policy.policy_number} · started {formatDate(policy.start_date)}</p>
+          <p className="mt-2 rounded-[10px] bg-success/10 px-3 py-2 text-xs font-bold leading-5 text-success">Coverage review opportunity for this life policy.</p>
+        </div>
+        <div className="grid shrink-0 grid-cols-2 gap-2 sm:w-[168px]">
+          <WhatsAppButton href={clientWhatsAppHref(policy.client)} label="WhatsApp" className="min-h-10 justify-center rounded-[10px] text-[11px]" />
+          <Button type="button" size="sm" className="min-h-10 rounded-[10px]" onClick={() => openPolicy(policy)}>View</Button>
+        </div>
+      </div>
+    </article>
+  );
+}
+
+function RenewalQuickActionRow({ policy, updateRenewal, openPolicy }: { policy: PolicyWithClient; updateRenewal: (id: string, status: RenewalStatus) => void; openPolicy: (policy: PolicyWithClient) => void }) {
+  return (
+    <article className="rounded-[14px] border border-slate-200 bg-white p-4">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <h3 className="truncate text-base font-extrabold tracking-[-0.03em] text-primary">{policy.client.full_name}</h3>
+            <UrgencyBadge date={policy.expiry_date} status={policy.renewal_status} />
+          </div>
+          <a href={`tel:${normalizeGhanaPhoneNumber(policy.client.phone_number)}`} className="mt-1 block text-sm font-bold text-slate-500">{policy.client.phone_number}</a>
+          <p className="mt-2 text-xs font-semibold leading-5 text-slate-600">{policy.policy_type} · {shortInsurerName(policy.insurer_name)} · expires {formatDate(policy.expiry_date)}</p>
+          <div className="mt-3">
+            <Select value={policy.renewal_status} onChange={(event) => updateRenewal(policy.id, event.target.value as RenewalStatus)}>
+              {renewalStatuses.map((status) => <option key={status}>{status}</option>)}
+            </Select>
+          </div>
+        </div>
+        <div className="grid shrink-0 grid-cols-2 gap-2 sm:w-[168px]">
+          <Button asChild variant="outline" size="sm" className="min-h-10 rounded-[10px]"><a href={`tel:${normalizeGhanaPhoneNumber(policy.client.phone_number)}`}><Phone className="h-4 w-4" />Call</a></Button>
+          <WhatsAppButton href={renewalWhatsAppHref(policy)} label="WhatsApp" className="min-h-10 justify-center rounded-[10px] text-[11px]" />
+          <Button type="button" size="sm" className="col-span-2 min-h-10 rounded-[10px]" onClick={() => openPolicy(policy)}>View Policy</Button>
+        </div>
+      </div>
+    </article>
   );
 }
 
@@ -3654,6 +3807,90 @@ function dashboardFocusConfig(focus: "birthdays" | "anniversaries" | "life-reten
       { label: "At Risk Life", value: lifeRetention, href: `${base}/life-retention`, tone: lifeRetention ? "warning" : "success", helper: "Years 1-3" },
       { label: "Recovered", value: recoveredLife, href: `${base}/life-retention/recovered`, tone: "success", helper: "Renewed" }
     ] satisfies DashboardPanelMetric[]
+  };
+}
+
+function renewalActionForHref(href: string): "week" | "next-week" | "month" | null {
+  if (href.endsWith("/renewals/week")) return "week";
+  if (href.endsWith("/renewals/next-week")) return "next-week";
+  if (href.endsWith("/renewals/month")) return "month";
+  return null;
+}
+
+function quickActionForRelationshipMetric(label: string): DashboardQuickAction | null {
+  if (label === "Birthdays Today") return { type: "birthdays" };
+  if (label === "Follow-ups Due") return { type: "follow-ups" };
+  if (label === "Clients to Contact") return { type: "clients-to-contact" };
+  if (label === "Anniversaries") return { type: "anniversaries" };
+  return null;
+}
+
+function relationshipActionForHref(href: string): DashboardQuickAction | null {
+  if (href.endsWith("/birthdays")) return { type: "birthdays" };
+  if (href.endsWith("/anniversaries")) return { type: "anniversaries" };
+  if (href.includes("/prospects")) return { type: "follow-ups" };
+  if (href.includes("/renewals/month")) return { type: "clients-to-contact" };
+  return null;
+}
+
+function dashboardQuickActionConfig(action: DashboardQuickAction, data: AppData, base: string) {
+  if (action.type === "birthdays") {
+    return {
+      title: "Birthdays Today",
+      subtitle: "relationship messages ready",
+      emptyTitle: "No birthdays today.",
+      emptyBody: "Clients with birthdays today will appear here with Call and WhatsApp actions.",
+      footer: "Use this for warm relationship touches, not policy chasing.",
+      fullHref: `${base}/birthdays`,
+      fullLabel: "View Birthdays"
+    };
+  }
+  if (action.type === "follow-ups") {
+    return {
+      title: "Follow-ups Due",
+      subtitle: "prospects sorted by follow-up date",
+      emptyTitle: "No follow-ups due.",
+      emptyBody: "Prospects due today or overdue will appear here.",
+      footer: "Keep prospect follow-ups short and date-driven.",
+      fullHref: `${navHref(base, "prospects")}?filter=today`,
+      fullLabel: "View Prospects"
+    };
+  }
+  if (action.type === "clients-to-contact") {
+    const policies = clientContactPolicies(data.policies);
+    const paymentPending = policies.filter((policy) => policy.renewal_status === "Payment Pending").length;
+    const expiringThisMonthCount = policies.filter((policy) => policiesForRange([policy], "month").length > 0).length;
+    return {
+      title: "Clients to Contact",
+      subtitle: `${paymentPending} payment pending · ${expiringThisMonthCount} expiring this month`,
+      emptyTitle: "No clients to contact.",
+      emptyBody: "Clients appear here when they have renewal conversations in progress or policies expiring this month.",
+      footer: "Update the renewal status from the policy detail once the conversation is complete.",
+      fullHref: `${base}/renewals/month`,
+      fullLabel: "View Renewals"
+    };
+  }
+  if (action.type === "anniversaries") {
+    return {
+      title: "Policy Anniversaries",
+      subtitle: "life reviews and upsell moments",
+      emptyTitle: "No anniversaries due.",
+      emptyBody: "Life policies near their anniversary window will appear here.",
+      footer: "Use anniversaries for coverage reviews and sum-assured conversations.",
+      fullHref: `${base}/anniversaries`,
+      fullLabel: "View Anniversaries"
+    };
+  }
+
+  const title = action.range === "week" ? "Renewals This Week" : action.range === "next-week" ? "Renewals Next Week" : "Renewals This Month";
+  return {
+    title,
+    subtitle: "non-life policies sorted by expiry date",
+    emptyTitle: "No renewals in this window.",
+    emptyBody: "Matching non-life policies will appear here when their expiry date enters this window.",
+    footer: "Use quick actions here, or open the full list for deeper review.",
+    fullHref: `${base}/renewals/${action.range}`,
+    fullLabel: "View Full List"
   };
 }
 
