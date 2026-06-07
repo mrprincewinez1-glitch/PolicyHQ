@@ -1,4 +1,4 @@
-export const supportEmail = process.env.NEXT_PUBLIC_SUPPORT_EMAIL?.trim() || "support@policyhq.app";
+export const supportEmail = "policyhqgh@gmail.com";
 
 export function feedbackMailto() {
   const subject = encodeURIComponent("PolicyHQ beta feedback");

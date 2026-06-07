@@ -1849,7 +1849,7 @@ function DashboardLapseShieldPreview({
     })() : await parseLapseShieldStatementFile(file).catch(() => {
       return {
         rows: [],
-        errors: ["PolicyHQ could not read that statement. Try CSV/Excel, or upload a text-based PDF."]
+        errors: ["We could not read that statement. If it is scanned, please upload CSV or Excel for now."]
       };
     });
     if (parsed.errors.length) {
@@ -3039,7 +3039,7 @@ function ImportClientsModal({ onClose, onImport }: { onClose: () => void; onImpo
     if (!file) return;
     const parsed = await parseClientImportFile(file).catch(() => ({
       rows: [],
-      errors: ["PolicyHQ could not read that file. Upload a CSV or Excel .xlsx file."]
+      errors: ["We could not read that file. Upload a CSV or Excel .xlsx file."]
     }));
     setRows(parsed.rows);
     setErrors(parsed.errors);
@@ -4082,7 +4082,7 @@ function parseClientTable(table: string[][]): { rows: ImportClientRow[]; errors:
   const headers = rowsWithContent[0].map((header) => normalizeImportHeader(header));
   const recognizedHeaders = ["client_name", "phone_number", "policy_number", "policy_type", "insurer_name", "policy_start_date", "policy_end_date", "premium", "email", "date_of_birth", "notes", "vehicle_number", "property_location", "commission_rate", "commission_amount", "commission_status", "commission_payment_date", "commission_released"];
   if (!headers.some((header) => recognizedHeaders.includes(header))) {
-    return { rows: [], errors: ["PolicyHQ could not recognise this file's column names. Use the template or rename the first row to include client/policy fields."] };
+    return { rows: [], errors: ["We could not match this file's columns. Use the template or rename the first row to include client/policy fields."] };
   }
 
   const rows: ImportClientRow[] = [];
@@ -4184,7 +4184,7 @@ function parseLapseShieldStatementTable(table: string[][]): LapseShieldStatement
   if (rowsWithContent.length < 2) return { rows: [], errors: ["The statement needs a header row and at least one policy row."] };
   const headers = rowsWithContent[0].map((header) => normalizeImportHeader(header));
   const policyNumberIndex = headers.indexOf("policy_number");
-  if (policyNumberIndex === -1) return { rows: [], errors: ["PolicyHQ could not find a policy number column. Rename the column to policy_number or Policy Number and try again."] };
+  if (policyNumberIndex === -1) return { rows: [], errors: ["We could not find a policy number column. Rename the column to policy_number or Policy Number and try again."] };
   const clientNameIndex = headers.indexOf("client_name");
   const rows = rowsWithContent.slice(1).flatMap((values, index) => {
     const policyNumber = normalizePolicyNumber(values[policyNumberIndex]?.trim() ?? "");
@@ -4195,7 +4195,7 @@ function parseLapseShieldStatementTable(table: string[][]): LapseShieldStatement
       client_name: clientNameIndex >= 0 ? values[clientNameIndex]?.trim() ?? "" : ""
     };
   });
-  if (!rows.length) return { rows: [], errors: ["PolicyHQ found the policy number column, but no policy numbers were readable."] };
+  if (!rows.length) return { rows: [], errors: ["We found the policy number column, but no policy numbers were readable."] };
   return { rows, errors: [] };
 }
 

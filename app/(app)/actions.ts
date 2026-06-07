@@ -201,12 +201,12 @@ export async function upsertProspect(_: unknown, formData: FormData) {
   if (error || !prospect) {
     console.error("Prospect save failed", { code: error?.code });
     if (error?.code === "42P01" || error?.code === "PGRST205") {
-      return { ok: false, message: "Prospects setup is not complete yet. Run the prospects SQL in Supabase, then try again." };
+      return { ok: false, message: "Prospects are not ready right now. Please try again later or contact PolicyHQ support." };
     }
     if (error?.code === "42501") {
-      return { ok: false, message: "Prospects permissions are not ready yet. Re-run the prospects SQL in Supabase." };
+      return { ok: false, message: "We could not save this prospect because access is not ready yet. Please contact PolicyHQ support." };
     }
-    return { ok: false, message: `We could not save this prospect. Setup detail: ${error?.code ?? "unknown"}` };
+    return { ok: false, message: "We could not save this prospect. Please check the details and try again." };
   }
   revalidatePath("/prospects");
   revalidatePath("/dashboard");
@@ -281,18 +281,18 @@ export async function parseLapseShieldPdfStatement(formData: FormData): Promise<
 
     const text = textParts.join("\n").trim();
     if (!text) {
-      return { ok: false, message: "PolicyHQ could not read text from this PDF. It may be scanned; upload CSV/Excel for now." };
+      return { ok: false, message: "We could not read this PDF. If it is a scanned image, please upload CSV or Excel for now." };
     }
 
     const rows = extractStatementPolicyNumbersFromText(text);
     if (!rows.length) {
-      return { ok: false, message: "PolicyHQ read the PDF, but could not find policy numbers in it." };
+      return { ok: false, message: "We read the PDF, but could not find any policy numbers. Please check the file or upload CSV/Excel." };
     }
 
     return { ok: true, rows };
   } catch {
     console.error("Lapse Shield PDF parsing failed");
-    return { ok: false, message: "PolicyHQ could not read that PDF. Try CSV/Excel, or upload a text-based PDF." };
+    return { ok: false, message: "We could not read that PDF. If it is scanned, please upload CSV or Excel for now." };
   }
 }
 
@@ -320,7 +320,7 @@ export async function saveLapseShieldStatementReview(input: {
     .or("insurance_category.eq.Life,policy_type.eq.Life")
     .range(0, 999);
 
-  if (policiesError) return { ok: false, message: "PolicyHQ could not check your life policies." };
+  if (policiesError) return { ok: false, message: "We could not check your life policies. Please try again." };
 
   const statementPolicyNumbers = new Set(parsed.data.rows.map((row) => row.policy_number));
   const agentPolicies = (policies ?? []) as Array<{ id: string; client_id: string; policy_number: string }>;
@@ -337,9 +337,9 @@ export async function saveLapseShieldStatementReview(input: {
     .eq("is_active", true);
   if (deactivateRunsError) {
     if (deactivateRunsError.code === "42P01" || deactivateRunsError.code === "PGRST205") {
-      return { ok: false, message: "Lapse Shield setup is not complete yet. Run the Lapse Shield SQL in Supabase, then upload again." };
+      return { ok: false, message: "Lapse Shield is not ready right now. Please try again later or contact PolicyHQ support." };
     }
-    return { ok: false, message: "PolicyHQ could not prepare the new statement review." };
+    return { ok: false, message: "We could not prepare the new statement review. Please try again." };
   }
 
   const { data: run, error: runError } = await supabase
@@ -358,7 +358,7 @@ export async function saveLapseShieldStatementReview(input: {
     .select(lapseShieldRunColumns)
     .single();
 
-  if (runError || !run) return { ok: false, message: "PolicyHQ could not save this statement review." };
+  if (runError || !run) return { ok: false, message: "We could not save this statement review. Please try again." };
 
   const now = new Date().toISOString();
   const matchedPolicyIds = agentPolicies
@@ -376,7 +376,7 @@ export async function saveLapseShieldStatementReview(input: {
       .eq("agent_id", agentId)
       .is("resolved_at", null)
       .in("policy_id", matchedPolicyIds);
-    if (resolveMatchedError) return { ok: false, message: "PolicyHQ could not clear matched Lapse Shield cases." };
+    if (resolveMatchedError) return { ok: false, message: "We could not update the matched Lapse Shield cases. Please try again." };
   }
 
   const { data: existingOpenCases, error: existingOpenCasesError } = await supabase
@@ -384,7 +384,7 @@ export async function saveLapseShieldStatementReview(input: {
     .select(lapseShieldCaseColumns)
     .eq("agent_id", agentId)
     .is("resolved_at", null);
-  if (existingOpenCasesError) return { ok: false, message: "PolicyHQ could not check existing Lapse Shield cases." };
+  if (existingOpenCasesError) return { ok: false, message: "We could not check existing Lapse Shield cases. Please try again." };
 
   const existingOpenPolicyIds = new Set((existingOpenCases ?? []).map((lapseCase) => lapseCase.policy_id));
   const newMissingPolicies = missingPolicies.filter((policy) => !existingOpenPolicyIds.has(policy.id));
@@ -400,7 +400,7 @@ export async function saveLapseShieldStatementReview(input: {
         status: "Missing from statement" satisfies LapseShieldCaseStatus
       })));
 
-    if (casesError) return { ok: false, message: "Statement saved, but PolicyHQ could not save the missing-client cases." };
+    if (casesError) return { ok: false, message: "Statement saved, but we could not save the missing-client follow-ups." };
   }
 
   const { data: openCases, error: openCasesError } = await supabase
@@ -409,7 +409,7 @@ export async function saveLapseShieldStatementReview(input: {
     .eq("agent_id", agentId)
     .is("resolved_at", null)
     .order("created_at", { ascending: false });
-  if (openCasesError || !openCases) return { ok: false, message: "Statement saved, but PolicyHQ could not reload active Lapse Shield cases." };
+  if (openCasesError || !openCases) return { ok: false, message: "Statement saved, but we could not refresh the active Lapse Shield list." };
 
   revalidatePath("/dashboard");
   revalidatePath("/lapse-shield");
@@ -449,7 +449,7 @@ export async function updateLapseShieldCaseStatus(input: {
     .select(lapseShieldCaseColumns)
     .single();
 
-  if (error || !lapseCase) return { ok: false, message: "PolicyHQ could not update this Lapse Shield case." };
+  if (error || !lapseCase) return { ok: false, message: "We could not update this Lapse Shield follow-up." };
   revalidatePath("/dashboard");
   revalidatePath("/lapse-shield");
   return { ok: true, message: "Lapse Shield case updated.", case: lapseCase as LapseShieldCase };
@@ -561,7 +561,7 @@ export async function upsertPolicy(_: unknown, formData: FormData) {
     .neq("id", parsed.data.id ?? "00000000-0000-0000-0000-000000000000")
     .maybeSingle();
 
-  if (duplicate.data) return { ok: false, message: "Policy number already exists." };
+  if (duplicate.data) return { ok: false, message: "A policy with this number already exists in your account." };
 
   let clientId = parsed.data.client_id || "";
   if (clientId) {
@@ -635,7 +635,7 @@ export async function upsertPolicy(_: unknown, formData: FormData) {
     ? supabase.from("commissions").update(commissionPayload).eq("id", existingCommission.data.id).eq("agent_id", agentId).select(commissionColumns).single()
     : supabase.from("commissions").insert(commissionPayload).select(commissionColumns).single();
   const { data: commission, error: commissionError } = await commissionQuery;
-  if (commissionError || !commission) return { ok: false, message: "Policy saved, but commission setup failed." };
+  if (commissionError || !commission) return { ok: false, message: "Policy saved, but we could not create the commission record." };
 
   const { data: client, error: clientFetchError } = await supabase
     .from("clients")
@@ -644,7 +644,7 @@ export async function upsertPolicy(_: unknown, formData: FormData) {
     .eq("agent_id", agentId)
     .is("deleted_at", null)
     .single();
-  if (clientFetchError || !client) return { ok: false, message: "Policy saved, but client details could not be loaded." };
+  if (clientFetchError || !client) return { ok: false, message: "Policy saved, but we could not refresh the client details." };
 
   if (source_prospect_id) {
     const { error: prospectError } = await supabase
@@ -654,7 +654,7 @@ export async function upsertPolicy(_: unknown, formData: FormData) {
       .eq("agent_id", agentId);
     if (prospectError) {
       console.error("Prospect conversion update failed", { code: prospectError.code });
-      return { ok: false, message: "Policy saved, but the prospect could not be marked as converted." };
+      return { ok: false, message: "Policy saved, but we could not mark the prospect as converted." };
     }
     revalidatePath("/prospects");
   }
@@ -855,7 +855,7 @@ export async function importClientsFromCsvRows(rows: unknown) {
         .single();
 
     const { data: commission, error: commissionError } = await commissionQuery;
-    if (commissionError || !commission) return { ok: false, message: `Policy ${row.policy_number} imported, but commission setup failed.` };
+    if (commissionError || !commission) return { ok: false, message: `Policy ${row.policy_number} imported, but we could not create the commission record.` };
 
     importedClients.push(client as Client);
     importedCommissions.push(commission as Commission);

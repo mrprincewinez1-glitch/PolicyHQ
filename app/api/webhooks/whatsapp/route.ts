@@ -133,7 +133,7 @@ export async function GET(request: Request) {
   }
 
   console.error("Rejected WhatsApp webhook verification attempt.");
-  return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  return NextResponse.json({ error: "Invalid webhook request" }, { status: 403 });
 }
 
 export async function POST(request: Request) {
@@ -156,7 +156,7 @@ export async function POST(request: Request) {
 
   if (!verifyMetaSignature(rawPayload, signature, appSecret)) {
     console.error(`Rejected WhatsApp webhook request with invalid signature from ${ipAddress}.`);
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    return NextResponse.json({ error: "Invalid webhook request" }, { status: 403 });
   }
 
   let parsedPayload: unknown;

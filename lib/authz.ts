@@ -10,7 +10,7 @@ export async function requireAdmin(): Promise<AdminCheck> {
   const user = userData.user;
 
   if (!user) {
-    return { ok: false, status: 401, message: "Not authenticated" };
+    return { ok: false, status: 401, message: "Please sign in to continue." };
   }
 
   const { data: profile, error } = await supabase
@@ -20,7 +20,7 @@ export async function requireAdmin(): Promise<AdminCheck> {
     .single();
 
   if (error || profile?.role !== "admin") {
-    return { ok: false, status: 403, message: "Forbidden" };
+    return { ok: false, status: 403, message: "You do not have permission to do that." };
   }
 
   return { ok: true, userId: user.id };

@@ -19,7 +19,7 @@ function normalizePhone(input: string) {
 
 function ensureSupabase(path: string) {
   if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
-    authRedirect(path, "error", "Sign up is not connected yet. Please set up Supabase first, or use the live demo.");
+    authRedirect(path, "error", "Account access is temporarily unavailable. Please try again later or contact PolicyHQ support.");
   }
 }
 

@@ -27,7 +27,7 @@ export async function getAuthenticatedAppData(): Promise<AppData> {
   const supabase = await createClient();
   const { data: userData } = await supabase.auth.getUser();
   const user = userData.user;
-  if (!user) redirect("/sign-in?error=Please sign in again. Your session was not active.");
+  if (!user) redirect("/sign-in?error=Please sign in to continue.");
 
   const [profileResult, clientsResult, policiesResult, commissionsResult, notificationsResult, activityNotesResult, prospectsResult, lapseRunsResult, lapseCasesResult] = await Promise.all([
     supabase.from("profiles").select(profileColumns).eq("id", user.id).single(),
@@ -59,7 +59,7 @@ export async function getAuthenticatedAppData(): Promise<AppData> {
 
     if (repairError || !repairedProfile) {
       console.error("PolicyHQ profile repair failed", repairError);
-      redirect("/sign-in?error=You signed in, but PolicyHQ could not create your agent profile. Please tell Codex this exact message.");
+      redirect("/sign-in?error=We could not finish setting up your workspace. Please contact PolicyHQ support.");
     }
     profile = repairedProfile;
   }
