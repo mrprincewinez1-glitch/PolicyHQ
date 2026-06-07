@@ -177,6 +177,8 @@ function importReviewReasons(row: z.infer<typeof importClientRowSchema>) {
   return reasons;
 }
 
+// Prospect actions power the daily call/WhatsApp workflow. The server always
+// owns agent_id so a crafted browser request cannot move a prospect between agents.
 export async function upsertProspect(_: unknown, formData: FormData) {
   const parsed = prospectSchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) return { ok: false, message: parsed.error.issues[0]?.message ?? "Check prospect details." };
@@ -296,6 +298,9 @@ export async function parseLapseShieldPdfStatement(formData: FormData): Promise<
   }
 }
 
+// Lapse Shield compares the latest commission statement with active life
+// policies. Only one run stays active so the dashboard shows a clear current
+// worklist until the agent uploads the next statement or resolves each case.
 export async function saveLapseShieldStatementReview(input: {
   statement_name?: string;
   statement_kind?: "CSV" | "Excel" | "PDF" | "CSV, Excel, or PDF";
@@ -719,6 +724,8 @@ export async function addActivityNote(input: { client_id?: string; policy_id?: s
   return { ok: true, message: "Note saved.", note: note as ActivityNote };
 }
 
+// CSV/Excel imports are intentionally forgiving: missing operational fields are
+// saved as Needs Review instead of blocking the agent from onboarding a real book.
 export async function importClientsFromCsvRows(rows: unknown) {
   const parsed = importClientRowsSchema.safeParse(rows);
   if (!parsed.success) return { ok: false, message: parsed.error.issues[0]?.message ?? "Check your CSV rows." };
