@@ -67,8 +67,8 @@ export async function signIn(formData: FormData) {
   const { data: signInData, error } = await supabase.auth.signInWithPassword({ email, password });
   if (error) {
     const message = error.message.toLowerCase().includes("confirm")
-      ? "Please confirm your email first, or turn off email confirmation in Supabase for testing."
-      : "Supabase rejected this login. Check the email and password, or create a fresh account after turning email confirmation off.";
+      ? "Please confirm your email before signing in. Check your inbox for the confirmation link."
+      : "We could not sign you in. Please check your email and password, then try again.";
     authRedirect("/sign-in", "error", message);
   }
   const signedInUserId = signInData?.user?.id ?? email;
