@@ -103,42 +103,71 @@ export function validateImportRows(rows: ImportClientRow[]) {
 }
 
 export function importRowIssues(row: ImportClientRow, rowNumber: number) {
-  const errors: string[] = [];
-  if (!row.client_name.trim()) errors.push(`Row ${rowNumber}: add the client name.`);
-  if (!row.policy_number.trim()) errors.push(`Row ${rowNumber}: add the policy number.`);
-  if (row.policy_number && !isValidPolicyNumber(row.policy_number)) errors.push(`Row ${rowNumber}: policy number format needs checking.`);
-  if (!row.policy_type) errors.push(`Row ${rowNumber}: choose the policy type.`);
-  if (!row.insurer_name.trim()) errors.push(`Row ${rowNumber}: add the insurer name.`);
-  if (row.insurer_name && !resolveImportInsurerName(row.insurer_name, row.policy_type)) errors.push(`Row ${rowNumber}: choose an approved insurer name.`);
-  if (!row.policy_end_date) errors.push(`Row ${rowNumber}: add the policy end date.`);
-  if (row.policy_start_date && !/^\d{4}-\d{2}-\d{2}$/.test(row.policy_start_date)) errors.push(`Row ${rowNumber}: start date must be YYYY-MM-DD.`);
-  if (row.policy_end_date && !/^\d{4}-\d{2}-\d{2}$/.test(row.policy_end_date)) errors.push(`Row ${rowNumber}: end date must be YYYY-MM-DD.`);
-  if (row.date_of_birth && !/^\d{4}-\d{2}-\d{2}$/.test(row.date_of_birth)) errors.push(`Row ${rowNumber}: date of birth must be YYYY-MM-DD.`);
-  if (row.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(row.email)) errors.push(`Row ${rowNumber}: email is invalid.`);
-  if (row.phone_number && !/^\+?[0-9 ()-]{8,20}$/.test(row.phone_number)) errors.push(`Row ${rowNumber}: phone number format needs checking.`);
-  if (row.commission_rate !== undefined && row.commission_rate < 0) errors.push(`Row ${rowNumber}: commission rate cannot be negative.`);
-  if (row.commission_status === "Paid" && row.commission_payment_date && !/^\d{4}-\d{2}-\d{2}$/.test(row.commission_payment_date)) errors.push(`Row ${rowNumber}: commission payment date must be YYYY-MM-DD.`);
-  return errors;
+  if (hasMeaningfulImportData(row)) return [];
+  return [`Row ${rowNumber}: no client or policy details found, so this blank row will be skipped.`];
 }
 
 export function importReviewWarnings(rows: ImportClientRow[]) {
   const warnings: string[] = [];
   rows.forEach((row, index) => {
     const missing = importRowReviewNotes(row);
-    if (missing.length) warnings.push(`Row ${index + 2}: ${missing.join(", ")} missing.`);
+    if (missing.length) warnings.push(`Row ${index + 2}: ${missing.join(", ")} needs attention later.`);
   });
   return warnings;
 }
 
 export function importRowReviewNotes(row: ImportClientRow) {
   const missing: string[] = [];
+  if (!row.client_name.trim()) missing.push("client name");
   if (!row.phone_number.trim()) missing.push("phone");
+  if (!row.email?.trim()) missing.push("email");
+  if (!row.policy_number.trim()) missing.push("policy number");
+  if (row.policy_number && !isValidPolicyNumber(row.policy_number)) missing.push("policy number format");
+  if (!row.policy_type) missing.push("policy type");
+  if (!row.insurer_name.trim()) missing.push("insurer");
+  if (row.insurer_name && !resolveImportInsurerName(row.insurer_name, row.policy_type)) missing.push("insurer match");
   if (!row.policy_start_date) missing.push("start date");
+  if (!row.policy_end_date) missing.push("end date");
+  if (row.policy_start_date && !isIsoImportDate(row.policy_start_date)) missing.push("start date format");
+  if (row.policy_end_date && !isIsoImportDate(row.policy_end_date)) missing.push("end date format");
+  if (row.date_of_birth && !isIsoImportDate(row.date_of_birth)) missing.push("date of birth format");
+  if (row.email && !isImportEmail(row.email)) missing.push("email format");
+  if (row.phone_number && !isImportPhone(row.phone_number)) missing.push("phone format");
   if (row.premium === undefined) missing.push("premium");
   if (row.commission_rate === undefined) missing.push("commission rate");
   if (row.policy_type === "Motor" && !row.vehicle_number?.trim()) missing.push("vehicle number");
   if (row.policy_type === "Property" && !row.property_location?.trim()) missing.push("property location");
   return missing;
+}
+
+export function hasMeaningfulImportData(row: ImportClientRow) {
+  return Boolean(
+    row.client_name.trim() ||
+    row.phone_number.trim() ||
+    row.policy_number.trim() ||
+    row.insurer_name.trim() ||
+    row.email?.trim() ||
+    row.date_of_birth?.trim() ||
+    row.vehicle_number?.trim() ||
+    row.property_location?.trim() ||
+    row.notes?.trim() ||
+    row.policy_start_date ||
+    row.policy_end_date ||
+    row.premium !== undefined ||
+    row.commission_amount !== undefined
+  );
+}
+
+function isIsoImportDate(value: string) {
+  return /^\d{4}-\d{2}-\d{2}$/.test(value);
+}
+
+function isImportEmail(value: string) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+}
+
+function isImportPhone(value: string) {
+  return /^\+?[0-9 ()-]{8,20}$/.test(value);
 }
 
 export function resolveImportInsurerName(value: string, policyType: PolicyType | "") {
@@ -194,6 +223,7 @@ function parseClientTable(table: string[][]): { rows: ImportClientRow[]; errors:
   rowsWithContent.slice(1).forEach((values) => {
     const record = Object.fromEntries(headers.map((header, headerIndex) => [header, values[headerIndex]?.trim() ?? ""])) as Record<string, string>;
     if (!record.insurer_name && isEnterprisePolicyExport(headers)) record.insurer_name = "Enterprise";
+    if (!record.policy_type && record.vehicle_number) record.policy_type = "Motor";
     record.policy_start_date = normalizeImportDate(record.policy_start_date);
     record.policy_end_date = normalizeImportDate(record.policy_end_date);
     record.date_of_birth = normalizeImportDate(record.date_of_birth);
@@ -211,7 +241,7 @@ function parseClientTable(table: string[][]): { rows: ImportClientRow[]; errors:
     const commissionStatus = importCommissionStatus(record, isEnterprisePolicyExport(headers));
     const commissionPaymentDate = importCommissionPaymentDate(record, commissionStatus);
     const policyType = normalizeImportPolicyType(record.policy_type);
-    rows.push({
+    const importRow = {
       client_name: record.client_name ?? "",
       phone_number: record.phone_number ? normalizeGhanaPhoneNumber(record.phone_number) : "",
       policy_number: record.policy_number ? normalizePolicyNumber(record.policy_number) : "",
@@ -229,7 +259,8 @@ function parseClientTable(table: string[][]): { rows: ImportClientRow[]; errors:
       email: record.email || undefined,
       date_of_birth: record.date_of_birth || undefined,
       notes: record.notes || undefined
-    });
+    };
+    if (hasMeaningfulImportData(importRow)) rows.push(importRow);
   });
   return { rows, errors: [] };
 }
@@ -258,14 +289,25 @@ function normalizeImportHeader(header: string) {
     customer_name: "client_name",
     insured_name: "client_name",
     policyholder_name: "client_name",
+    policy_holder: "client_name",
+    name: "client_name",
+    customer: "client_name",
+    insured: "client_name",
     phone_number: "phone_number",
     phone: "phone_number",
     telephone: "phone_number",
     mobile: "phone_number",
     mobile_number: "phone_number",
     contact_number: "phone_number",
+    contact: "phone_number",
+    tel: "phone_number",
+    gsm: "phone_number",
     policy_number: "policy_number",
     policy_no: "policy_number",
+    policy_num: "policy_number",
+    policyno: "policy_number",
+    certificate_no: "policy_number",
+    certificate_number: "policy_number",
     policy: "policy_number",
     policy_type: "policy_type",
     insurance: "policy_type",
@@ -275,18 +317,25 @@ function normalizeImportHeader(header: string) {
     insurer_name: "insurer_name",
     insurer: "insurer_name",
     insurance_company: "insurer_name",
+    insurer_company: "insurer_name",
+    underwriter: "insurer_name",
     company: "insurer_name",
     policy_start_date: "policy_start_date",
     start_date: "policy_start_date",
     effective_date: "policy_start_date",
     inception_date: "policy_start_date",
+    commencement_date: "policy_start_date",
+    from_date: "policy_start_date",
     policy_end_date: "policy_end_date",
     expiry_date: "policy_end_date",
     expiration_date: "policy_end_date",
     end_date: "policy_end_date",
+    to_date: "policy_end_date",
     policy_expiry_date: "policy_end_date",
     premium: "premium",
     premium_amount: "premium",
+    gross_premium: "premium",
+    net_premium: "premium",
     commission_due: "commission_amount",
     commission: "commission_amount",
     commission_amount: "commission_amount",
@@ -298,15 +347,24 @@ function normalizeImportHeader(header: string) {
     payment_date: "commission_payment_date",
     released: "commission_released",
     date_of_birth: "date_of_birth",
+    birth_date: "date_of_birth",
     dob: "date_of_birth",
     notes: "notes",
     note: "notes",
+    remarks: "notes",
+    description: "notes",
+    email: "email",
+    email_address: "email",
+    e_mail: "email",
     vehicle_number: "vehicle_number",
     vehicle_no: "vehicle_number",
     registration_number: "vehicle_number",
     reg_no: "vehicle_number",
+    registration_no: "vehicle_number",
+    vehicle_registration: "vehicle_number",
     property_location: "property_location",
     property_address: "property_location",
+    location: "property_location",
     address: "property_location"
   };
   return aliases[normalized] ?? normalized;
