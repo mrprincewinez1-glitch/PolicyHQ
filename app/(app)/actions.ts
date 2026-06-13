@@ -67,27 +67,30 @@ const prospectSchema = z.object({
   notes: z.string().max(500, "Notes are too long").optional().or(z.literal(""))
 });
 
+const importPolicyTypeValues = ["Life", "Health", "Motor", "Property", "Fire", "Marine", "Travel", "Accident"] as const;
+const looseImportNumber = z.preprocess((value) => value === "" || value === null ? undefined : value, z.coerce.number().nonnegative().optional());
+
 const importClientRowSchema = z.object({
-  client_name: z.string().trim().min(2, "Client name is required"),
-  phone_number: z.string().trim().regex(/^\+?[0-9 ()-]{8,20}$/, "Phone number is invalid").optional().or(z.literal("")),
-  policy_number: z.string().transform(normalizePolicyNumber).refine(isValidPolicyNumber, policyNumberHelpText),
-  policy_type: z.enum(["Life", "Health", "Motor", "Property", "Fire", "Marine", "Travel", "Accident"]),
-  insurer_name: z.string().trim().min(2, "Insurer is required"),
-  policy_start_date: z.string().refine(isValidDateInput, "Policy start date is invalid").optional().or(z.literal("")),
-  policy_end_date: z.string().refine(isValidDateInput, "Policy end date is invalid"),
+  client_name: z.string().trim().optional().or(z.literal("")),
+  phone_number: z.string().trim().optional().or(z.literal("")),
+  policy_number: z.string().trim().transform((value) => value ? normalizePolicyNumber(value) : "").optional().or(z.literal("")),
+  policy_type: z.enum(importPolicyTypeValues).optional().or(z.literal("")),
+  insurer_name: z.string().trim().optional().or(z.literal("")),
+  policy_start_date: z.string().trim().optional().or(z.literal("")),
+  policy_end_date: z.string().trim().optional().or(z.literal("")),
   vehicle_number: z.string().trim().optional().or(z.literal("")),
   property_location: z.string().trim().optional().or(z.literal("")),
-  premium: z.coerce.number().positive("Premium must be greater than zero").optional(),
-  commission_rate: z.coerce.number().nonnegative("Commission rate cannot be negative").optional(),
-  commission_amount: z.coerce.number().nonnegative("Commission amount cannot be negative").optional(),
+  premium: looseImportNumber,
+  commission_rate: looseImportNumber,
+  commission_amount: looseImportNumber,
   commission_status: z.enum(["Paid", "Pending"]).optional(),
-  commission_payment_date: z.string().refine(isValidDateInput, "Commission payment date is invalid").optional().or(z.literal("")),
-  email: z.string().email().optional().or(z.literal("")),
-  date_of_birth: z.string().refine(isValidDateInput, "Date of birth is invalid").optional().or(z.literal("")),
+  commission_payment_date: z.string().trim().optional().or(z.literal("")),
+  email: z.string().trim().optional().or(z.literal("")),
+  date_of_birth: z.string().trim().optional().or(z.literal("")),
   notes: z.string().max(500, "Notes are too long").optional().or(z.literal(""))
-});
+}).refine(importRowHasUsefulData, "Upload at least one row with client or policy details.");
 
-const importClientRowsSchema = z.array(importClientRowSchema).min(1, "Upload at least one valid row.").max(100, "Import 100 rows or fewer at a time.");
+const importClientRowsSchema = z.array(importClientRowSchema).min(1, "Upload at least one valid row.").max(1000, "Import 1,000 rows or fewer at a time.");
 
 const commissionPaidSchema = z.object({
   commission_id: z.string().uuid("Commission is invalid")
@@ -157,23 +160,98 @@ function isValidDateInput(value: string) {
 }
 
 function inferImportStartDate(expiryDate: string) {
+  if (!isValidDateInput(expiryDate)) return new Date().toISOString().slice(0, 10);
   const expiry = new Date(`${expiryDate}T00:00:00Z`);
   expiry.setUTCFullYear(expiry.getUTCFullYear() - 1);
   return expiry.toISOString().slice(0, 10);
+}
+
+function inferImportEndDate(startDate: string) {
+  const start = isValidDateInput(startDate) ? new Date(`${startDate}T00:00:00Z`) : new Date();
+  start.setUTCFullYear(start.getUTCFullYear() + 1);
+  return start.toISOString().slice(0, 10);
 }
 
 function sanitizeText(value: string | undefined | null) {
   return String(value ?? "").replace(/[\u0000-\u001F\u007F]/g, "").trim();
 }
 
+function importRowHasUsefulData(row: { client_name?: string; phone_number?: string; policy_number?: string; policy_type?: string; insurer_name?: string; policy_start_date?: string; policy_end_date?: string; vehicle_number?: string; property_location?: string; email?: string; date_of_birth?: string; notes?: string; premium?: number; commission_amount?: number }) {
+  return Boolean(
+    row.client_name?.trim() ||
+    row.phone_number?.trim() ||
+    row.policy_number?.trim() ||
+    row.policy_type ||
+    row.insurer_name?.trim() ||
+    row.policy_start_date?.trim() ||
+    row.policy_end_date?.trim() ||
+    row.vehicle_number?.trim() ||
+    row.property_location?.trim() ||
+    row.email?.trim() ||
+    row.date_of_birth?.trim() ||
+    row.notes?.trim() ||
+    row.premium !== undefined ||
+    row.commission_amount !== undefined
+  );
+}
+
+function importPolicyNumber(policyNumber: string | undefined, rowIndex: number) {
+  if (policyNumber && isValidPolicyNumber(policyNumber)) return normalizePolicyNumber(policyNumber);
+  const today = new Date().toISOString().slice(0, 10).replace(/-/g, "");
+  return `IMPORT-${today}-${String(rowIndex + 2).padStart(4, "0")}-${crypto.randomUUID().slice(0, 8).toUpperCase()}`;
+}
+
+function importPolicyType(row: z.infer<typeof importClientRowSchema>): (typeof importPolicyTypeValues)[number] {
+  if (row.policy_type) return row.policy_type;
+  if (row.vehicle_number?.trim()) return "Motor";
+  if (row.property_location?.trim()) return "Property";
+  return "Life";
+}
+
+function importClientName(row: z.infer<typeof importClientRowSchema>, rowIndex: number) {
+  return sanitizeText(row.client_name) || sanitizeText(row.email) || sanitizeText(row.phone_number) || sanitizeText(row.policy_number) || `Imported client row ${rowIndex + 2}`;
+}
+
+function importPhoneNumber(phoneNumber: string | undefined) {
+  const trimmed = sanitizeText(phoneNumber);
+  if (!trimmed) return "Not captured";
+  return /^\+?[0-9 ()-]{8,20}$/.test(trimmed) ? normalizeGhanaPhoneNumber(trimmed) : trimmed;
+}
+
+function isImportEmail(email: string | undefined) {
+  return Boolean(email && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email));
+}
+
+function importStartDate(row: z.infer<typeof importClientRowSchema>) {
+  if (isValidDateInput(row.policy_start_date || "")) return row.policy_start_date || "";
+  return inferImportStartDate(row.policy_end_date || "");
+}
+
+function importEndDate(row: z.infer<typeof importClientRowSchema>) {
+  if (isValidDateInput(row.policy_end_date || "")) return row.policy_end_date || "";
+  return inferImportEndDate(row.policy_start_date || "");
+}
+
 function importReviewReasons(row: z.infer<typeof importClientRowSchema>) {
   const reasons: string[] = [];
+  if (!row.client_name?.trim()) reasons.push("client name added from available row details");
   if (!row.phone_number?.trim()) reasons.push("client phone number missing");
-  if (!row.policy_start_date) reasons.push("policy start date inferred from expiry date");
+  if (row.phone_number?.trim() && importPhoneNumber(row.phone_number) === row.phone_number.trim() && !/^\+?[0-9 ()-]{8,20}$/.test(row.phone_number.trim())) reasons.push("client phone number needs checking");
+  if (!row.email?.trim()) reasons.push("email missing");
+  if (row.email?.trim() && !isImportEmail(row.email)) reasons.push("email needs checking");
+  if (!row.policy_number?.trim()) reasons.push("policy number created temporarily");
+  if (row.policy_number?.trim() && !isValidPolicyNumber(row.policy_number)) reasons.push("policy number format needs checking");
+  if (!row.policy_type) reasons.push("policy type defaulted");
+  if (!row.insurer_name?.trim()) reasons.push("insurer missing");
+  if (row.insurer_name?.trim() && !findInsuranceCompany(row.insurer_name)) reasons.push("insurer needs matching");
+  if (!isValidDateInput(row.policy_start_date || "")) reasons.push("policy start date inferred");
+  if (!isValidDateInput(row.policy_end_date || "")) reasons.push("policy end date inferred");
+  if (row.date_of_birth?.trim() && !isValidDateInput(row.date_of_birth || "")) reasons.push("date of birth needs checking");
   if (row.premium === undefined) reasons.push("premium amount missing");
   if (row.commission_rate === undefined) reasons.push("commission rate defaulted");
-  if (row.policy_type === "Motor" && !row.vehicle_number?.trim()) reasons.push("vehicle number missing");
-  if (row.policy_type === "Property" && !row.property_location?.trim()) reasons.push("property location missing");
+  const policyType = importPolicyType(row);
+  if (policyType === "Motor" && !row.vehicle_number?.trim()) reasons.push("vehicle number missing");
+  if (policyType === "Property" && !row.property_location?.trim()) reasons.push("property location missing");
   return reasons;
 }
 
@@ -725,43 +803,38 @@ export async function addActivityNote(input: { client_id?: string; policy_id?: s
 }
 
 // CSV/Excel imports are intentionally forgiving: missing operational fields are
-// saved as Needs Review instead of blocking the agent from onboarding a real book.
+// saved as review-queue notes instead of blocking the agent from onboarding a real book.
 export async function importClientsFromCsvRows(rows: unknown) {
   const parsed = importClientRowsSchema.safeParse(rows);
   if (!parsed.success) return { ok: false, message: parsed.error.issues[0]?.message ?? "Check your CSV rows." };
   const { supabase, agentId } = await currentUserId();
   const limited = assertActionRateLimit(agentId, "import-clients", 5);
   if (limited) return { ok: false, message: limited };
-  const policyNumbers = parsed.data.map((row) => row.policy_number);
+  const policyNumbers = parsed.data.map((row) => row.policy_number).filter(Boolean);
   const duplicatePolicyNumber = policyNumbers.find((policyNumber, index) => policyNumbers.indexOf(policyNumber) !== index);
   if (duplicatePolicyNumber) return { ok: false, message: `Policy number ${duplicatePolicyNumber} appears twice in this file.` };
-
-  for (const row of parsed.data) {
-    const company = findInsuranceCompany(row.insurer_name);
-    const insuranceCategory = insuranceCategoryForPolicyType(row.policy_type);
-    if (!company) return { ok: false, message: `Choose an approved insurer for ${row.policy_number}.` };
-    if (company.category !== insuranceCategory) return { ok: false, message: `${company.name} does not match the ${insuranceCategory} business class for ${row.policy_number}.` };
-  }
 
   const importedClients: Client[] = [];
   const importedPolicies: PolicyWithClient[] = [];
   const importedCommissions: Commission[] = [];
 
-  for (const row of parsed.data) {
+  for (let rowIndex = 0; rowIndex < parsed.data.length; rowIndex += 1) {
+    const row = parsed.data[rowIndex];
+    const policyNumber = importPolicyNumber(row.policy_number, rowIndex);
     const { data: existingPolicy, error: existingPolicyError } = await supabase
       .from("policies")
       .select(policyColumns)
-      .eq("policy_number", row.policy_number)
+      .eq("policy_number", policyNumber)
       .eq("agent_id", agentId)
       .maybeSingle();
-    if (existingPolicyError) return { ok: false, message: `We could not check existing policy ${row.policy_number}.` };
+    if (existingPolicyError) return { ok: false, message: `We could not check existing policy ${policyNumber}.` };
 
     const clientPayload = {
       agent_id: agentId,
-      full_name: row.client_name,
-      phone_number: row.phone_number ? normalizeGhanaPhoneNumber(row.phone_number) : "Not captured",
-      email: row.email || null,
-      date_of_birth: row.date_of_birth || null,
+      full_name: importClientName(row, rowIndex),
+      phone_number: importPhoneNumber(row.phone_number),
+      email: isImportEmail(row.email) ? row.email : null,
+      date_of_birth: isValidDateInput(row.date_of_birth || "") ? row.date_of_birth : null,
       address: null,
       deleted_at: null
     };
@@ -788,24 +861,25 @@ export async function importClientsFromCsvRows(rows: unknown) {
         .single();
 
     const { data: client, error: clientError } = await clientQuery;
-    if (clientError || !client) return { ok: false, message: `Import stopped at ${row.client_name}. We could not save this client.` };
+    if (clientError || !client) return { ok: false, message: `Import stopped at row ${rowIndex + 2}. We could not save this client.` };
 
-    const company = findInsuranceCompany(row.insurer_name)!;
-    const insuranceCategory = insuranceCategoryForPolicyType(row.policy_type);
+    const policyType = importPolicyType(row);
+    const company = findInsuranceCompany(row.insurer_name || "");
+    const insuranceCategory = company?.category ?? insuranceCategoryForPolicyType(policyType);
     const reviewReasons = importReviewReasons(row);
-    const reviewNote = reviewReasons.length ? `Needs Review: ${reviewReasons.join("; ")}.` : "";
+    const reviewNote = reviewReasons.length ? `Imported with missing details: ${reviewReasons.join("; ")}.` : "";
     const notes = [reviewNote, row.notes?.trim()].filter(Boolean).join("\n\n") || null;
     const policyPayload = {
         agent_id: agentId,
         client_id: client.id,
-        policy_number: row.policy_number,
-        policy_type: row.policy_type,
+        policy_number: policyNumber,
+        policy_type: policyType,
         insurance_category: insuranceCategory,
-        vehicle_number: row.policy_type === "Motor" ? row.vehicle_number?.trim() : null,
-        property_location: row.policy_type === "Property" ? row.property_location?.trim() : null,
-        insurer_name: company.name,
-        start_date: row.policy_start_date || inferImportStartDate(row.policy_end_date),
-        expiry_date: row.policy_end_date,
+        vehicle_number: row.vehicle_number?.trim() || null,
+        property_location: row.property_location?.trim() || null,
+        insurer_name: company?.name ?? (row.insurer_name?.trim() || "Not captured"),
+        start_date: importStartDate(row),
+        expiry_date: importEndDate(row),
         premium_amount: row.premium ?? 0,
         currency: "GHS",
         status: "Active" as const,
@@ -829,7 +903,7 @@ export async function importClientsFromCsvRows(rows: unknown) {
 
     const { data: policy, error: policyError } = await policyQuery;
     if (policyError || !policy) {
-      return { ok: false, message: `Import stopped at ${row.policy_number}. This policy number may still exist in archived data.` };
+      return { ok: false, message: `Import stopped at row ${rowIndex + 2}. This policy number may still exist in archived data.` };
     }
 
     const { data: existingCommission } = await supabase
@@ -862,7 +936,7 @@ export async function importClientsFromCsvRows(rows: unknown) {
         .single();
 
     const { data: commission, error: commissionError } = await commissionQuery;
-    if (commissionError || !commission) return { ok: false, message: `Policy ${row.policy_number} imported, but we could not create the commission record.` };
+    if (commissionError || !commission) return { ok: false, message: `Policy ${policyNumber} imported, but we could not create the commission record.` };
 
     importedClients.push(client as Client);
     importedCommissions.push(commission as Commission);
