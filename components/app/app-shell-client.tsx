@@ -163,7 +163,7 @@ export function AppShell({
   renewalRange?: "week" | "next-week" | "month";
   dashboardFocus?: "birthdays" | "anniversaries" | "life-retention" | "lapse-shield" | "recovered-life";
   clientId?: string;
-  prospectFilter?: "today";
+  prospectFilter?: "today" | "overdue";
   policyFilter?: "needs-review";
   commissionFilter?: "paid-this-month";
 }) {
@@ -845,7 +845,7 @@ export function AppShell({
   ) : active === "prospects" ? (
     <Prospects
       prospects={filteredProspects}
-      dueTodayOnly={prospectFilter === "today"}
+      initialTimeFilter={prospectFilter === "overdue" ? "Overdue" : prospectFilter === "today" ? "Today" : "All"}
       onAdd={() => blockWrite() || setModal({ type: "prospect" })}
       onEdit={(prospect) => blockWrite() || setModal({ type: "prospect", prospect })}
       onDelete={(prospect) => blockWrite() || setModal({ type: "confirm", title: "Delete prospect?", body: `This will permanently delete ${prospect.full_name} from your prospects list.`, action: () => deleteProspect(prospect) })}
@@ -1095,10 +1095,12 @@ function Dashboard({
 }) {
   const active = activePolicies(data.policies);
   const premiumDueThisMonth = expiringThisMonth(data.policies).reduce((sum, policy) => sum + policy.premium_amount, 0);
-  const followUpsDueToday = data.prospects.filter(isProspectDueToday).length;
+  const prospectMetrics = prospectQueueMetrics(data.prospects);
+  const followUpsDueToday = prospectMetrics.today;
+  const prospectFollowUpsDue = prospectMetrics.today + prospectMetrics.overdue;
   const dashboardMix = dashboardBusinessMix(data);
   const revenueMetrics = dashboardRevenueMetrics(data.policies, data.lapse_shield_cases, dashboardMix, base);
-  const relationshipMetrics = dashboardRelationshipMetrics(data.policies, dashboardMix, todaysBirthdays.length, followUpsDueToday, base);
+  const relationshipMetrics = dashboardRelationshipMetrics(data.policies, dashboardMix, todaysBirthdays.length, prospectFollowUpsDue, base);
   const activities = dashboardActivities(data, todaysBirthdays, base, openPolicy);
   const needsReviewCount = data.policies.filter(needsPolicyReview).length;
 
@@ -1129,7 +1131,7 @@ function Dashboard({
         <DashboardStatLink label="Active Policies" value={active.length} href={navHref(base, "policies")} />
         <DashboardStatLink label="Commissions" value={formatDashboardCurrency(totalPaidThisMonth)} href={`${navHref(base, "commissions")}?filter=paid-this-month`} wide />
         <DashboardStatLink label="Premium Due" value={formatDashboardCurrency(premiumDueThisMonth)} href={`${base}/renewals/month`} wide />
-        <ProspectsDashboardCard total={data.prospects.length} dueToday={followUpsDueToday} href={navHref(base, "prospects")} />
+        <ProspectsDashboardCard total={data.prospects.length} dueToday={followUpsDueToday} overdue={prospectMetrics.overdue} href={navHref(base, "prospects")} />
       </div>
       {needsReviewCount ? <NeedsReviewPrompt count={needsReviewCount} href={`${navHref(base, "policies")}?filter=needs-review`} /> : null}
       <div className="grid gap-6 lg:grid-cols-2">
@@ -1449,7 +1451,7 @@ function DashboardQuickActionDrawer({ action, data, base, onClose, updateRenewal
         : [];
   const birthdays = action.type === "birthdays" ? data.clients.filter((client) => isBirthdayToday(client.date_of_birth)) : [];
   const followUps = action.type === "follow-ups"
-    ? sortProspectsByFollowUp(data.prospects.filter((prospect) => prospectMatchesTimeFilter(prospect, "Today") && prospectMatchesStatusFilter(prospect, "All Active")))
+    ? sortProspectsByFollowUp(data.prospects.filter(isProspectFollowUpDue))
     : [];
   const total = policies.length + birthdays.length + followUps.length;
 
@@ -2043,16 +2045,20 @@ function EmptyFocusState({ title, body }: { title: string; body: string }) {
   );
 }
 
-function ProspectsDashboardCard({ total, dueToday, href }: { total: number; dueToday: number; href: string }) {
+function ProspectsDashboardCard({ total, dueToday, overdue, href }: { total: number; dueToday: number; overdue: number; href: string }) {
+  const destination = overdue > 0 ? `${href}?filter=overdue` : dueToday > 0 ? `${href}?filter=today` : href;
   return (
-    <Link href={href} className="rounded-xl focus:outline-none focus:ring-2 focus:ring-accent">
+    <Link href={destination} className="rounded-xl focus:outline-none focus:ring-2 focus:ring-accent">
       <Card className="min-h-[88px] cursor-pointer overflow-hidden transition hover:-translate-y-0.5 hover:border-accent hover:shadow-md xl:w-[168px]">
         <CardContent className="p-[15px]">
           <p className="text-[10px] font-extrabold leading-[14px] text-slate-500">Prospects</p>
-          <div className="mt-3 flex items-end justify-between gap-3">
+          <div className="mt-2 flex items-end justify-between gap-2">
             <strong className="block text-2xl font-extrabold leading-7 tracking-[-0.04em] text-primary">{total}</strong>
-            <div className="rounded-full bg-accent/10 px-2.5 py-1 text-[10px] font-extrabold text-accent">
-              {dueToday} due
+            <div className="space-y-1 text-right">
+              {overdue > 0 ? <div className="rounded-full bg-danger/10 px-2 py-0.5 text-[9px] font-extrabold text-danger">{overdue} overdue</div> : null}
+              <div className="rounded-full bg-accent/10 px-2 py-0.5 text-[9px] font-extrabold text-accent">
+                {dueToday} today
+              </div>
             </div>
           </div>
         </CardContent>
@@ -2128,12 +2134,12 @@ function RenewalList({ title, policies, base, updateRenewal, openPolicy, onBack 
   );
 }
 
-type ProspectTimeFilter = "Today" | "This Week" | "Next Week" | "This Month" | "All";
+type ProspectTimeFilter = "Overdue" | "Today" | "This Week" | "Next Week" | "This Month" | "All";
 type ProspectStatusFilter = "All Active" | "New" | "Interested" | "Call Back" | "Converted" | "Not Interested";
 
 function Prospects({
   prospects,
-  dueTodayOnly,
+  initialTimeFilter,
   onAdd,
   onEdit,
   onDelete,
@@ -2141,14 +2147,14 @@ function Prospects({
   onStatusChange
 }: {
   prospects: Prospect[];
-  dueTodayOnly: boolean;
+  initialTimeFilter: ProspectTimeFilter;
   onAdd: () => void;
   onEdit: (prospect: Prospect) => void;
   onDelete: (prospect: Prospect) => void;
   onConvert: (prospect: Prospect) => void;
   onStatusChange: (prospect: Prospect, status: ProspectStatus) => void;
 }) {
-  const [timeFilter, setTimeFilter] = useState<ProspectTimeFilter>(dueTodayOnly ? "Today" : "All");
+  const [timeFilter, setTimeFilter] = useState<ProspectTimeFilter>(initialTimeFilter);
   const [statusFilter, setStatusFilter] = useState<ProspectStatusFilter>("All Active");
   const visible = useMemo(() => sortProspectsByFollowUp(prospects.filter((prospect) => {
     return prospectMatchesStatusFilter(prospect, statusFilter) && prospectMatchesTimeFilter(prospect, timeFilter);
@@ -2194,7 +2200,7 @@ function Prospects({
       </Card>
 
       <div className="grid gap-3 sm:grid-cols-4">
-        <ProspectMetricCard label="Overdue" value={metrics.overdue} tone="danger" onClick={() => setTimeFilter("Today")} />
+        <ProspectMetricCard label="Overdue" value={metrics.overdue} tone="danger" onClick={() => setTimeFilter("Overdue")} />
         <ProspectMetricCard label="Today" value={metrics.today} tone="orange" onClick={() => setTimeFilter("Today")} />
         <ProspectMetricCard label="This Week" value={metrics.thisWeek} tone="primary" onClick={() => setTimeFilter("This Week")} />
         <ProspectMetricCard label="Converted" value={metrics.converted} tone="success" onClick={() => setStatusFilter("Converted")} />
@@ -3554,6 +3560,12 @@ function isProspectDueToday(prospect: Prospect) {
   return prospect.follow_up_date === today;
 }
 
+function isProspectFollowUpDue(prospect: Prospect) {
+  if (!prospect.follow_up_date || ["Converted", "Not Interested"].includes(prospect.status)) return false;
+  const followUpDate = localDate(prospect.follow_up_date);
+  return followUpDate ? followUpDate.getTime() <= startOfLocalDay(new Date()).getTime() : false;
+}
+
 function localDate(value?: string | null) {
   const date = value ? new Date(`${value}T00:00:00`) : null;
   return date && !Number.isNaN(date.getTime()) ? date : null;
@@ -3589,7 +3601,8 @@ function prospectMatchesTimeFilter(prospect: Prospect, filter: ProspectTimeFilte
   const date = localDate(prospect.follow_up_date);
   if (!date) return false;
   const today = startOfLocalDay(new Date());
-  if (filter === "Today") return date.getTime() <= today.getTime();
+  if (filter === "Overdue") return date.getTime() < today.getTime();
+  if (filter === "Today") return date.getTime() === today.getTime();
   if (filter === "This Week") {
     const { start, end } = weekBounds(0);
     return date.getTime() >= start.getTime() && date.getTime() <= end.getTime();

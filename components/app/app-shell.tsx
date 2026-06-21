@@ -10,7 +10,7 @@ type AppShellProps = {
   renewalRange?: "week" | "next-week" | "month";
   dashboardFocus?: "birthdays" | "anniversaries" | "life-retention" | "lapse-shield" | "recovered-life";
   clientId?: string;
-  prospectFilter?: "today";
+  prospectFilter?: "today" | "overdue";
   policyFilter?: "needs-review";
   commissionFilter?: "paid-this-month";
 };

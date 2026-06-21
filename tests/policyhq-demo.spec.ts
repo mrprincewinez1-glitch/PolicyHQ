@@ -18,6 +18,18 @@ test.describe("PolicyHQ public and demo smoke checks", () => {
     await expect(page.getByRole("link", { name: /Missing Statement/i })).toBeVisible();
   });
 
+  test("dashboard prospects card surfaces overdue follow-ups", async ({ page }) => {
+    await page.goto("/demo");
+
+    const prospectsCard = page.locator('a[href="/demo/prospects?filter=overdue"]');
+    await expect(prospectsCard).toContainText("1 overdue");
+    await prospectsCard.click();
+
+    await expect(page).toHaveURL(/\/demo\/prospects\?filter=overdue/);
+    await expect(page.getByText("Mavis Nartey")).toBeVisible();
+    await expect(page.getByText("Selina Osei")).toHaveCount(0);
+  });
+
   test("demo navigation pages render without dead surfaces", async ({ page }) => {
     const pages = [
       { path: "/demo/clients", heading: "Clients", text: "Import Clients" },
