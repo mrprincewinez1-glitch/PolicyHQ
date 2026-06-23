@@ -282,7 +282,7 @@ export function AppShell({
     }));
     setModal(null);
     posthog.capture("clients_imported", { client_count: result.clients.length, policy_count: result.policies.length });
-    notify("success", needsReviewCount ? `${result.message} ${needsReviewCount} need review.` : result.message);
+    notify("success", needsReviewCount ? `${result.message} ${needsReviewCount} imported with missing details for later review.` : result.message);
   }
 
   async function saveLapseReview(input: { statement_name: string; statement_kind: string; rows: LapseShieldStatementRow[] }) {
@@ -1195,7 +1195,7 @@ function NoDataDashboard({ base, profileName, onAddPolicy, onImportClients, onAd
             </button>
             <div className="mt-5 grid gap-3 sm:grid-cols-3">
               <SetupStep number="1" title="Add book" body="Import a list or add the first policy." />
-              <SetupStep number="2" title="Review gaps" body="Fix any Needs Review records." />
+              <SetupStep number="2" title="Review gaps" body="Review missing details when convenient." />
               <SetupStep number="3" title="Work daily" body="Use renewals, follow-ups, and commissions." />
             </div>
           </CardContent>
@@ -1281,8 +1281,8 @@ function NeedsReviewPrompt({ count, href }: { count: number; href: string }) {
     <Link href={href} className="block rounded-xl focus:outline-none focus:ring-2 focus:ring-accent">
       <div className="flex flex-col gap-3 rounded-xl border border-warning/30 bg-warning/10 p-4 transition hover:border-accent hover:bg-accent/10 sm:flex-row sm:items-center sm:justify-between">
         <div className="min-w-0">
-          <p className="text-sm font-extrabold text-primary">{count} polic{count === 1 ? "y" : "ies"} need review</p>
-          <p className="mt-1 text-xs font-bold leading-5 text-slate-600">Imported records with missing details are waiting in Policies.</p>
+          <p className="text-sm font-extrabold text-primary">{count} polic{count === 1 ? "y" : "ies"} need attention later</p>
+          <p className="mt-1 text-xs font-bold leading-5 text-slate-600">Imported records with missing details are waiting in Policies when convenient.</p>
         </div>
         <span className="inline-flex min-h-10 shrink-0 items-center justify-center rounded-[10px] bg-accent px-4 text-[10px] font-extrabold text-white">Review Policies</span>
       </div>
@@ -2416,7 +2416,7 @@ function Policies({ policies, clients, initialFilter, onAdd, onEdit, onDelete, o
       <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
         <div>
           <h1 className="text-[32px] font-extrabold leading-[44px] text-primary">Policies</h1>
-          {pageFilter === "needs-review" ? <p className="mt-1 text-sm font-bold text-slate-500">Imported records that need a quick cleanup before they are fully useful.</p> : null}
+          {pageFilter === "needs-review" ? <p className="mt-1 text-sm font-bold text-slate-500">Imported records with missing details you can improve when convenient.</p> : null}
         </div>
         <Button onClick={onAdd}><Plus className="h-4 w-4" /> Add Policy</Button>
       </div>
@@ -2424,7 +2424,7 @@ function Policies({ policies, clients, initialFilter, onAdd, onEdit, onDelete, o
         <CardContent className="flex flex-wrap items-end gap-3 p-4">
           <div className="flex flex-wrap gap-2">
             <button type="button" onClick={() => setPageFilter("all")} className={`h-9 rounded-full px-5 text-xs font-extrabold ${pageFilter === "all" ? "bg-primary text-white" : "bg-slate-100 text-slate-600"}`}>All Policies</button>
-            <button type="button" onClick={() => setPageFilter("needs-review")} className={`h-9 rounded-full px-5 text-xs font-extrabold ${pageFilter === "needs-review" ? "bg-warning text-white" : "bg-warning/10 text-warning"}`}>Needs Review {reviewCount ? `(${reviewCount})` : ""}</button>
+            <button type="button" onClick={() => setPageFilter("needs-review")} className={`h-9 rounded-full px-5 text-xs font-extrabold ${pageFilter === "needs-review" ? "bg-warning text-white" : "bg-warning/10 text-warning"}`}>Needs attention later {reviewCount ? `(${reviewCount})` : ""}</button>
           </div>
           <div className="h-px w-full bg-slate-100" />
           <div className="flex flex-wrap gap-2">
@@ -2440,9 +2440,9 @@ function Policies({ policies, clients, initialFilter, onAdd, onEdit, onDelete, o
       {!filtered.length ? (
         <CardContent className="flex min-h-[420px] flex-col items-center justify-center p-6 text-center">
           <ShieldCheck className="h-11 w-11 text-slate-300" />
-          <h2 className="mt-4 text-xl font-extrabold text-primary">{pageFilter === "needs-review" ? "No policies need review" : "No policies match these filters"}</h2>
+          <h2 className="mt-4 text-xl font-extrabold text-primary">{pageFilter === "needs-review" ? "No policies need attention later" : "No policies match these filters"}</h2>
           <p className="mt-2 max-w-md text-sm font-semibold leading-6 text-slate-500">
-            {pageFilter === "needs-review" ? "All imported policy records have the key details PolicyHQ needs for renewals, commissions, and reports." : "Try clearing the status or policy type filter."}
+            {pageFilter === "needs-review" ? "All imported policy records have enough key details for renewals, commissions, and reports." : "Try clearing the status or policy type filter."}
           </p>
           <div className="mt-5 flex flex-wrap justify-center gap-3">
             {pageFilter === "needs-review" ? <Button variant="outline" onClick={() => setPageFilter("all")}>View All Policies</Button> : <Button variant="outline" onClick={() => { setStatus("All"); setType("All"); setPageFilter("all"); }}>Clear Filters</Button>}
@@ -2888,7 +2888,7 @@ function PolicyModal({ policy, prospect, clients, onClose, onSave }: { policy?: 
       <form onSubmit={submit} className="space-y-5">
         <div className="rounded-2xl border border-accent/20 bg-accent/5 p-4">
           <p className="text-sm font-bold leading-6 text-primary">{modalSubtitle}</p>
-          {policy && needsPolicyReview(policy) ? <p className="mt-2 rounded-xl bg-warning/10 p-3 text-xs font-bold leading-5 text-warning">This imported policy needs review. Fill the missing fields, then save to make reports and reminders cleaner.</p> : null}
+          {policy && needsPolicyReview(policy) ? <p className="mt-2 rounded-xl bg-warning/10 p-3 text-xs font-bold leading-5 text-warning">This policy was imported with missing details. Add them when convenient to make reports and reminders cleaner.</p> : null}
         </div>
 
         <PolicyFormSection number="1" title="Client" helper="Choose an existing client or capture the person who bought the policy.">
@@ -2994,12 +2994,12 @@ function ImportClientsModal({ onClose, onImport }: { onClose: () => void; onImpo
   const [rows, setRows] = useState<ImportClientRow[]>([]);
   const [errors, setErrors] = useState<string[]>([]);
   const rowErrors = useMemo(() => validateImportRows(rows), [rows]);
-  const reviewWarnings = useMemo(() => importReviewWarnings(rows), [rows]);
-  const importErrors = [...errors, ...rowErrors];
-  const canImport = rows.length > 0 && importErrors.length === 0;
-  const readyRows = useMemo(() => rows.filter((row, index) => importRowIssues(row, index + 2).length === 0 && importRowReviewNotes(row).length === 0).length, [rows]);
-  const reviewRows = useMemo(() => rows.filter((row, index) => importRowIssues(row, index + 2).length === 0 && importRowReviewNotes(row).length > 0).length, [rows]);
-  const blockedRows = useMemo(() => rows.filter((row, index) => importRowIssues(row, index + 2).length > 0).length, [rows]);
+  const importableRows = useMemo(() => rows.filter((row, index) => importRowIssues(row, index + 2).length === 0), [rows]);
+  const reviewWarnings = useMemo(() => importReviewWarnings(importableRows), [importableRows]);
+  const canImport = importableRows.length > 0 && errors.length === 0;
+  const readyRows = useMemo(() => importableRows.filter((row) => importRowReviewNotes(row).length === 0).length, [importableRows]);
+  const reviewRows = useMemo(() => importableRows.filter((row) => importRowReviewNotes(row).length > 0).length, [importableRows]);
+  const skippedRows = rowErrors.length;
 
   function updateImportRow(index: number, field: keyof ImportClientRow, value: string) {
     setRows((current) => current.map((row, rowIndex) => {
@@ -3047,11 +3047,11 @@ function ImportClientsModal({ onClose, onImport }: { onClose: () => void; onImpo
       <div className="space-y-5">
         <div className="rounded-xl bg-slate-50 p-4 text-sm text-slate-600">
           <p className="font-bold text-primary">Upload a CSV or Excel file.</p>
-          <p className="mt-1">PolicyHQ will match common insurer columns automatically.</p>
+          <p className="mt-1">PolicyHQ will match common insurer columns automatically, import useful rows now, and help you clean missing details later.</p>
           <details className="mt-3">
             <summary className="cursor-pointer text-xs font-extrabold uppercase tracking-[0.12em] text-accent">What fields are supported?</summary>
             <p className="mt-2 text-xs font-semibold leading-5 text-slate-500">
-              PolicyHQ looks for client name, phone number, policy number, policy type, insurer, start date, end date, premium, commission, vehicle, property, email, date of birth, and notes. Missing non-blocking fields import as Needs Review.
+              PolicyHQ looks for client name, phone number, policy number, policy type, insurer, start date, end date, premium, commission, vehicle, property, email, date of birth, and notes. Missing fields do not block import; they become later-review notes.
             </p>
           </details>
         </div>
@@ -3072,20 +3072,20 @@ function ImportClientsModal({ onClose, onImport }: { onClose: () => void; onImpo
             <div className="grid gap-3 sm:grid-cols-4">
               <ImportSummaryCard label="Rows Loaded" value={rows.length} tone="slate" />
               <ImportSummaryCard label="Ready" value={readyRows} tone="green" />
-              <ImportSummaryCard label="Needs Review" value={reviewRows} tone="amber" />
-              <ImportSummaryCard label="Must Fix" value={blockedRows} tone="red" />
+              <ImportSummaryCard label="Imported with missing details" value={reviewRows} tone="amber" />
+              <ImportSummaryCard label="Skipped blank rows" value={skippedRows} tone="slate" />
             </div>
             {rowErrors.length ? (
               <div className="rounded-xl bg-warning/10 p-4 text-sm font-semibold text-warning">
-                <p className="mb-2 font-extrabold text-primary">Fix these before importing.</p>
+                <p className="mb-2 font-extrabold text-primary">These rows look blank and will be skipped.</p>
                 {rowErrors.slice(0, 8).map((error) => <p key={error}>{error}</p>)}
-                {rowErrors.length > 8 ? <p>Plus {rowErrors.length - 8} more item{rowErrors.length - 8 === 1 ? "" : "s"} to fix.</p> : null}
+                {rowErrors.length > 8 ? <p>Plus {rowErrors.length - 8} more blank row note{rowErrors.length - 8 === 1 ? "" : "s"}.</p> : null}
               </div>
             ) : reviewWarnings.length ? (
               <div className="rounded-xl bg-warning/10 p-4 text-sm font-semibold text-warning">
-                <p className="font-extrabold text-primary">{reviewRows} row{reviewRows === 1 ? "" : "s"} will be imported as Needs Review.</p>
+                <p className="font-extrabold text-primary">{reviewRows} row{reviewRows === 1 ? "" : "s"} will be imported with missing details you can review when convenient.</p>
                 {reviewWarnings.slice(0, 5).map((warning) => <p key={warning}>{warning}</p>)}
-                {reviewWarnings.length > 5 ? <p>Plus {reviewWarnings.length - 5} more review note{reviewWarnings.length - 5 === 1 ? "" : "s"}.</p> : null}
+                {reviewWarnings.length > 5 ? <p>Plus {reviewWarnings.length - 5} more later-review note{reviewWarnings.length - 5 === 1 ? "" : "s"}.</p> : null}
               </div>
             ) : (
               <div className="rounded-xl bg-success/10 p-4 text-sm font-semibold text-success">All rows look ready to import.</div>
@@ -3106,7 +3106,7 @@ function ImportClientsModal({ onClose, onImport }: { onClose: () => void; onImpo
         ) : null}
         <div className="sticky bottom-0 -mx-6 flex justify-end gap-3 border-t border-slate-200 bg-white px-6 py-4">
           <Button type="button" variant="outline" onClick={onClose}>Cancel</Button>
-          <Button type="button" disabled={!canImport} onClick={() => onImport(rows)}>Import Rows</Button>
+          <Button type="button" disabled={!canImport} onClick={() => onImport(importableRows)}>Import Rows</Button>
         </div>
       </div>
     </ModalFrame>
@@ -3124,13 +3124,13 @@ function ImportSummaryCard({ label, value, tone }: { label: string; value: numbe
 }
 
 function ImportRowCard({ row, index, issues, reviewNotes, onUpdate }: { row: ImportClientRow; index: number; issues: string[]; reviewNotes: string[]; onUpdate: (field: keyof ImportClientRow, value: string) => void }) {
-  const status = issues.length ? { label: "Must Fix", tone: "red" as const } : reviewNotes.length ? { label: "Needs Review", tone: "amber" as const } : { label: "Ready", tone: "green" as const };
+  const status = issues.length ? { label: "Skipped blank row", tone: "slate" as const } : reviewNotes.length ? { label: "Imported with missing details", tone: "amber" as const } : { label: "Ready", tone: "green" as const };
   return (
     <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
       <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <h3 className="font-extrabold text-primary">Row {index + 2}</h3>
-          <p className="text-sm font-semibold text-slate-500">{row.client_name || "Client name needed"} · {row.policy_number || "Policy number needed"}</p>
+          <p className="text-sm font-semibold text-slate-500">{row.client_name || "Client name can be added later"} · {row.policy_number || "Temporary policy number will be created"}</p>
         </div>
         <Badge tone={status.tone}>{status.label}</Badge>
       </div>
@@ -3256,16 +3256,16 @@ function BusinessClassBadge({ value }: { value: InsuranceCategory }) {
 }
 
 function NeedsReviewBadge({ policy }: { policy: PolicyWithClient }) {
-  return needsPolicyReview(policy) ? <Badge tone="amber">Needs Review</Badge> : null;
+  return needsPolicyReview(policy) ? <Badge tone="amber">Needs attention later</Badge> : null;
 }
 
 function PolicyReviewSummary({ policy, compact = false }: { policy: PolicyWithClient; compact?: boolean }) {
   if (!needsPolicyReview(policy)) return null;
-  const note = policy.notes?.replace(/^Needs Review:\s*/i, "").trim();
-  const text = note || "Open this policy and fill the missing details.";
+  const note = policy.notes?.replace(/^(Needs Review|Imported with missing details):\s*/i, "").trim();
+  const text = note || "Open this policy and add missing details when convenient.";
   return (
     <p className={`${compact ? "mt-1 max-w-xs" : "mt-3 rounded-xl bg-warning/10 p-3"} text-xs font-bold leading-5 text-warning`}>
-      {compact ? `Review: ${text}` : text}
+      {compact ? `Review when convenient: ${text}` : text}
     </p>
   );
 }
@@ -3488,7 +3488,7 @@ function policyRows(policies: PolicyWithClient[]) {
     Premium: formatCurrency(policy.premium_amount),
     Status: policy.status,
     "Renewal Status": policy.renewal_status,
-    Review: needsPolicyReview(policy) ? "Needs Review" : ""
+    Review: needsPolicyReview(policy) ? "Needs attention later" : ""
   }));
 }
 
@@ -3521,7 +3521,7 @@ function policiesForClient(policies: PolicyWithClient[], clientId: string) {
 }
 
 function needsPolicyReview(policy: PolicyWithClient) {
-  return policy.notes?.startsWith("Needs Review:") ?? false;
+  return /^(Needs Review|Imported with missing details):/i.test(policy.notes ?? "");
 }
 
 function renewalWhatsAppHref(policy: PolicyWithClient) {
